@@ -6,8 +6,7 @@ edition = "2021"
 [dependencies]
 axum = { version = "0.7", features = ["ws", "macros"] }
 tokio = { version = "1", features = ["full"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
@@ -15,7 +14,6 @@ yrs = "0.21"
 rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"
 rand = "0.8"
-bytes = "1"
 
 [profile.release]
 opt-level = 3

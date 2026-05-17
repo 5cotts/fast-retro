@@ -41,7 +41,6 @@ struct Room {
 enum BroadcastMsg {
     DocUpdate { from: ClientId, update: Vec<u8> },
     AwarenessUpdate { from: ClientId, update: Vec<u8> },
-    ClientGone { client_id: ClientId },
 }
 
 impl Room {
@@ -197,12 +196,6 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
                         }
                     }
                 }
-                BroadcastMsg::ClientGone { client_id: gone } => {
-                    if gone != client_id {
-                        // already encoded as awareness null entry by sender side
-                        let _ = gone;
-                    }
-                }
             }
         }
     });
@@ -228,17 +221,9 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
     info!("client {} disconnected", client_id);
     room.clients.write().await.remove(&client_id);
 
-    // remove from awareness, broadcast removal
-    let removal = {
-        let mut aw = room.awareness.lock().unwrap();
-        aw.remove_client(client_id)
-    };
-    if let Some(update) = removal {
-        let _ = room.broadcast.send(BroadcastMsg::AwarenessUpdate {
-            from: 0, // 0 means "from server", everyone receives
-            update,
-        });
-    }
+    // We don't proactively broadcast awareness removal: frontends publish a
+    // final "null" awareness state on unload, and the y-protocols client-side
+    // timeout sweeps stragglers. See Awareness::apply_update in sync.rs.
 
     bcast_task.abort();
     outbound.abort();

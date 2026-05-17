@@ -263,13 +263,11 @@ name = "fast-retro"
 version = "0.1.0"
 dependencies = [
  "axum",
- "bytes",
  "futures-util",
  "mime_guess",
  "rand",
  "rust-embed",
  "tokio",
- "tower",
  "tower-http",
  "tracing",
  "tracing-subscriber",

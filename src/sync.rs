@@ -226,15 +226,6 @@ impl Awareness {
         Ok(Some(out))
     }
 
-    /// Mark a Yjs awareness client as gone (server-side decision when a websocket closes).
-    /// We don't know which Yjs clientID belonged to which websocket cleanly, so this is a
-    /// best-effort: we currently don't track that mapping. Returning None keeps the entry
-    /// alive until the y-protocols client-side timeout sweeps it. (Frontends usually publish
-    /// a final "null" state on unload anyway.)
-    pub fn remove_client(&mut self, _ws_client_id: ClientId) -> Option<Vec<u8>> {
-        None
-    }
-
     /// Encode the full current awareness state for a newly connected peer.
     pub fn encode_full(&self) -> Option<Vec<u8>> {
         if self.states.is_empty() {
