@@ -1,6 +1,7 @@
 <script lang="ts">
-  import type { CardData, ColumnKey } from './board';
-  import { REACTION_EMOJI } from './board';
+  import type { CardData, ColumnKey } from './types';
+  import { REACTION_EMOJI } from './types';
+  import { resolveDisplayName } from './identity';
 
   let {
     card,
@@ -36,11 +37,8 @@
     onDragEnd: () => void;
   }>();
 
-  function displayName(id: string): string {
-    if (!id) return 'Anonymous';
-    if (id === userId) return userName || namesMap[id] || 'Anonymous';
-    return namesMap[id] || 'Anonymous';
-  }
+  const displayName = (id: string) =>
+    resolveDisplayName(id, { selfId: userId, selfName: userName, namesMap });
 
   const authorName = $derived(displayName(card.authorId));
 
