@@ -18,7 +18,9 @@
     onDeleteComment,
     onTypingComment,
     onDragStart,
-    onDragEnd
+    onDragEnd,
+    onKeydown,
+    onFocusCard
   } = $props<{
     card: CardData;
     column: ColumnKey;
@@ -35,6 +37,8 @@
     onTypingComment: (cardId: string | null) => void;
     onDragStart: (e: DragEvent, cardId: string, fromCol: ColumnKey) => void;
     onDragEnd: () => void;
+    onKeydown?: (e: KeyboardEvent) => void;
+    onFocusCard?: () => void;
   }>();
 
   const displayName = (id: string) =>
@@ -47,6 +51,17 @@
   let showComments = $state(false);
   let commentDraft = $state('');
   let showReactionPicker = $state(false);
+  let confirmingDelete = $state(false);
+  let pendingCommentDelete = $state<string | null>(null);
+  let pickerEl = $state<HTMLElement | null>(null);
+  let editTextarea = $state<HTMLTextAreaElement | null>(null);
+
+  $effect(() => {
+    if (editing && editTextarea) {
+      editTextarea.focus();
+      editTextarea.setSelectionRange(editTextarea.value.length, editTextarea.value.length);
+    }
+  });
 
   const hasVoted = $derived(card.votes.includes(userId));
   const voteCount = $derived(card.votes.length);
@@ -88,20 +103,45 @@
       submitComment();
     }
   }
+
+  $effect(() => {
+    if (!showReactionPicker) return;
+    const close = (e: MouseEvent) => {
+      if (pickerEl && e.target instanceof Node && !pickerEl.contains(e.target)) {
+        showReactionPicker = false;
+      }
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') showReactionPicker = false;
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', onEsc);
+    };
+  });
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
 <article
   draggable={!editing}
-  class="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm shadow-sm hover:shadow transition-shadow cursor-grab active:cursor-grabbing"
+  tabindex="0"
+  role="group"
+  aria-label={`Card: ${card.text.slice(0, 80)}`}
+  class="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md px-3 py-2 text-sm shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-sky-400 transition-shadow cursor-grab active:cursor-grabbing"
   ondragstart={(e) => onDragStart(e, card.id, column)}
   ondragend={onDragEnd}
+  onkeydown={(e) => onKeydown?.(e)}
+  onfocus={() => onFocusCard?.()}
 >
   {#if editing}
     <textarea
+      bind:this={editTextarea}
       bind:value={editText}
       rows="3"
-      autofocus
-      class="w-full resize-none border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
+      aria-label="Edit card text"
+      class="input w-full resize-none px-2 py-1.5 text-sm"
       onkeydown={(e) => {
         if (e.key === 'Escape') cancelEdit();
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) saveEdit();
@@ -124,8 +164,11 @@
   {:else}
     <div class="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100">{card.text}</div>
     {#if card.authorId}
-      <div class="mt-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500" title={`Added by ${authorName}`}>
-        — {authorName}{card.authorId === userId ? ' (you)' : ''}
+      <div
+        class="mt-1 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500"
+        title={card.authorId === userId ? 'Added by you' : `Added by ${authorName}`}
+      >
+        — {card.authorId === userId ? 'you' : authorName}
       </div>
     {/if}
 
@@ -170,7 +213,9 @@
         </button>
         {#if showReactionPicker}
           <div
+            bind:this={pickerEl}
             class="absolute z-10 top-full left-0 mt-1 flex gap-1 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg"
+            role="menu"
           >
             {#each REACTION_EMOJI as emoji (emoji)}
               <button
@@ -200,21 +245,43 @@
         <button
           class="md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 min-w-[32px] min-h-[32px] flex items-center justify-center"
           title="Edit"
+          aria-label="Edit card"
           onclick={startEdit}
         >
           ✎
         </button>
         <button
           class="md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 min-w-[32px] min-h-[32px] flex items-center justify-center"
-          title="Delete"
-          onclick={() => {
-            if (confirm('Delete this card?')) onDelete(card.id);
-          }}
+          title="Delete card"
+          aria-label="Delete card"
+          onclick={() => (confirmingDelete = true)}
         >
           ✕
         </button>
       {/if}
     </div>
+
+    {#if confirmingDelete}
+      <div
+        class="mt-2 p-2 rounded border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/30 text-xs flex items-center gap-2"
+        role="alertdialog"
+        aria-label="Confirm delete card"
+      >
+        <span class="flex-1 text-rose-800 dark:text-rose-100">Delete this card?</span>
+        <button
+          class="btn-danger px-2 py-1"
+          onclick={() => {
+            onDelete(card.id);
+            confirmingDelete = false;
+          }}
+        >
+          Delete
+        </button>
+        <button class="btn-ghost px-2 py-1" onclick={() => (confirmingDelete = false)}>
+          Cancel
+        </button>
+      </div>
+    {/if}
 
     {#if showComments}
       <div class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-700 space-y-1">
@@ -225,17 +292,40 @@
           <div class="text-xs flex items-start gap-1 group/c">
             <div class="flex-1 min-w-0">
               {#if c.authorId}
-                <span class="text-[10px] font-medium text-slate-500 dark:text-slate-400 mr-1">{displayName(c.authorId)}{c.authorId === userId ? ' (you)' : ''}:</span>
+                <span class="text-[10px] font-medium text-slate-500 dark:text-slate-400 mr-1">
+                  {displayName(c.authorId)}{c.authorId === userId ? ' (you)' : ''}:
+                </span>
               {/if}
               <span class="text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{c.text}</span>
             </div>
-            <button
-              class="opacity-0 group-hover/c:opacity-100 text-slate-400 hover:text-rose-500 transition"
-              title="Delete comment"
-              onclick={() => onDeleteComment(card.id, c.id)}
-            >
-              ✕
-            </button>
+            {#if pendingCommentDelete === c.id}
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded bg-rose-600 text-white"
+                onclick={() => {
+                  onDeleteComment(card.id, c.id);
+                  pendingCommentDelete = null;
+                }}
+                title="Confirm delete"
+              >
+                Delete?
+              </button>
+              <button
+                class="text-[10px] px-1 text-slate-500"
+                onclick={() => (pendingCommentDelete = null)}
+                title="Cancel"
+              >
+                ×
+              </button>
+            {:else}
+              <button
+                class="opacity-0 group-hover/c:opacity-100 focus:opacity-100 text-slate-400 hover:text-rose-500 transition"
+                title="Delete comment"
+                aria-label="Delete comment"
+                onclick={() => (pendingCommentDelete = c.id)}
+              >
+                ✕
+              </button>
+            {/if}
           </div>
         {/each}
         <div class="flex gap-1 mt-1">

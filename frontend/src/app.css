@@ -9,3 +9,43 @@ html.dark {
   background-color: rgb(15 23 42);
   color-scheme: dark;
 }
+
+@layer components {
+  /* Generic neutral button: thin border, hover tint, works in both themes. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1 rounded border border-slate-300
+           bg-white text-slate-700 hover:bg-slate-100
+           dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700
+           transition;
+  }
+
+  /* Borderless / muted variant for tertiary actions. */
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-1 rounded
+           text-slate-500 hover:bg-slate-100 hover:text-slate-700
+           dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200
+           transition;
+  }
+
+  /* Destructive accent (End board, Delete, etc.). */
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-1 rounded border
+           border-rose-300 text-rose-700 hover:bg-rose-50
+           dark:border-rose-700 dark:text-rose-200 dark:hover:bg-rose-900/30
+           transition;
+  }
+
+  /* Form input baseline. */
+  .input {
+    @apply border border-slate-300 bg-white text-slate-900 rounded
+           focus:outline-none focus:ring-2 focus:ring-sky-400
+           dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100;
+  }
+
+  /* Rounded chip used for presence badges and tag-like UI. */
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full border
+           border-slate-200 bg-slate-100 text-slate-700
+           dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200;
+  }
+}
