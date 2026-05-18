@@ -31,8 +31,17 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowRight } from 'lucide-svelte';
-  import { PHASES, PHASE_LABEL, PHASE_HINT, nextPhase, setPhase } from './phase';
+  import { Download, ArrowLeft, ArrowRight } from 'lucide-svelte';
+  import {
+    PHASES,
+    PHASE_LABEL,
+    PHASE_HINT,
+    nextPhase,
+    prevPhase,
+    setPhase,
+    canAddCardInColumn,
+    canVoteInPhase
+  } from './phase';
 
   let { isLead = false, slug } = $props<{ isLead?: boolean; slug: string }>();
 
@@ -396,8 +405,16 @@
     if (next !== conn.state.phase) setPhase(conn.state.board.phase, next);
   }
 
+  function previousPhase() {
+    if (!conn.state.board || !isLead) return;
+    const prev = prevPhase(conn.state.phase);
+    if (prev !== conn.state.phase) setPhase(conn.state.board.phase, prev);
+  }
+
   const phaseIndex = $derived(PHASES.indexOf(conn.state.phase));
   const isLastPhase = $derived(phaseIndex === PHASES.length - 1);
+  const isFirstPhase = $derived(phaseIndex === 0);
+  const canVote = $derived(canVoteInPhase(conn.state.phase));
 
   function downloadCSV() {
     const csv = exportCSV(conn.state.cards);
@@ -497,15 +514,29 @@
           {/each}
         </div>
         <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {PHASE_HINT[conn.state.phase]}</span>
-        {#if isLead && !isLastPhase}
-          <button
-            class="ml-auto btn text-xs px-2.5 py-1 min-h-[28px]"
-            onclick={advancePhase}
-            aria-label={`Advance to ${PHASE_LABEL[PHASES[phaseIndex + 1]]} phase`}
-          >
-            Next phase
-            <ArrowRight size={13} aria-hidden="true" />
-          </button>
+        {#if isLead}
+          <div class="ml-auto flex items-center gap-1.5">
+            {#if !isFirstPhase}
+              <button
+                class="btn text-xs px-2.5 py-1 min-h-[28px]"
+                onclick={previousPhase}
+                aria-label={`Go back to ${PHASE_LABEL[PHASES[phaseIndex - 1]]} phase`}
+              >
+                <ArrowLeft size={13} aria-hidden="true" />
+                <span class="hidden sm:inline">Previous</span>
+              </button>
+            {/if}
+            {#if !isLastPhase}
+              <button
+                class="btn text-xs px-2.5 py-1 min-h-[28px]"
+                onclick={advancePhase}
+                aria-label={`Advance to ${PHASE_LABEL[PHASES[phaseIndex + 1]]} phase`}
+              >
+                Next phase
+                <ArrowRight size={13} aria-hidden="true" />
+              </button>
+            {/if}
+          </div>
         {/if}
       </div>
     </div>
@@ -562,6 +593,7 @@
         {#each COLUMNS as col (col.key)}
           {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
           {@const colCards = conn.state.cards[col.key]}
+          {@const canAdd = canAddCardInColumn(col.key, conn.state.phase)}
           <section
             class="border rounded-xl shadow-sm flex flex-col {col.accent}"
             role="list"
@@ -599,6 +631,7 @@
                     {userId}
                     {userName}
                     {isLead}
+                    {canVote}
                     namesMap={namesMapDisambiguated}
                     onEdit={(id, text) => handleEdit(col.key, id, text)}
                     onDelete={(id) => handleDelete(col.key, id)}
@@ -627,39 +660,50 @@
               {/if}
             </div>
             <footer class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl">
-              <textarea
-                bind:value={drafts[col.key]}
-                onkeydown={(e) => onNewKey(e, col.key)}
-                onfocus={() => setTyping(`new-${col.key}`)}
-                onblur={() => setTyping(null)}
-                placeholder={COLUMN_PLACEHOLDER[col.key]}
-                rows="2"
-                aria-label={`Add a card to ${col.title}`}
-                class="input w-full resize-none px-2.5 py-2 text-sm leading-snug"
-              ></textarea>
-              {#if typingNew.length > 0}
+              {#if canAdd}
+                <textarea
+                  bind:value={drafts[col.key]}
+                  onkeydown={(e) => onNewKey(e, col.key)}
+                  onfocus={() => setTyping(`new-${col.key}`)}
+                  onblur={() => setTyping(null)}
+                  placeholder={COLUMN_PLACEHOLDER[col.key]}
+                  rows="2"
+                  aria-label={`Add a card to ${col.title}`}
+                  class="input w-full resize-none px-2.5 py-2 text-sm leading-snug"
+                ></textarea>
+                {#if typingNew.length > 0}
+                  <div
+                    class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
+                    aria-live="polite"
+                  >
+                    {typingNew.join(', ')} typing…
+                  </div>
+                {/if}
+                <div class="mt-2 flex items-center gap-2">
+                  <button
+                    onclick={() => submitNew(col.key)}
+                    disabled={!drafts[col.key].trim()}
+                    class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm rounded-md py-2 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                  >
+                    Add card
+                  </button>
+                  {#if !coarsePointer}
+                    <kbd
+                      class="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 tabular-nums"
+                      title="Keyboard shortcut: ⌘ or Ctrl + Enter"
+                    >⌘↵</kbd>
+                  {/if}
+                </div>
+              {:else}
                 <div
-                  class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
-                  aria-live="polite"
+                  class="text-xs text-slate-500 dark:text-slate-400 italic px-1 py-2 text-center select-none"
+                  aria-label={`Adding cards to ${col.title} is closed in the ${PHASE_LABEL[conn.state.phase]} phase`}
                 >
-                  {typingNew.join(', ')} typing…
+                  {col.key === 'actions'
+                    ? 'Action items open in the Actions phase.'
+                    : 'Card entry closed — Brainstorm phase only.'}
                 </div>
               {/if}
-              <div class="mt-2 flex items-center gap-2">
-                <button
-                  onclick={() => submitNew(col.key)}
-                  disabled={!drafts[col.key].trim()}
-                  class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm rounded-md py-2 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-                >
-                  Add card
-                </button>
-                {#if !coarsePointer}
-                  <kbd
-                    class="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 tabular-nums"
-                    title="Keyboard shortcut: ⌘ or Ctrl + Enter"
-                  >⌘↵</kbd>
-                {/if}
-              </div>
             </footer>
           </section>
         {/each}

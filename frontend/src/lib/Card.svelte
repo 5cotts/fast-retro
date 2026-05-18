@@ -22,6 +22,7 @@
     userId,
     userName,
     isLead,
+    canVote = true,
     namesMap,
     onEdit,
     onDelete,
@@ -40,6 +41,7 @@
     userId: string;
     userName: string;
     isLead: boolean;
+    canVote?: boolean;
     namesMap: Record<string, string>;
     onEdit: (cardId: string, text: string) => void;
     onDelete: (cardId: string) => void;
@@ -242,12 +244,19 @@
     <div class="mt-2.5 flex items-center gap-1 flex-wrap text-xs text-slate-600 dark:text-slate-400">
       <button
         class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 min-h-[34px] transition-colors
+          disabled:cursor-not-allowed disabled:opacity-60
           {hasVoted
             ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200'
-            : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700'}"
+            : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:hover:bg-transparent'}"
         onclick={() => onToggleVote(card.id)}
-        aria-label={hasVoted ? `Remove vote (${voteCount})` : `Upvote (${voteCount})`}
+        disabled={!canVote && !hasVoted}
+        aria-label={hasVoted
+          ? `Remove vote (${voteCount})`
+          : canVote
+            ? `Upvote (${voteCount})`
+            : `Voting closed (${voteCount} votes)`}
         aria-pressed={hasVoted}
+        title={canVote || hasVoted ? undefined : 'Voting is only open in the Vote phase.'}
       >
         <ChevronUp size={14} aria-hidden="true" />
         <span class="tabular-nums">{voteCount}</span>

@@ -37,8 +37,27 @@ export function nextPhase(current: Phase): Phase {
   return PHASES[idx + 1];
 }
 
-// NOTE: Per-phase gating (e.g. hiding voting controls during Brainstorm) is
-// intentionally not implemented yet. Today the phase is purely a shared
-// indicator + lead-driven step counter — every action is still available in
-// every phase. TODO: gate vote / reaction visibility per phase when the team
-// decides on the exact behaviour.
+export function prevPhase(current: Phase): Phase {
+  const idx = PHASES.indexOf(current);
+  if (idx <= 0) return current;
+  return PHASES[idx - 1];
+}
+
+// Per-phase action gating. The phase strip is more than an indicator — it
+// enforces the canonical retro flow so that participants don't, e.g., add
+// late cards in the middle of voting.
+//
+// Reactions, comments, edits, and drag-to-reorder remain available in every
+// phase: they're either conversational (low stakes) or remediation of
+// honest mistakes. Only "structural" actions are gated.
+export function canAddCardInColumn(column: string, phase: Phase): boolean {
+  // Inputs (went-well, to-improve) are captured during Brainstorm.
+  // Action items are captured during the final Actions phase.
+  if (column === 'wentWell' || column === 'toImprove') return phase === 'brainstorm';
+  if (column === 'actions') return phase === 'actions';
+  return true;
+}
+
+export function canVoteInPhase(phase: Phase): boolean {
+  return phase === 'vote';
+}

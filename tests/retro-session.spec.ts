@@ -147,7 +147,26 @@ test.describe('fast-retro full session', () => {
       await advancePhase(leadPage, 'Group');
       await expectActivePhase(allPages, 'Group');
 
-      // --- Advance: Group → Vote ---
+      // Gating: once we've left Brainstorm, the input columns no longer
+      // accept new cards. The textarea is replaced with an inline notice.
+      for (const p of allPages) {
+        await expect(p.getByLabel('Add a card to What went well')).toBeHidden();
+        await expect(p.getByLabel('Add a card to What to improve')).toBeHidden();
+      }
+
+      // --- Lead bumps back to Brainstorm using the Previous button ---
+      // (rehearsing the "facilitator misclicked Next" recovery flow.)
+      await leadPage
+        .getByRole('button', { name: 'Go back to Brainstorm phase' })
+        .click();
+      await expectActivePhase(allPages, 'Brainstorm');
+      // Card-entry UI returns.
+      for (const p of allPages) {
+        await expect(p.getByLabel('Add a card to What went well')).toBeVisible();
+      }
+      // Forward again: Brainstorm → Group → Vote.
+      await advancePhase(leadPage, 'Group');
+      await expectActivePhase(allPages, 'Group');
       await advancePhase(leadPage, 'Vote');
       await expectActivePhase(allPages, 'Vote');
 
@@ -177,6 +196,15 @@ test.describe('fast-retro full session', () => {
       // --- Advance: Vote → Discuss ---
       await advancePhase(leadPage, 'Discuss');
       await expectActivePhase(allPages, 'Discuss');
+
+      // Gating: voting is closed in Discuss. Bob hasn't voted on his own
+      // "improve" card, so its upvote button must be disabled. Counts on
+      // already-voted cards are still mutable so people can un-do mistakes.
+      await expect(
+        cardLocator(bobPage, 'What to improve', bobImprove).getByRole('button', {
+          name: /Voting closed/
+        })
+      ).toBeDisabled();
 
       // --- Phase 4: Discuss — alice reacts, bob comments ---
       {
