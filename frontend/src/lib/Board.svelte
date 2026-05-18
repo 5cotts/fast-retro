@@ -712,6 +712,13 @@
 
     <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
       Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
+      <span aria-hidden="true">·</span>
+      <a
+        href={isLead ? '/docs?role=lead' : '/docs?role=participant'}
+        class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
+      >
+        User guide
+      </a>
     </footer>
   </div>
 

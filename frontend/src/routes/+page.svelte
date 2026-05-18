@@ -67,6 +67,11 @@
           </ul>
         </div>
       {/if}
+
+      <p class="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
+        New here?
+        <a href="/docs" class="text-sky-600 dark:text-sky-400 hover:underline">Read the user guide</a>.
+      </p>
     </div>
   </div>
 {/if}

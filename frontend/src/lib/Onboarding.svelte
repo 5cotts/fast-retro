@@ -104,5 +104,12 @@
     >
       Got it
     </button>
+
+    <p class="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
+      Want more?
+      <a href="/docs?role=participant" class="text-sky-600 dark:text-sky-400 hover:underline">
+        Read the full guide
+      </a>.
+    </p>
   </div>
 </div>
