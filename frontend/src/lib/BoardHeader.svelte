@@ -5,6 +5,7 @@
   import LeadControls from './LeadControls.svelte';
   import PresenceList from './PresenceList.svelte';
   import NameBadge from './NameBadge.svelte';
+  import Wordmark from './Wordmark.svelte';
   import { Menu, Monitor, Sun, Moon } from 'lucide-svelte';
 
   let {
@@ -60,10 +61,8 @@
 
 <header class="border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/60">
   <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap">
-    <div class="flex items-center gap-2">
-      <h1 class="text-base sm:text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-        Fast Retro
-      </h1>
+    <a href="/" class="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-sky-400 rounded-md" aria-label="Fast Retro — home">
+      <Wordmark />
       {#if isLead}
         <span
           class="inline-flex items-center text-[10px] sm:text-xs font-medium bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200 border border-sky-200/80 dark:border-sky-700/50 rounded px-1.5 py-0.5"
@@ -71,7 +70,7 @@
           Host
         </span>
       {/if}
-    </div>
+    </a>
 
     <span
       class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
