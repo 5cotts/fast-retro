@@ -29,6 +29,9 @@ E2E_BASE_URL=http://localhost:5102 bun run test:e2e
    card to "To Improve" using `Shift+ArrowRight`.
 2. **Presence** — opens a second browser context with a different name
    and confirms each page sees the other user's name in the DOM.
+3. **Share button** — clicks the header "Share" button and confirms it
+   copies the participant-facing board URL to the clipboard (and that
+   the URL never contains the `/lead/<token>` prefix).
 
 Each run uses random names (`pw-<rand>`) so it doesn't collide with itself.
 

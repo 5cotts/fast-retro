@@ -6,7 +6,7 @@
   import PresenceList from './PresenceList.svelte';
   import NameBadge from './NameBadge.svelte';
   import Wordmark from './Wordmark.svelte';
-  import { Menu, Monitor, Sun, Moon } from 'lucide-svelte';
+  import { Menu, Monitor, Sun, Moon, Link2, Check } from 'lucide-svelte';
 
   let {
     isLead,
@@ -53,10 +53,45 @@
   }>();
 
   let showMobileMenu = $state(false);
+  let linkCopied = $state(false);
+  let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
   const timerVisible = $derived(
     timerState.durationSec > 0 || timerState.startedAt !== null || timerState.paused
   );
+
+  async function copyBoardLink() {
+    if (typeof window === 'undefined') return;
+    // Always share the participant URL (no /lead/<token>/ prefix), even from a lead view.
+    const url = new URL(window.location.href);
+    const slugMatch = url.pathname.match(/\/board\/([^/]+)|\/lead\/[^/]+\/([^/]+)/);
+    const slug = slugMatch ? slugMatch[1] || slugMatch[2] : '';
+    const shareUrl = slug ? `${url.origin}/board/${slug}` : `${url.origin}${url.pathname}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // Fallback for older browsers / insecure contexts.
+      const ta = document.createElement('textarea');
+      ta.value = shareUrl;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'absolute';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+      } catch {
+        // give up silently — most modern browsers won't hit this path
+      }
+      document.body.removeChild(ta);
+    }
+    linkCopied = true;
+    if (copyTimer) clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
+      linkCopied = false;
+      copyTimer = null;
+    }, 1600);
+  }
 </script>
 
 <header class="border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/60">
@@ -116,6 +151,21 @@
 
     <div class="hidden sm:contents">
       <div class="ml-auto flex items-center gap-2 flex-wrap">
+        <button
+          class="btn text-xs px-2 py-1 min-h-[32px]"
+          onclick={copyBoardLink}
+          aria-label={linkCopied ? 'Board link copied to clipboard' : 'Copy board link to share with teammates'}
+          title={linkCopied ? 'Link copied' : 'Copy board link'}
+        >
+          {#if linkCopied}
+            <Check size={14} aria-hidden="true" />
+            <span aria-hidden="true">Copied</span>
+          {:else}
+            <Link2 size={14} aria-hidden="true" />
+            <span aria-hidden="true">Share</span>
+          {/if}
+        </button>
+
         {#if isLead}
           <LeadControls
             bind:timerInputMin
@@ -174,6 +224,19 @@
         />
       {/if}
       <div class="flex items-center gap-2 flex-wrap">
+        <button
+          class="btn text-sm px-3 py-2 min-h-[44px]"
+          onclick={copyBoardLink}
+          aria-label={linkCopied ? 'Board link copied to clipboard' : 'Copy board link to share with teammates'}
+        >
+          {#if linkCopied}
+            <Check size={14} aria-hidden="true" />
+            Copied
+          {:else}
+            <Link2 size={14} aria-hidden="true" />
+            Share link
+          {/if}
+        </button>
         <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onCycleTheme}>
           {#if themePref === 'auto'}
             <Monitor size={14} aria-hidden="true" />

@@ -22,9 +22,9 @@ export const COLUMNS: { key: ColumnKey; title: string; accent: string; dot: stri
 ];
 
 export const COLUMN_EMPTY_HINT: Record<ColumnKey, string> = {
-  wentWell: 'Nothing here yet. What went well?',
-  toImprove: 'Nothing here yet. What could be better?',
-  actions: 'Nothing here yet. What should we do next?'
+  wentWell: 'Nothing here yet — what worked this sprint?',
+  toImprove: 'Nothing here yet — what could be smoother?',
+  actions: 'Nothing here yet — what should we tackle next?'
 };
 
 export const COLUMN_PLACEHOLDER: Record<ColumnKey, string> = {

@@ -52,6 +52,17 @@ test.describe('fast-retro smoke', () => {
       card.getByRole('button', { name: /Remove your party reaction \(1/ })
     ).toBeVisible();
 
+    // --- share button copies participant URL to clipboard ---
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const shareButton = page.getByRole('button', { name: /Copy board link to share/ });
+    await shareButton.click();
+    await expect(
+      page.getByRole('button', { name: 'Board link copied to clipboard' })
+    ).toBeVisible();
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText).toMatch(/\/board\/[^/]+$/);
+    expect(clipboardText).not.toContain('/lead/');
+
     // --- move with Shift+Arrow keyboard nav ---
     // Focus the card itself (the role="group" element handles arrow-keys).
     await card.focus();
