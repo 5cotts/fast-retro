@@ -22,7 +22,7 @@ E2E_BASE_URL=http://localhost:5102 bun run test:e2e
 
 ## What they cover
 
-`e2e-smoke.spec.ts`:
+`e2e-smoke.spec.ts` — single-user smoke:
 
 1. **Golden path** — join the board with a fresh name, create a card in
    the "Went Well" column, add a comment, react with 🎉, then move the
@@ -36,7 +36,35 @@ E2E_BASE_URL=http://localhost:5102 bun run test:e2e
    retro?" tips modal after submitting their name, that "Got it"
    dismisses it, and that a reload does not bring it back.
 
-Each run uses random names (`pw-<rand>`) so it doesn't collide with itself.
+`retro-session.spec.ts` — full multi-user session (skipped unless
+`RETRO_LEAD_TOKEN` is set):
+
+5. **Lead + two engineers walk all five phases** — one lead and two
+   engineers (Alice, Bob) join the same fresh board. Engineers add
+   cards in Brainstorm; the lead starts a timer (engineers see the
+   pill); the lead advances Brainstorm → Group → Vote; both engineers
+   upvote Alice's card and all three pages converge on the right
+   count (`Remove vote (2)` for voters, `Upvote (2)` for the lead);
+   the lead advances to Discuss; Alice reacts with 🎉, Bob comments
+   and the lead's view sees `Comments (1)`; the lead advances to
+   Actions; Alice records an action item; the lead opens the "End
+   retro" confirm dialog and cancels (so we don't wipe state mid-test).
+
+Each run uses random names and a random slug so it doesn't collide
+with itself.
+
+### Lead token
+
+The full-session test joins the lead role and therefore needs the
+`RETRO_LEAD_TOKEN` for whatever instance you're testing. Either
+export it before running:
+
+```bash
+RETRO_LEAD_TOKEN=… bun run test:e2e
+```
+
+or set it in your local shell profile. Without it, the test is
+skipped (the smoke tests still run).
 
 ## Notes
 
