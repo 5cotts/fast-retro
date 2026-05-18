@@ -21,15 +21,33 @@
 </script>
 
 {#if ok === null}
-  <div class="min-h-screen flex items-center justify-center text-slate-500">Checking lead token…</div>
+  <div
+    class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400"
+    role="status"
+    aria-live="polite"
+  >
+    <div class="flex items-center gap-2 text-sm">
+      <span class="inline-block w-3 h-3 rounded-full bg-slate-300 dark:bg-slate-600 motion-safe:animate-pulse" aria-hidden="true"></span>
+      Checking host link…
+    </div>
+  </div>
 {:else if ok}
   <Board isLead={true} />
 {:else}
-  <div class="min-h-screen flex items-center justify-center">
-    <div class="text-center">
-      <h1 class="text-xl font-semibold mb-2">Invalid lead token</h1>
-      <p class="text-sm text-slate-500 mb-4">This link isn't valid for the current session.</p>
-      <a href="/" class="text-sky-600 underline">Join as engineer</a>
+  <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
+    <div class="text-center max-w-sm">
+      <h1 class="text-xl font-semibold tracking-tight mb-2 text-slate-900 dark:text-slate-100">
+        This host link isn't valid
+      </h1>
+      <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">
+        The link may have expired, or it doesn't match the current session. Ask your host for a fresh link, or join as a participant.
+      </p>
+      <a
+        href="/"
+        class="inline-flex items-center justify-center bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+      >
+        Join the retro
+      </a>
     </div>
   </div>
 {/if}

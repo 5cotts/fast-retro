@@ -26,7 +26,11 @@
   import { getName, setName, getTheme, setTheme, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
-  import { COLUMNS, type CardData, type ColumnKey } from './types';
+  import { COLUMNS, COLUMN_EMPTY_HINT, COLUMN_PLACEHOLDER, type CardData, type ColumnKey } from './types';
+  import { fly } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
+  import { disambiguateNames } from './identity';
+  import { Download } from 'lucide-svelte';
 
   let { isLead = false } = $props<{ isLead?: boolean }>();
 
@@ -51,6 +55,11 @@
   let dragFromCol = $state<ColumnKey | null>(null);
   let dragOverCol = $state<ColumnKey | null>(null);
   let dragOverIndex = $state<number>(-1);
+  let coarsePointer = $state<boolean>(false);
+  let reducedMotion = $state<boolean>(false);
+  let prevTimerExpired = $state<boolean>(false);
+  let timerJustExpired = $state<boolean>(false);
+  let timerExpiredHandle: ReturnType<typeof setTimeout> | null = null;
 
   let focusedCardId = $state<string | null>(null);
   let endConfirm = $state<boolean>(false);
@@ -68,9 +77,11 @@
       !conn.state.timerState.paused
   );
 
+  const presenceDisambiguated = $derived(disambiguateNames(conn.state.presence));
+
   const typingByCard = $derived.by(() => {
     const map = new Map<string, string[]>();
-    for (const p of conn.state.presence) {
+    for (const p of presenceDisambiguated) {
       if (p.typing && p.clientId !== conn.state.currentClientId) {
         const list = map.get(p.typing) ?? [];
         list.push(p.name);
@@ -98,6 +109,9 @@
       };
       if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', mediaListener);
       else mediaQuery.addListener(mediaListener);
+
+      coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+      reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     }
 
     const storedName = getName();
@@ -116,9 +130,23 @@
     document.documentElement.classList.toggle('dark', darkMode);
   });
 
+  // Fire a brief one-shot animation banner the moment the timer expires.
+  $effect(() => {
+    const expired = timerExpired;
+    if (expired && !prevTimerExpired) {
+      timerJustExpired = true;
+      if (timerExpiredHandle !== null) clearTimeout(timerExpiredHandle);
+      timerExpiredHandle = setTimeout(() => {
+        timerJustExpired = false;
+      }, 6000);
+    }
+    prevTimerExpired = expired;
+  });
+
   onDestroy(() => {
     conn.destroy();
     if (tickHandle !== null) clearInterval(tickHandle);
+    if (timerExpiredHandle !== null) clearTimeout(timerExpiredHandle);
     if (mediaQuery && mediaListener) {
       if (mediaQuery.removeEventListener) mediaQuery.removeEventListener('change', mediaListener);
       else mediaQuery.removeListener(mediaListener);
@@ -409,7 +437,8 @@
       bind:timerInputMin
       {themePref}
       {darkMode}
-      presence={conn.state.presence}
+      presence={presenceDisambiguated}
+      currentClientId={conn.state.currentClientId}
       {userName}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
@@ -420,6 +449,20 @@
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
     />
+
+    {#if timerJustExpired}
+      <div
+        class="border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2 text-sm flex items-center gap-2">
+          <span aria-hidden="true">⏰</span>
+          <span class="font-medium">Time's up</span>
+          <span class="opacity-80 hidden sm:inline">— wrap up your last point.</span>
+        </div>
+      </div>
+    {/if}
 
     {#if endConfirm}
       <div
@@ -439,7 +482,8 @@
               class="btn text-xs px-3 py-1.5"
               onclick={() => confirmEndBoard({ exportFirst: true })}
             >
-              ⤓ Export CSV &amp; clear
+              <Download size={14} aria-hidden="true" />
+              Export CSV &amp; clear
             </button>
           {/if}
           <button
@@ -457,6 +501,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {#each COLUMNS as col (col.key)}
           {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
+          {@const colCards = conn.state.cards[col.key]}
           <section
             class="border rounded-xl shadow-sm flex flex-col {col.accent}"
             role="list"
@@ -465,19 +510,28 @@
             ondrop={(e) => onColumnDrop(e, col.key)}
           >
             <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between bg-white/60 dark:bg-slate-800/40 rounded-t-xl">
-              <h2 class="font-semibold text-slate-800 dark:text-slate-100">{col.title}</h2>
-              <span class="text-xs text-slate-500 dark:text-slate-400">{conn.state.cards[col.key].length}</span>
+              <div class="flex items-center gap-2">
+                <span class="w-1.5 h-5 rounded-full {col.dot}" aria-hidden="true"></span>
+                <h2 class="font-semibold tracking-tight text-slate-800 dark:text-slate-100">{col.title}</h2>
+              </div>
+              <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{colCards.length}</span>
             </header>
-            <div class="p-3 flex-1 space-y-2 min-h-[80px]">
-              {#each conn.state.cards[col.key] as card, i (card.id)}
+            <div class="p-3 flex-1 space-y-2 min-h-[96px]">
+              {#if colCards.length === 0}
+                <div class="text-xs text-slate-400 dark:text-slate-500 italic px-1 py-2 select-none">
+                  {COLUMN_EMPTY_HINT[col.key]}
+                </div>
+              {/if}
+              {#each colCards as card, i (card.id)}
                 {@const typers = typingByCard.get(card.id) ?? []}
                 <div
                   class="relative"
                   role="listitem"
                   ondragover={(e) => onCardSlotDragOver(e, col.key, i)}
+                  in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
                 >
                   {#if dragOverCol === col.key && dragOverIndex === i && dragCardId !== card.id}
-                    <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full"></div>
+                    <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
                   {/if}
                   <Card
                     {card}
@@ -499,14 +553,17 @@
                     {onDragEnd}
                   />
                   {#if typers.length > 0}
-                    <div class="text-[10px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5">
+                    <div
+                      class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
+                      aria-live="polite"
+                    >
                       {typers.join(', ')} typing…
                     </div>
                   {/if}
                 </div>
               {/each}
-              {#if dragOverCol === col.key && dragOverIndex >= conn.state.cards[col.key].length}
-                <div class="h-1 bg-sky-400 rounded-full"></div>
+              {#if dragOverCol === col.key && dragOverIndex >= colCards.length}
+                <div class="h-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
               {/if}
             </div>
             <footer class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl">
@@ -515,31 +572,42 @@
                 onkeydown={(e) => onNewKey(e, col.key)}
                 onfocus={() => setTyping(`new-${col.key}`)}
                 onblur={() => setTyping(null)}
-                placeholder="Add a card…  (⌘/Ctrl+Enter)"
+                placeholder={coarsePointer ? COLUMN_PLACEHOLDER[col.key] : `${COLUMN_PLACEHOLDER[col.key]}`}
                 rows="2"
                 aria-label={`Add a card to ${col.title}`}
-                class="input w-full resize-none px-2 py-1.5 text-sm"
+                class="input w-full resize-none px-2.5 py-2 text-sm leading-snug"
               ></textarea>
               {#if typingNew.length > 0}
-                <div class="text-[10px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5">
+                <div
+                  class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
+                  aria-live="polite"
+                >
                   {typingNew.join(', ')} typing…
                 </div>
               {/if}
-              <button
-                onclick={() => submitNew(col.key)}
-                disabled={!drafts[col.key].trim()}
-                class="mt-2 w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm rounded-md py-1.5 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Add
-              </button>
+              <div class="mt-2 flex items-center gap-2">
+                <button
+                  onclick={() => submitNew(col.key)}
+                  disabled={!drafts[col.key].trim()}
+                  class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm rounded-md py-2 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+                >
+                  Add card
+                </button>
+                {#if !coarsePointer}
+                  <kbd
+                    class="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 tabular-nums"
+                    title="Keyboard shortcut: ⌘ or Ctrl + Enter"
+                  >⌘↵</kbd>
+                {/if}
+              </div>
             </footer>
           </section>
         {/each}
       </div>
     </main>
 
-    <footer class="text-center text-xs text-slate-400 dark:text-slate-600 py-4">
-      fast-retro · joined as <span class="font-medium text-slate-500 dark:text-slate-500">{userName}</span>
+    <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
+      Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
     </footer>
   </div>
 {/if}

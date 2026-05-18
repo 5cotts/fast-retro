@@ -37,10 +37,10 @@
     class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-6 w-full max-w-sm"
     onsubmit={submit}
   >
-    <h1 id="welcome-heading" class="text-xl font-semibold mb-1 text-slate-900 dark:text-slate-100">
+    <h1 id="welcome-heading" class="text-2xl font-semibold tracking-tight mb-1 text-slate-900 dark:text-slate-100">
       Welcome to the retro
     </h1>
-    <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">What should we call you?</p>
+    <p class="text-sm text-slate-500 dark:text-slate-400 mb-5">What should we call you?</p>
     <input
       bind:this={inputEl}
       bind:value={nameInput}
@@ -48,14 +48,14 @@
       maxlength="40"
       placeholder="Your name"
       aria-label="Your display name"
-      class="input w-full px-3 py-2"
+      class="input w-full px-3 py-2.5 min-h-[44px]"
     />
     <button
       type="submit"
-      class="mt-4 w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2 font-medium hover:opacity-90 disabled:opacity-50"
+      class="mt-4 w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2.5 font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
       disabled={!nameInput.trim()}
     >
-      Join board
+      Join the retro
     </button>
     <button
       type="button"

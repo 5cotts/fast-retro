@@ -18,6 +18,7 @@ dist/
 test-results/
 playwright-report/
 playwright/.cache/
+tests/screenshots/
 
 # Environment
 .env

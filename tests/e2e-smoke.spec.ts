@@ -8,8 +8,8 @@ async function joinBoardAs(page: Page, name: string) {
   const nameInput = page.getByLabel('Your display name');
   await expect(nameInput).toBeVisible();
   await nameInput.fill(name);
-  await page.getByRole('button', { name: 'Join board' }).click();
-  await expect(page.getByRole('list', { name: 'Went Well' })).toBeVisible();
+  await page.getByRole('button', { name: 'Join the retro' }).click();
+  await expect(page.getByRole('list', { name: 'What went well' })).toBeVisible();
 }
 
 async function addCard(page: Page, columnTitle: string, text: string) {
@@ -17,7 +17,7 @@ async function addCard(page: Page, columnTitle: string, text: string) {
   await draft.click();
   await draft.fill(text);
   const column = page.getByRole('list', { name: columnTitle });
-  await column.getByRole('button', { name: 'Add', exact: true }).click();
+  await column.getByRole('button', { name: 'Add card', exact: true }).click();
   const card = column.getByRole('group', { name: `Card: ${text}` });
   await expect(card).toBeVisible();
   return card;
@@ -31,10 +31,10 @@ test.describe('fast-retro smoke', () => {
     await joinBoardAs(page, NAME_PRIMARY);
 
     const cardText = `smoke ${Date.now()}`;
-    const card = await addCard(page, 'Went Well', cardText);
+    const card = await addCard(page, 'What went well', cardText);
 
     // --- comment ---
-    await card.getByRole('button', { name: /💬/ }).click();
+    await card.getByRole('button', { name: /Comments/ }).click();
     const commentText = `hello ${Math.random().toString(36).slice(2, 6)}`;
     const commentInput = card.getByPlaceholder('Add a comment…');
     await commentInput.fill(commentText);
@@ -44,10 +44,10 @@ test.describe('fast-retro smoke', () => {
     await expect(card.getByText(commentText)).toBeVisible();
 
     // --- reaction ---
-    await card.getByRole('button', { name: '😊+', exact: true }).click();
+    await card.getByRole('button', { name: 'Add reaction', exact: true }).click();
     const reactionMenu = card.getByRole('menu');
     await expect(reactionMenu).toBeVisible();
-    await reactionMenu.getByRole('button', { name: '🎉' }).click();
+    await reactionMenu.getByRole('button', { name: 'React with 🎉' }).click();
     await expect(
       card.getByRole('button', { name: /🎉/ }).filter({ hasText: '1' })
     ).toBeVisible();
@@ -57,13 +57,13 @@ test.describe('fast-retro smoke', () => {
     await card.focus();
     await page.keyboard.press('Shift+ArrowRight');
 
-    const toImproveColumn = page.getByRole('list', { name: 'To Improve' });
+    const toImproveColumn = page.getByRole('list', { name: 'What to improve' });
     await expect(
       toImproveColumn.getByRole('group', { name: `Card: ${cardText}` })
     ).toBeVisible();
-    // Confirm it left Went Well.
+    // Confirm it left "What went well".
     await expect(
-      page.getByRole('list', { name: 'Went Well' }).getByRole('group', { name: `Card: ${cardText}` })
+      page.getByRole('list', { name: 'What went well' }).getByRole('group', { name: `Card: ${cardText}` })
     ).toHaveCount(0);
 
     await context.close();
