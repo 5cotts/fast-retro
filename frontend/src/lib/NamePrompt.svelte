@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ThemePref } from './storage';
+  import Wordmark from './Wordmark.svelte';
 
   let {
     nameInput = $bindable(''),
@@ -37,6 +38,9 @@
     class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-6 w-full max-w-sm"
     onsubmit={submit}
   >
+    <div class="mb-4 flex items-center justify-center">
+      <Wordmark size="lg" />
+    </div>
     <h1 id="welcome-heading" class="text-2xl font-semibold tracking-tight mb-1 text-slate-900 dark:text-slate-100">
       Welcome to the retro
     </h1>

@@ -4,6 +4,7 @@
   import { page } from '$app/state';
   import Board from '$lib/Board.svelte';
   import { isValidSlug, recordRecentBoard } from '$lib/boards';
+  import Wordmark from '$lib/Wordmark.svelte';
 
   let ok = $state<boolean | null>(null);
 
@@ -52,6 +53,9 @@
 {:else}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">
+      <div class="flex items-center justify-center mb-3">
+        <Wordmark size="md" />
+      </div>
       <h1 class="text-xl font-semibold tracking-tight mb-2 text-slate-900 dark:text-slate-100">
         This host link isn't valid
       </h1>

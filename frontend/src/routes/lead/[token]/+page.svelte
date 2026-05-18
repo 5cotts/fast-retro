@@ -3,6 +3,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { newSlug, readRecentBoards, type RecentBoard } from '$lib/boards';
+  import Wordmark from '$lib/Wordmark.svelte';
 
   let ok = $state<boolean | null>(null);
   let recents = $state<RecentBoard[]>([]);
@@ -59,7 +60,10 @@
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6 text-slate-900 dark:text-slate-100">
     <div class="w-full max-w-md">
       <div class="text-center mb-6">
-        <h1 class="text-2xl font-semibold tracking-tight">Fast Retro</h1>
+        <div class="flex items-center justify-center mb-2">
+          <Wordmark size="lg" />
+        </div>
+        <div class="text-xs uppercase tracking-wide text-sky-700 dark:text-sky-300 mb-1">Host</div>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-1">
           You're signed in as host. Pick a board to facilitate.
         </p>
@@ -102,6 +106,9 @@
 {:else if !ok}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">
+      <div class="flex items-center justify-center mb-3">
+        <Wordmark size="md" />
+      </div>
       <h1 class="text-xl font-semibold tracking-tight mb-2 text-slate-900 dark:text-slate-100">
         This host link isn't valid
       </h1>

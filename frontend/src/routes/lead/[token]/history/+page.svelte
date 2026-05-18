@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { readRecentBoards, forgetRecentBoard, type RecentBoard } from '$lib/boards';
+  import Wordmark from '$lib/Wordmark.svelte';
 
   let ok = $state<boolean | null>(null);
   let recents = $state<RecentBoard[]>([]);
@@ -52,8 +53,10 @@
   <div class="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
     <header class="border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80">
       <div class="max-w-3xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-3">
-        <h1 class="text-base sm:text-lg font-semibold tracking-tight">Fast Retro · history</h1>
-        <span class="text-xs text-slate-500 dark:text-slate-400">host</span>
+        <a href={`/lead/${token}`} class="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-sky-400 rounded-md" aria-label="Fast Retro — host home">
+          <Wordmark />
+        </a>
+        <span class="text-xs text-slate-500 dark:text-slate-400">· history</span>
         <a href={`/lead/${token}`} class="ml-auto text-sm text-sky-600 dark:text-sky-400 hover:underline">
           ← back to host
         </a>
@@ -104,6 +107,9 @@
 {:else}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">
+      <div class="flex items-center justify-center mb-3">
+        <Wordmark size="md" />
+      </div>
       <h1 class="text-xl font-semibold tracking-tight mb-2 text-slate-900 dark:text-slate-100">
         This host link isn't valid
       </h1>
