@@ -7,13 +7,14 @@ use std::{
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Query, State,
     },
     http::{header, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::get,
     Router,
 };
+use serde::Deserialize;
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use rust_embed::RustEmbed;
 use tokio::sync::{broadcast, RwLock};
@@ -65,8 +66,40 @@ impl Room {
 
 #[derive(Clone)]
 struct AppState {
-    room: Arc<Room>,
+    rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>,
     lead_token: String,
+}
+
+const DEFAULT_BOARD_SLUG: &str = "default";
+
+fn sanitize_slug(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() || trimmed.len() > 64 {
+        return None;
+    }
+    let ok = trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !ok {
+        return None;
+    }
+    Some(trimmed.to_ascii_lowercase())
+}
+
+async fn get_or_create_room(state: &AppState, slug: &str) -> Arc<Room> {
+    if let Some(room) = state.rooms.read().await.get(slug) {
+        return room.clone();
+    }
+    let mut rooms = state.rooms.write().await;
+    rooms
+        .entry(slug.to_string())
+        .or_insert_with(Room::new)
+        .clone()
+}
+
+#[derive(Deserialize)]
+struct WsQuery {
+    board: Option<String>,
 }
 
 #[tokio::main]
@@ -91,7 +124,7 @@ async fn main() {
         .unwrap_or(5102);
 
     let state = AppState {
-        room: Room::new(),
+        rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
     };
 
@@ -130,8 +163,18 @@ async fn lead_token_check(
     }
 }
 
-async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, state.room.clone()))
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    Query(query): Query<WsQuery>,
+    State(state): State<AppState>,
+) -> Response {
+    let slug = query
+        .board
+        .as_deref()
+        .and_then(sanitize_slug)
+        .unwrap_or_else(|| DEFAULT_BOARD_SLUG.to_string());
+    let room = get_or_create_room(&state, &slug).await;
+    ws.on_upgrade(move |socket| handle_socket(socket, room))
 }
 
 async fn handle_socket(socket: WebSocket, room: Arc<Room>) {

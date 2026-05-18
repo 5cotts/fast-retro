@@ -32,7 +32,7 @@
   import { disambiguateNames } from './identity';
   import { Download } from 'lucide-svelte';
 
-  let { isLead = false } = $props<{ isLead?: boolean }>();
+  let { isLead = false, slug } = $props<{ isLead?: boolean; slug: string }>();
 
   let userName = $state<string>('');
   let promptingName = $state<boolean>(true);
@@ -118,7 +118,7 @@
     if (storedName) {
       userName = storedName;
       promptingName = false;
-      conn.start({ userId, userName, isLead });
+      conn.start({ userId, userName, isLead, slug });
     }
     tickHandle = setInterval(() => {
       nowTick = Date.now();
@@ -165,7 +165,7 @@
     userName = t;
     setName(t);
     promptingName = false;
-    conn.start({ userId, userName, isLead });
+    conn.start({ userId, userName, isLead, slug });
   }
 
   function changeName(newName: string) {

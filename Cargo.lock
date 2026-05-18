@@ -267,6 +267,7 @@ dependencies = [
  "mime_guess",
  "rand",
  "rust-embed",
+ "serde",
  "tokio",
  "tower-http",
  "tracing",

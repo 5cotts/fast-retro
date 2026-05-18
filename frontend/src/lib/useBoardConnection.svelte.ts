@@ -8,6 +8,7 @@ export interface UseBoardConnectionInit {
   userId: string;
   userName: string;
   isLead: boolean;
+  slug: string;
 }
 
 export interface UseBoardConnectionState {
@@ -46,7 +47,7 @@ export function useBoardConnection() {
   function start(init: UseBoardConnectionInit) {
     if (state.board) return; // already started
 
-    const conn = createBoard();
+    const conn = createBoard(init.slug);
     const { board, provider, doc, timer, names } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;

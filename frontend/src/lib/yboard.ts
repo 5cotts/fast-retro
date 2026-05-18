@@ -14,17 +14,23 @@ export interface BoardState {
   board: Y.Map<Y.Array<Y.Map<unknown>>>;
   timer: Y.Map<unknown>;
   names: Y.Map<string>;
+  phase: Y.Map<unknown>;
+  slug: string;
 }
 
-export function createBoard(): BoardState {
+export function createBoard(slug: string): BoardState {
   const doc = new Y.Doc();
   const wsUrl = buildWsUrl();
   const base = wsUrl.replace(/\/ws$/, '');
-  const provider = new WebsocketProvider(base, 'ws', doc, { connect: true });
+  const provider = new WebsocketProvider(base, 'ws', doc, {
+    connect: true,
+    params: { board: slug }
+  });
 
   const board = doc.getMap<Y.Array<Y.Map<unknown>>>('board');
   const timer = doc.getMap<unknown>('timer');
   const names = doc.getMap<string>('names');
+  const phase = doc.getMap<unknown>('phase');
 
   doc.transact(() => {
     for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
@@ -34,7 +40,7 @@ export function createBoard(): BoardState {
     }
   });
 
-  return { doc, provider, board, timer, names };
+  return { doc, provider, board, timer, names, phase, slug };
 }
 
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
