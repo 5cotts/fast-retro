@@ -31,7 +31,7 @@
       >
         <span class="inline-block w-2 h-2 rounded-full" style="background:{self.color}" aria-hidden="true"></span>
         <span class="truncate max-w-[120px]">{self.name}</span>
-        <span class="text-slate-400 dark:text-slate-500">(you)</span>
+        <span class="text-slate-500 dark:text-slate-400">(you)</span>
         {#if self.isLead}
           <Crown size={11} class="text-amber-500" aria-label="host" />
         {/if}
@@ -59,7 +59,7 @@
       >
         <span class="inline-block w-2 h-2 rounded-full" style="background:{self.color}" aria-hidden="true"></span>
         <span class="truncate max-w-[110px]">{self.name}</span>
-        <span class="text-slate-400 dark:text-slate-500">(you)</span>
+        <span class="text-slate-500 dark:text-slate-400">(you)</span>
         {#if self.isLead}
           <Crown size={11} class="text-amber-500" aria-label="host" />
         {/if}
@@ -76,7 +76,7 @@
           <Crown size={11} class="text-amber-500" aria-label="host" />
         {/if}
         {#if p.typing}
-          <span class="text-slate-400 dark:text-slate-500" aria-label="typing">…</span>
+          <span class="text-slate-500 dark:text-slate-400" aria-label="typing">…</span>
         {/if}
       </span>
     {/each}
