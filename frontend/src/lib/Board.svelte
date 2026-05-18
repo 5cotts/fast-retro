@@ -73,6 +73,21 @@
   let timerJustExpired = $state<boolean>(false);
   let timerExpiredHandle: ReturnType<typeof setTimeout> | null = null;
 
+  // Disconnect banner: only surface after the connection has been down for
+  // long enough that a transient hiccup wouldn't trigger it. The header pill
+  // still flips immediately; this is the louder fallback for real outages.
+  const DISCONNECT_BANNER_DELAY_MS = 10_000;
+  let showDisconnectBanner = $state<boolean>(false);
+  let disconnectHandle: ReturnType<typeof setTimeout> | null = null;
+
+  // Off-screen live region for timer state transitions. The per-second count
+  // is intentionally aria-live="off" (announcing each tick would be hostile);
+  // start/pause/reset/expire transitions are announced here instead.
+  let timerAnnouncement = $state<string>('');
+  let prevTimerRunning = $state<boolean>(false);
+  let prevTimerPaused = $state<boolean>(false);
+  let prevTimerDuration = $state<number>(0);
+
   let focusedCardId = $state<string | null>(null);
   let endConfirm = $state<boolean>(false);
 
@@ -151,6 +166,7 @@
     const expired = timerExpired;
     if (expired && !prevTimerExpired) {
       timerJustExpired = true;
+      timerAnnouncement = "Timer expired — time's up.";
       if (timerExpiredHandle !== null) clearTimeout(timerExpiredHandle);
       timerExpiredHandle = setTimeout(() => {
         timerJustExpired = false;
@@ -159,10 +175,50 @@
     prevTimerExpired = expired;
   });
 
+  // Announce timer state transitions for screen readers (without spamming
+  // the per-second count).
+  $effect(() => {
+    const running = timerRunning;
+    const paused = conn.state.timerState.paused;
+    const duration = conn.state.timerState.durationSec;
+    if (running && !prevTimerRunning) {
+      const min = Math.round(duration / 60);
+      timerAnnouncement = `Timer started: ${min} minute${min === 1 ? '' : 's'}.`;
+    } else if (!running && prevTimerRunning && paused) {
+      timerAnnouncement = 'Timer paused.';
+    } else if (duration === 0 && prevTimerDuration > 0 && !timerExpired) {
+      timerAnnouncement = 'Timer reset.';
+    }
+    prevTimerRunning = running;
+    prevTimerPaused = paused;
+    prevTimerDuration = duration;
+  });
+
+  // Surface the disconnect banner only if the connection stays down past the
+  // delay window. Reconnect clears immediately and cancels any pending timer.
+  $effect(() => {
+    const isConnected = conn.state.connected;
+    if (!isConnected) {
+      if (disconnectHandle === null && !showDisconnectBanner) {
+        disconnectHandle = setTimeout(() => {
+          showDisconnectBanner = true;
+          disconnectHandle = null;
+        }, DISCONNECT_BANNER_DELAY_MS);
+      }
+    } else {
+      if (disconnectHandle !== null) {
+        clearTimeout(disconnectHandle);
+        disconnectHandle = null;
+      }
+      showDisconnectBanner = false;
+    }
+  });
+
   onDestroy(() => {
     conn.destroy();
     if (tickHandle !== null) clearInterval(tickHandle);
     if (timerExpiredHandle !== null) clearTimeout(timerExpiredHandle);
+    if (disconnectHandle !== null) clearTimeout(disconnectHandle);
     if (mediaQuery && mediaListener) {
       if (mediaQuery.removeEventListener) mediaQuery.removeEventListener('change', mediaListener);
       else mediaQuery.removeListener(mediaListener);
@@ -518,7 +574,7 @@
           <div class="ml-auto flex items-center gap-1.5">
             {#if !isFirstPhase}
               <button
-                class="btn text-xs px-2.5 py-1 min-h-[28px]"
+                class="btn text-xs px-2.5 py-1 min-h-[32px]"
                 onclick={previousPhase}
                 aria-label={`Go back to ${PHASE_LABEL[PHASES[phaseIndex - 1]]} phase`}
               >
@@ -528,7 +584,7 @@
             {/if}
             {#if !isLastPhase}
               <button
-                class="btn text-xs px-2.5 py-1 min-h-[28px]"
+                class="btn text-xs px-2.5 py-1 min-h-[32px]"
                 onclick={advancePhase}
                 aria-label={`Advance to ${PHASE_LABEL[PHASES[phaseIndex + 1]]} phase`}
               >
@@ -554,6 +610,23 @@
         </div>
       </div>
     {/if}
+
+    {#if showDisconnectBanner}
+      <div
+        class="border-b border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-100 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
+        role="alert"
+        aria-live="assertive"
+      >
+        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2 text-sm flex items-center gap-2">
+          <span aria-hidden="true">⚠</span>
+          <span class="font-medium">Reconnecting…</span>
+          <span class="opacity-80 hidden sm:inline">— your edits are queued locally and will sync when the board comes back.</span>
+        </div>
+      </div>
+    {/if}
+
+    <!-- Off-screen announcer for timer state transitions (start/pause/reset/expire). -->
+    <div class="sr-only" aria-live="polite" role="status">{timerAnnouncement}</div>
 
     {#if endConfirm}
       <div
@@ -601,7 +674,7 @@
             ondragover={(e) => onColumnDragOver(e, col.key)}
             ondrop={(e) => onColumnDrop(e, col.key)}
           >
-            <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between bg-white/60 dark:bg-slate-800/40 rounded-t-xl">
+            <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {col.header}">
               <div class="flex items-center gap-2">
                 <span class="w-1.5 h-5 rounded-full {col.dot}" aria-hidden="true"></span>
                 <h2 class="font-semibold tracking-tight text-slate-800 dark:text-slate-100">{col.title}</h2>

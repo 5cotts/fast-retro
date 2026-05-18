@@ -226,7 +226,7 @@
       <div class="mt-2.5 flex flex-wrap gap-1">
         {#each reactionEntries as [emoji, users] (emoji)}
           <button
-            class="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 min-h-[28px] transition-colors
+            class="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 min-h-[32px] transition-colors
               {users.includes(userId)
                 ? 'border-sky-400 bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200'
                 : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'}"
@@ -243,7 +243,7 @@
 
     <div class="mt-2.5 flex items-center gap-1 flex-wrap text-xs text-slate-600 dark:text-slate-400">
       <button
-        class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 min-h-[34px] transition-colors
+        class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 min-h-[40px] transition-colors
           disabled:cursor-not-allowed disabled:opacity-60
           {hasVoted
             ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200'
@@ -265,7 +265,7 @@
       <div class="relative">
         <button
           bind:this={pickerBtnEl}
-          class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[34px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[40px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
           onclick={() => (showReactionPicker = !showReactionPicker)}
           aria-label="Add a reaction"
           aria-haspopup="menu"
@@ -298,7 +298,7 @@
       </div>
 
       <button
-        class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[34px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[40px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
         onclick={() => (showComments = !showComments)}
         aria-label={`Comments (${commentCount})`}
         aria-expanded={showComments}
@@ -311,14 +311,14 @@
 
       {#if canEdit}
         <button
-          class="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded min-w-[40px] min-h-[40px] md:min-w-[34px] md:min-h-[34px] flex items-center justify-center"
+          class="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded min-w-[40px] min-h-[40px] md:min-w-[32px] md:min-h-[32px] flex items-center justify-center"
           aria-label="Edit card"
           onclick={startEdit}
         >
           <Pencil size={14} aria-hidden="true" />
         </button>
         <button
-          class="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded min-w-[40px] min-h-[40px] md:min-w-[34px] md:min-h-[34px] flex items-center justify-center"
+          class="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 rounded min-w-[40px] min-h-[40px] md:min-w-[32px] md:min-h-[32px] flex items-center justify-center"
           aria-label="Delete card"
           onclick={() => (confirmingDelete = true)}
         >

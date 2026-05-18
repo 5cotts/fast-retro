@@ -52,8 +52,18 @@
       maxlength="40"
       placeholder="Your name"
       aria-label="Your display name"
+      aria-describedby="name-length-hint"
       class="input w-full px-3 py-2.5 min-h-[44px]"
     />
+    {#if nameInput.length >= 30}
+      <div
+        id="name-length-hint"
+        class="mt-1.5 text-xs text-right tabular-nums {nameInput.length >= 40 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}"
+        aria-live="polite"
+      >
+        {nameInput.length}/40{nameInput.length >= 40 ? ' — max length' : ''}
+      </div>
+    {/if}
     <button
       type="submit"
       class="mt-4 w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2.5 font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"

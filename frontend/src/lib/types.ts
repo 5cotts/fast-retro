@@ -1,23 +1,36 @@
 export type ColumnKey = 'wentWell' | 'toImprove' | 'actions';
 
-export const COLUMNS: { key: ColumnKey; title: string; accent: string; dot: string }[] = [
+// Column accents tint the whole section + the title row. Dark-mode tints are
+// raised from /30 → /55 so the three columns stay distinct against the
+// slate-900 page background; the title row gets its own tint so the column
+// identity persists even when the body is mostly empty.
+export const COLUMNS: {
+  key: ColumnKey;
+  title: string;
+  accent: string;
+  header: string;
+  dot: string;
+}[] = [
   {
     key: 'wentWell',
     title: 'What went well',
-    accent: 'border-emerald-300/60 bg-emerald-50/70 dark:bg-emerald-950/30 dark:border-emerald-700/50',
-    dot: 'bg-emerald-400 dark:bg-emerald-500'
+    accent: 'border-emerald-300/60 bg-emerald-50/70 dark:bg-emerald-950/55 dark:border-emerald-700/60',
+    header: 'bg-emerald-100/70 dark:bg-emerald-900/45',
+    dot: 'bg-emerald-400 dark:bg-emerald-400'
   },
   {
     key: 'toImprove',
     title: 'What to improve',
-    accent: 'border-amber-300/60 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-700/50',
-    dot: 'bg-amber-400 dark:bg-amber-500'
+    accent: 'border-amber-300/60 bg-amber-50/70 dark:bg-amber-950/55 dark:border-amber-700/60',
+    header: 'bg-amber-100/70 dark:bg-amber-900/45',
+    dot: 'bg-amber-400 dark:bg-amber-400'
   },
   {
     key: 'actions',
     title: 'Action items',
-    accent: 'border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-700/50',
-    dot: 'bg-sky-400 dark:bg-sky-500'
+    accent: 'border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/55 dark:border-sky-700/60',
+    header: 'bg-sky-100/70 dark:bg-sky-900/45',
+    dot: 'bg-sky-400 dark:bg-sky-400'
   }
 ];
 
