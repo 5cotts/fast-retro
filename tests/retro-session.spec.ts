@@ -86,9 +86,14 @@ test.describe('fast-retro full session', () => {
       await joinAs(alicePage, `/board/${slug}`, aliceName);
       await joinAs(bobPage, `/board/${slug}`, bobName);
 
-      // Host pill should only appear in the lead context.
-      await expect(leadPage.getByText('Host', { exact: true })).toBeVisible();
-      await expect(alicePage.getByText('Host', { exact: true })).toBeHidden();
+      // Host pill (badge inside the wordmark link) should only appear in the
+      // lead context. Note: participants also see a separate "Host this board"
+      // button as an upgrade affordance — that's matched by aria-label, not
+      // by the badge text, so it doesn't collide with this assertion.
+      const hostBadge = (p: Page) =>
+        p.getByRole('link', { name: 'Fast Retro — home' }).getByText('Host', { exact: true });
+      await expect(hostBadge(leadPage)).toBeVisible();
+      await expect(hostBadge(alicePage)).toBeHidden();
 
       // Presence: every page should show every other participant's name.
       for (const p of allPages) {

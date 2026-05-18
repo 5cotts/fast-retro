@@ -1,6 +1,36 @@
 const KEY_RECENT_BOARDS = 'retro-recent-boards';
+const KEY_HOST_TOKEN = 'retro-host-token';
 const SLUG_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 const MAX_RECENT = 30;
+
+// Host token is the deployment's RETRO_LEAD_TOKEN, saved per-browser so a
+// recurring facilitator doesn't have to retype the lead URL each session.
+// It's never broadcast — purely a local convenience.
+export function getLeadToken(): string {
+  try {
+    return localStorage.getItem(KEY_HOST_TOKEN) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setLeadToken(token: string): void {
+  const t = token.trim();
+  if (!t) return;
+  try {
+    localStorage.setItem(KEY_HOST_TOKEN, t);
+  } catch {
+    // ignore
+  }
+}
+
+export function clearLeadToken(): void {
+  try {
+    localStorage.removeItem(KEY_HOST_TOKEN);
+  } catch {
+    // ignore
+  }
+}
 
 export interface RecentBoard {
   slug: string;

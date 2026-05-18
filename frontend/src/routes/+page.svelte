@@ -1,15 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { newSlug, readRecentBoards, type RecentBoard } from '$lib/boards';
+  import { newSlug, readRecentBoards, getLeadToken, type RecentBoard } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
+  import HostModal from '$lib/HostModal.svelte';
+  import { Crown } from 'lucide-svelte';
 
   let recents = $state<RecentBoard[]>([]);
   let ready = $state(false);
+  let showHostModal = $state(false);
+  let savedToken = $state<string>('');
 
   onMount(() => {
     const list = readRecentBoards();
     recents = list;
+    savedToken = getLeadToken();
     if (list.length === 0) {
       goto(`/board/${newSlug()}`, { replaceState: true });
       return;
@@ -23,6 +28,22 @@
 
   function joinRecent(slug: string) {
     goto(`/board/${slug}`);
+  }
+
+  function openHost() {
+    // If a token is already saved, skip the modal and go straight to a fresh
+    // hosted board — one click for the recurring facilitator.
+    const token = getLeadToken();
+    if (token) {
+      goto(`/lead/${token}/${newSlug()}`);
+      return;
+    }
+    showHostModal = true;
+  }
+
+  function onHostConfirm(token: string) {
+    showHostModal = false;
+    goto(`/lead/${token}/${newSlug()}`);
   }
 </script>
 
@@ -40,9 +61,17 @@
 
       <button
         onclick={createFresh}
-        class="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md px-4 py-3 text-sm font-medium hover:opacity-90 transition-opacity"
+        class="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md px-4 py-3 min-h-[44px] text-sm font-medium hover:opacity-90 transition-opacity"
       >
         Start a new retro
+      </button>
+
+      <button
+        onclick={openHost}
+        class="mt-2 w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-sky-300 dark:border-sky-700 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-200 px-4 py-3 min-h-[44px] text-sm font-medium hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors"
+      >
+        <Crown size={14} aria-hidden="true" />
+        {savedToken ? 'Host a new retro' : 'Host a retro…'}
       </button>
 
       {#if recents.length > 0}
@@ -74,4 +103,8 @@
       </p>
     </div>
   </div>
+{/if}
+
+{#if showHostModal}
+  <HostModal onClose={() => (showHostModal = false)} onConfirm={onHostConfirm} />
 {/if}
