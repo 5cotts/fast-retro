@@ -32,6 +32,9 @@ E2E_BASE_URL=http://localhost:5102 bun run test:e2e
 3. **Share button** — clicks the header "Share" button and confirms it
    copies the participant-facing board URL to the clipboard (and that
    the URL never contains the `/lead/<token>` prefix).
+4. **Onboarding overlay** — confirms a first-time visitor sees the "First
+   retro?" tips modal after submitting their name, that "Got it"
+   dismisses it, and that a reload does not bring it back.
 
 Each run uses random names (`pw-<rand>`) so it doesn't collide with itself.
 

@@ -3,6 +3,7 @@
   import Card from './Card.svelte';
   import BoardHeader from './BoardHeader.svelte';
   import NamePrompt from './NamePrompt.svelte';
+  import Onboarding from './Onboarding.svelte';
   import {
     addCard,
     editCardText,
@@ -23,7 +24,7 @@
   } from './timer';
   import { exportCSV } from './csv';
   import { getOrCreateUserId, setDisplayName } from './identity';
-  import { getName, setName, getTheme, setTheme, type ThemePref } from './storage';
+  import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { COLUMNS, COLUMN_EMPTY_HINT, COLUMN_PLACEHOLDER, type CardData, type ColumnKey } from './types';
@@ -39,6 +40,7 @@
   let promptingName = $state<boolean>(true);
   let nameInput = $state<string>('');
   let userId = $state<string>('');
+  let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
 
@@ -120,6 +122,9 @@
     if (storedName) {
       userName = storedName;
       promptingName = false;
+      // Returning users (already had a name persisted) are grandfathered out
+      // of the first-run onboarding overlay — they already know the product.
+      if (!getOnboarded()) setOnboarded();
       conn.start({ userId, userName, isLead, slug });
     }
     tickHandle = setInterval(() => {
@@ -167,7 +172,13 @@
     userName = t;
     setName(t);
     promptingName = false;
+    if (!getOnboarded()) showOnboarding = true;
     conn.start({ userId, userName, isLead, slug });
+  }
+
+  function dismissOnboarding() {
+    setOnboarded();
+    showOnboarding = false;
   }
 
   function changeName(newName: string) {
@@ -660,4 +671,7 @@
     </footer>
   </div>
 
+  {#if showOnboarding}
+    <Onboarding onDismiss={dismissOnboarding} />
+  {/if}
 {/if}

@@ -15,6 +15,7 @@
 const KEY_USER_ID = 'retro-user-id';
 const KEY_NAME = 'retro-name';
 const KEY_THEME = 'retro-theme';
+const KEY_ONBOARDED = 'retro-onboarded';
 const KEY_LEGACY_DARK = 'retro-dark';
 
 export type ThemePref = 'auto' | 'light' | 'dark';
@@ -58,4 +59,12 @@ export function getTheme(): ThemePref {
 
 export function setTheme(pref: ThemePref): void {
   localStorage.setItem(KEY_THEME, pref);
+}
+
+export function getOnboarded(): boolean {
+  return localStorage.getItem(KEY_ONBOARDED) === '1';
+}
+
+export function setOnboarded(): void {
+  localStorage.setItem(KEY_ONBOARDED, '1');
 }

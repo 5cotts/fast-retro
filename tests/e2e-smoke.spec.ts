@@ -9,6 +9,12 @@ async function joinBoardAs(page: Page, name: string, slug = `pw-${Date.now()}`) 
   await expect(nameInput).toBeVisible();
   await nameInput.fill(name);
   await page.getByRole('button', { name: 'Join the retro' }).click();
+  // First-time visitors get a dismissible onboarding overlay covering the
+  // board — dismiss it so the rest of the test can interact with the page.
+  const gotIt = page.getByRole('button', { name: 'Got it' });
+  if (await gotIt.isVisible().catch(() => false)) {
+    await gotIt.click();
+  }
   await expect(page.getByRole('list', { name: 'What went well' })).toBeVisible();
 }
 
@@ -76,6 +82,30 @@ test.describe('fast-retro smoke', () => {
     await expect(
       page.getByRole('list', { name: 'What went well' }).getByRole('group', { name: `Card: ${cardText}` })
     ).toHaveCount(0);
+
+    await context.close();
+  });
+
+  test('first-time visitor sees onboarding overlay that auto-dismisses and does not return', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const slug = `pw-onboard-${Date.now()}`;
+    const name = `pw-${Math.random().toString(36).slice(2, 8)}`;
+
+    await page.goto(`/board/${slug}`);
+    await page.getByLabel('Your display name').fill(name);
+    await page.getByRole('button', { name: 'Join the retro' }).click();
+
+    // Onboarding modal should appear after first-time name submit.
+    const heading = page.getByRole('heading', { name: /First retro\?/ });
+    await expect(heading).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(heading).toBeHidden();
+
+    // Reload — onboarding should NOT return because the flag is persisted.
+    await page.reload();
+    await expect(page.getByRole('list', { name: 'What went well' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /First retro\?/ })).toBeHidden();
 
     await context.close();
   });
