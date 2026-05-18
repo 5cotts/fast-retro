@@ -44,12 +44,12 @@ test.describe('fast-retro smoke', () => {
     await expect(card.getByText(commentText)).toBeVisible();
 
     // --- reaction ---
-    await card.getByRole('button', { name: 'Add reaction', exact: true }).click();
+    await card.getByRole('button', { name: 'Add a reaction', exact: true }).click();
     const reactionMenu = card.getByRole('menu');
     await expect(reactionMenu).toBeVisible();
-    await reactionMenu.getByRole('button', { name: 'React with 🎉' }).click();
+    await reactionMenu.getByRole('menuitem', { name: 'React with party' }).click();
     await expect(
-      card.getByRole('button', { name: /🎉/ }).filter({ hasText: '1' })
+      card.getByRole('button', { name: /Remove your party reaction \(1/ })
     ).toBeVisible();
 
     // --- move with Shift+Arrow keyboard nav ---
