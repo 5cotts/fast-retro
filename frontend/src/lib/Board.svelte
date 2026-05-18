@@ -30,7 +30,8 @@
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { disambiguateNames } from './identity';
-  import { Download } from 'lucide-svelte';
+  import { Download, ArrowRight } from 'lucide-svelte';
+  import { PHASES, PHASE_LABEL, PHASE_HINT, nextPhase, setPhase } from './phase';
 
   let { isLead = false, slug } = $props<{ isLead?: boolean; slug: string }>();
 
@@ -377,6 +378,15 @@
     resetTimer(conn.state.board.timer);
   }
 
+  function advancePhase() {
+    if (!conn.state.board || !isLead) return;
+    const next = nextPhase(conn.state.phase);
+    if (next !== conn.state.phase) setPhase(conn.state.board.phase, next);
+  }
+
+  const phaseIndex = $derived(PHASES.indexOf(conn.state.phase));
+  const isLastPhase = $derived(phaseIndex === PHASES.length - 1);
+
   function downloadCSV() {
     const csv = exportCSV(conn.state.cards);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -449,6 +459,44 @@
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
     />
+
+    <div
+      class="border-b border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-900/40"
+      aria-label="Retro phase"
+    >
+      <div class="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 flex items-center gap-2 flex-wrap text-xs">
+        <span class="text-slate-500 dark:text-slate-400 hidden sm:inline">Phase</span>
+        <div class="flex items-center gap-1" role="list" aria-label="Phases">
+          {#each PHASES as p, i (p)}
+            {@const active = p === conn.state.phase}
+            {@const done = i < phaseIndex}
+            <span
+              role="listitem"
+              aria-current={active ? 'step' : undefined}
+              class="inline-flex items-center px-2 py-0.5 rounded-full border tabular-nums
+                {active
+                  ? 'bg-sky-100 border-sky-300 text-sky-800 dark:bg-sky-900/40 dark:border-sky-700 dark:text-sky-100 font-semibold'
+                  : done
+                  ? 'bg-slate-100 border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                  : 'bg-transparent border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-500'}"
+            >
+              <span class="hidden sm:inline mr-1 opacity-70">{i + 1}</span>{PHASE_LABEL[p]}
+            </span>
+          {/each}
+        </div>
+        <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {PHASE_HINT[conn.state.phase]}</span>
+        {#if isLead && !isLastPhase}
+          <button
+            class="ml-auto btn text-xs px-2.5 py-1 min-h-[28px]"
+            onclick={advancePhase}
+            aria-label={`Advance to ${PHASE_LABEL[PHASES[phaseIndex + 1]]} phase`}
+          >
+            Next phase
+            <ArrowRight size={13} aria-hidden="true" />
+          </button>
+        {/if}
+      </div>
+    </div>
 
     {#if timerJustExpired}
       <div
@@ -610,4 +658,5 @@
       Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
     </footer>
   </div>
+
 {/if}

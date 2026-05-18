@@ -2,6 +2,7 @@ import { createBoard, readCards, type BoardState } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
+import { readPhase, type Phase } from './phase';
 import type { CardData, ColumnKey, PresenceUser, TimerState } from './types';
 
 export interface UseBoardConnectionInit {
@@ -20,6 +21,7 @@ export interface UseBoardConnectionState {
   cards: Record<ColumnKey, CardData[]>;
   timerState: TimerState;
   presence: PresenceUser[];
+  phase: Phase;
 }
 
 /**
@@ -41,14 +43,15 @@ export function useBoardConnection() {
     namesMap: {},
     cards: { wentWell: [], toImprove: [], actions: [] },
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
-    presence: []
+    presence: [],
+    phase: 'brainstorm'
   });
 
   function start(init: UseBoardConnectionInit) {
     if (state.board) return; // already started
 
     const conn = createBoard(init.slug);
-    const { board, provider, doc, timer, names } = conn;
+    const { board, provider, doc, timer, names, phase } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;
 
@@ -65,13 +68,18 @@ export function useBoardConnection() {
     const recomputeNames = () => {
       state.namesMap = readNames(names);
     };
+    const recomputePhase = () => {
+      state.phase = readPhase(phase);
+    };
 
     board.observeDeep(recomputeCards);
     timer.observeDeep(recomputeTimer);
     names.observe(recomputeNames);
+    phase.observe(recomputePhase);
     recomputeCards();
     recomputeTimer();
     recomputeNames();
+    recomputePhase();
 
     setDisplayName(names, init.userId, init.userName);
 
@@ -118,6 +126,7 @@ export function useBoardConnection() {
       board.unobserveDeep(recomputeCards);
       timer.unobserveDeep(recomputeTimer);
       names.unobserve(recomputeNames);
+      phase.unobserve(recomputePhase);
       aw.off('change', refreshPresence);
       provider.off('status', onStatus);
       aw.setLocalState(null);
