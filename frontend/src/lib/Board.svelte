@@ -29,7 +29,7 @@
   import { COLUMNS, COLUMN_EMPTY_HINT, COLUMN_PLACEHOLDER, type CardData, type ColumnKey } from './types';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
-  import { disambiguateNames } from './identity';
+  import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowRight } from 'lucide-svelte';
   import { PHASES, PHASE_LABEL, PHASE_HINT, nextPhase, setPhase } from './phase';
 
@@ -79,6 +79,7 @@
   );
 
   const presenceDisambiguated = $derived(disambiguateNames(conn.state.presence));
+  const namesMapDisambiguated = $derived(disambiguateNamesMap(conn.state.namesMap));
 
   const typingByCard = $derived.by(() => {
     const map = new Map<string, string[]>();
@@ -500,7 +501,7 @@
 
     {#if timerJustExpired}
       <div
-        class="border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100"
+        class="border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
         role="status"
         aria-live="polite"
       >
@@ -587,7 +588,7 @@
                     {userId}
                     {userName}
                     {isLead}
-                    namesMap={conn.state.namesMap}
+                    namesMap={namesMapDisambiguated}
                     onEdit={(id, text) => handleEdit(col.key, id, text)}
                     onDelete={(id) => handleDelete(col.key, id)}
                     onToggleVote={(id) => handleVote(col.key, id)}
@@ -620,7 +621,7 @@
                 onkeydown={(e) => onNewKey(e, col.key)}
                 onfocus={() => setTyping(`new-${col.key}`)}
                 onblur={() => setTyping(null)}
-                placeholder={coarsePointer ? COLUMN_PLACEHOLDER[col.key] : `${COLUMN_PLACEHOLDER[col.key]}`}
+                placeholder={COLUMN_PLACEHOLDER[col.key]}
                 rows="2"
                 aria-label={`Add a card to ${col.title}`}
                 class="input w-full resize-none px-2.5 py-2 text-sm leading-snug"

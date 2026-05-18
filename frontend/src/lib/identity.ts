@@ -59,6 +59,41 @@ export function resolveDisplayName(authorId: string, ctx: ResolveDisplayNameCtx)
 }
 
 /**
+ * Suffix duplicate display names in the persistent userId→name map with `(2)`,
+ * `(3)`, … so authorship labels on cards and comments stay distinguishable when
+ * two real people have picked the same name. Order is deterministic per userId
+ * (which is stable across sessions), so the suffix doesn't drift when someone
+ * reconnects or another user joins later.
+ */
+export function disambiguateNamesMap(
+  namesMap: Record<string, string>
+): Record<string, string> {
+  const buckets = new Map<string, string[]>();
+  for (const userId of Object.keys(namesMap)) {
+    const name = namesMap[userId];
+    if (!name) continue;
+    const key = name.trim().toLowerCase();
+    if (!key) continue;
+    const list = buckets.get(key) ?? [];
+    list.push(userId);
+    buckets.set(key, list);
+  }
+  let changed = false;
+  const out: Record<string, string> = { ...namesMap };
+  for (const list of buckets.values()) {
+    if (list.length <= 1) continue;
+    list.sort();
+    list.forEach((uid, idx) => {
+      if (idx > 0) {
+        out[uid] = `${namesMap[uid]} (${idx + 1})`;
+        changed = true;
+      }
+    });
+  }
+  return changed ? out : namesMap;
+}
+
+/**
  * Suffix duplicate display names with `(2)`, `(3)`, … so the presence list and
  * typing indicators never collapse two real people into one ambiguous label.
  * Order is deterministic per clientId so the suffix doesn't shuffle on rerender.
