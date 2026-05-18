@@ -86,8 +86,15 @@
                   class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
                   onclick={() => joinRecent(r.slug)}
                 >
-                  <span class="font-mono text-sm">{r.slug}</span>
-                  <span class="text-xs text-slate-500 dark:text-slate-400">
+                  <span class="flex-1 min-w-0 flex flex-col">
+                    {#if r.label}
+                      <span class="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{r.label}</span>
+                      <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate">{r.slug}</span>
+                    {:else}
+                      <span class="font-mono text-sm text-slate-700 dark:text-slate-200 truncate">{r.slug}</span>
+                    {/if}
+                  </span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0">
                     {new Date(r.lastVisited).toLocaleDateString()}
                   </span>
                 </button>

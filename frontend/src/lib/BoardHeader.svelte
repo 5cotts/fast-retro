@@ -6,6 +6,7 @@
   import PresenceList from './PresenceList.svelte';
   import NameBadge from './NameBadge.svelte';
   import Wordmark from './Wordmark.svelte';
+  import BoardLabel from './BoardLabel.svelte';
   import { Menu, Monitor, Sun, Moon, Link2, Check, Crown } from 'lucide-svelte';
   import { getLeadToken } from './boards';
   import HostModal from './HostModal.svelte';
@@ -14,6 +15,8 @@
   let {
     isLead,
     connected,
+    label,
+    slug,
     timerState,
     remainingSec,
     timerRunning,
@@ -31,10 +34,13 @@
     onExportCSV,
     onEndBoard,
     onCycleTheme,
-    onChangeName
+    onChangeName,
+    onChangeLabel
   } = $props<{
     isLead: boolean;
     connected: boolean;
+    label: string;
+    slug: string;
     timerState: TimerState;
     remainingSec: number;
     timerRunning: boolean;
@@ -53,6 +59,7 @@
     onEndBoard: () => void;
     onCycleTheme: () => void;
     onChangeName: (newName: string) => void;
+    onChangeLabel: (next: string) => void;
   }>();
 
   let showMobileMenu = $state(false);
@@ -133,6 +140,8 @@
         </span>
       {/if}
     </a>
+
+    <BoardLabel {label} {slug} canEdit={isLead} onSave={onChangeLabel} />
 
     <span
       class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"

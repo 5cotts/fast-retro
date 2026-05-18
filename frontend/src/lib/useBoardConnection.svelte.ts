@@ -1,4 +1,4 @@
-import { createBoard, readCards, type BoardState } from './yboard';
+import { createBoard, readCards, readBoardLabel, type BoardState } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
@@ -22,6 +22,7 @@ export interface UseBoardConnectionState {
   timerState: TimerState;
   presence: PresenceUser[];
   phase: Phase;
+  label: string;
 }
 
 /**
@@ -44,14 +45,15 @@ export function useBoardConnection() {
     cards: { wentWell: [], toImprove: [], actions: [] },
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
     presence: [],
-    phase: 'brainstorm'
+    phase: 'brainstorm',
+    label: ''
   });
 
   function start(init: UseBoardConnectionInit) {
     if (state.board) return; // already started
 
     const conn = createBoard(init.slug);
-    const { board, provider, doc, timer, names, phase } = conn;
+    const { board, provider, doc, timer, names, phase, meta } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;
 
@@ -71,15 +73,20 @@ export function useBoardConnection() {
     const recomputePhase = () => {
       state.phase = readPhase(phase);
     };
+    const recomputeLabel = () => {
+      state.label = readBoardLabel(meta);
+    };
 
     board.observeDeep(recomputeCards);
     timer.observeDeep(recomputeTimer);
     names.observe(recomputeNames);
     phase.observe(recomputePhase);
+    meta.observe(recomputeLabel);
     recomputeCards();
     recomputeTimer();
     recomputeNames();
     recomputePhase();
+    recomputeLabel();
 
     setDisplayName(names, init.userId, init.userName);
 
@@ -127,6 +134,7 @@ export function useBoardConnection() {
       timer.unobserveDeep(recomputeTimer);
       names.unobserve(recomputeNames);
       phase.unobserve(recomputePhase);
+      meta.unobserve(recomputeLabel);
       aw.off('change', refreshPresence);
       provider.off('status', onStatus);
       aw.setLocalState(null);

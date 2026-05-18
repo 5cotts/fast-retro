@@ -13,8 +13,10 @@
     toggleReaction,
     addComment,
     deleteComment,
-    moveCard
+    moveCard,
+    setBoardLabel
   } from './yboard';
+  import { recordRecentBoard } from './boards';
   import {
     setTimerDuration,
     startTimer,
@@ -256,6 +258,19 @@
       updateAwarenessUser(conn.state.board.provider, { name: t });
     }
   }
+
+  function changeLabel(next: string) {
+    if (!conn.state.board || !isLead) return;
+    setBoardLabel(conn.state.board.meta, next);
+  }
+
+  // Mirror the board label into this browser's recent-boards list so the
+  // homepage can show the human-readable name without re-opening the doc.
+  $effect(() => {
+    if (!slug) return;
+    const labelSnapshot = conn.state.label;
+    recordRecentBoard(slug, labelSnapshot ? { label: labelSnapshot } : { label: undefined });
+  });
 
   function setTyping(target: string | null) {
     if (!conn.state.board) return;
@@ -512,6 +527,10 @@
   }
 </script>
 
+<svelte:head>
+  <title>{conn.state.label ? `${conn.state.label} — Fast Retro` : 'Fast Retro'}</title>
+</svelte:head>
+
 {#if promptingName}
   <NamePrompt
     bind:nameInput
@@ -525,6 +544,8 @@
     <BoardHeader
       {isLead}
       connected={conn.state.connected}
+      label={conn.state.label}
+      {slug}
       timerState={conn.state.timerState}
       {remainingSec}
       {timerRunning}
@@ -543,6 +564,7 @@
       onEndBoard={startEndBoard}
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
+      onChangeLabel={changeLabel}
     />
 
     <div

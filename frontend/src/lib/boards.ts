@@ -36,6 +36,7 @@ export interface RecentBoard {
   slug: string;
   lastVisited: number;
   cardsSeen?: number;
+  label?: string;
 }
 
 export function newSlug(len = 6): string {

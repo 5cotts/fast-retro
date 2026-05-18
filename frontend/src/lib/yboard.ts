@@ -15,6 +15,7 @@ export interface BoardState {
   timer: Y.Map<unknown>;
   names: Y.Map<string>;
   phase: Y.Map<unknown>;
+  meta: Y.Map<unknown>;
   slug: string;
 }
 
@@ -31,6 +32,7 @@ export function createBoard(slug: string): BoardState {
   const timer = doc.getMap<unknown>('timer');
   const names = doc.getMap<string>('names');
   const phase = doc.getMap<unknown>('phase');
+  const meta = doc.getMap<unknown>('meta');
 
   doc.transact(() => {
     for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
@@ -40,7 +42,23 @@ export function createBoard(slug: string): BoardState {
     }
   });
 
-  return { doc, provider, board, timer, names, phase, slug };
+  return { doc, provider, board, timer, names, phase, meta, slug };
+}
+
+const MAX_LABEL_LEN = 60;
+
+export function readBoardLabel(meta: Y.Map<unknown>): string {
+  const v = meta.get('label');
+  return typeof v === 'string' ? v : '';
+}
+
+export function setBoardLabel(meta: Y.Map<unknown>, label: string): void {
+  const t = label.trim().slice(0, MAX_LABEL_LEN);
+  if (t) {
+    meta.set('label', t);
+  } else {
+    meta.delete('label');
+  }
 }
 
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
