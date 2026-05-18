@@ -3,8 +3,8 @@ import { test, expect, type Page, type BrowserContext } from '@playwright/test';
 const NAME_PRIMARY = `pw-${Math.random().toString(36).slice(2, 8)}`;
 const NAME_SECONDARY = `pw-${Math.random().toString(36).slice(2, 8)}`;
 
-async function joinBoardAs(page: Page, name: string) {
-  await page.goto('/');
+async function joinBoardAs(page: Page, name: string, slug = `pw-${Date.now()}`) {
+  await page.goto(`/board/${slug}`);
   const nameInput = page.getByLabel('Your display name');
   await expect(nameInput).toBeVisible();
   await nameInput.fill(name);
@@ -70,13 +70,14 @@ test.describe('fast-retro smoke', () => {
   });
 
   test('second browser context sees presence broadcast', async ({ browser }) => {
+    const sharedSlug = `pw-presence-${Date.now()}`;
     const ctxA: BrowserContext = await browser.newContext();
     const pageA = await ctxA.newPage();
-    await joinBoardAs(pageA, NAME_PRIMARY);
+    await joinBoardAs(pageA, NAME_PRIMARY, sharedSlug);
 
     const ctxB: BrowserContext = await browser.newContext();
     const pageB = await ctxB.newPage();
-    await joinBoardAs(pageB, NAME_SECONDARY);
+    await joinBoardAs(pageB, NAME_SECONDARY, sharedSlug);
 
     // Each page should show two presence entries (both names). The presence
     // list lives in the header — we just confirm both names appear somewhere
