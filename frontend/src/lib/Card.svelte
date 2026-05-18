@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CardData, ColumnKey } from './types';
+  import type { CardData, CommentData, ColumnKey } from './types';
   import { REACTION_EMOJI } from './types';
   import { resolveDisplayName } from './identity';
 
@@ -68,10 +68,10 @@
   const commentCount = $derived(card.comments.length);
   const canEdit = $derived(isLead || (!!card.authorId && card.authorId === userId));
   const sortedComments = $derived(
-    card.comments.slice().sort((a, b) => a.createdAt - b.createdAt)
+    card.comments.slice().sort((a: CommentData, b: CommentData) => a.createdAt - b.createdAt)
   );
   const reactionEntries = $derived(
-    Object.entries(card.reactions).filter(([, users]) => users.length > 0)
+    (Object.entries(card.reactions) as [string, string[]][]).filter(([, users]) => users.length > 0)
   );
 
   function startEdit() {

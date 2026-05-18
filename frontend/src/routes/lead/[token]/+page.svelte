@@ -7,6 +7,10 @@
 
   onMount(async () => {
     const token = page.params.token;
+    if (!token) {
+      ok = false;
+      return;
+    }
     try {
       const r = await fetch(`/api/lead-token-check/${encodeURIComponent(token)}`);
       ok = r.ok;
