@@ -57,6 +57,23 @@ export function isValidSlug(raw: unknown): raw is string {
   return typeof raw === 'string' && SLUG_RE.test(raw);
 }
 
+// Best-effort slug from a human label: lowercase, ascii-fold, collapse
+// non-alphanumerics to hyphens, trim, and cap. Returns '' if the result
+// wouldn't satisfy isValidSlug — callers fall back to newSlug() in that case.
+export function slugifyLabel(label: string, maxLen = 40): string {
+  if (!label) return '';
+  const normalized = label
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase();
+  const slugBody = normalized
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, maxLen)
+    .replace(/-+$/g, '');
+  return isValidSlug(slugBody) ? slugBody : '';
+}
+
 export function recordRecentBoard(slug: string, extras: Partial<RecentBoard> = {}): void {
   if (!isValidSlug(slug)) return;
   try {
@@ -88,6 +105,32 @@ export function readRecentBoards(): RecentBoard[] {
       .sort((a, b) => b.lastVisited - a.lastVisited);
   } catch {
     return [];
+  }
+}
+
+// Stash a label chosen at board-creation time so the board page can apply it
+// to the CRDT once the host's connection mounts. Cleared as soon as it's
+// consumed so refreshing the board never re-applies a stale name. sessionStorage
+// keeps this transient and tab-local.
+const PENDING_LABEL_PREFIX = 'retro-pending-label:';
+
+export function setPendingLabel(slug: string, label: string): void {
+  if (!isValidSlug(slug) || !label) return;
+  try {
+    sessionStorage.setItem(PENDING_LABEL_PREFIX + slug, label.slice(0, 60));
+  } catch {
+    // ignore
+  }
+}
+
+export function consumePendingLabel(slug: string): string {
+  if (!isValidSlug(slug)) return '';
+  try {
+    const v = sessionStorage.getItem(PENDING_LABEL_PREFIX + slug) ?? '';
+    if (v) sessionStorage.removeItem(PENDING_LABEL_PREFIX + slug);
+    return v;
+  } catch {
+    return '';
   }
 }
 

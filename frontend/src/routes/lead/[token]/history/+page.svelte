@@ -81,7 +81,12 @@
                 href={`/board/${r.slug}`}
                 class="flex-1 min-w-0 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
               >
-                <div class="font-mono text-sm truncate">{r.slug}</div>
+                {#if r.label}
+                  <div class="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{r.label}</div>
+                  <div class="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate">{r.slug}</div>
+                {:else}
+                  <div class="font-mono text-sm truncate">{r.slug}</div>
+                {/if}
                 <div class="text-xs text-slate-500 dark:text-slate-400">{relativeTime(r.lastVisited)}</div>
               </a>
               <a

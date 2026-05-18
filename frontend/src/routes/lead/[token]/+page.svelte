@@ -2,12 +2,20 @@
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { newSlug, readRecentBoards, type RecentBoard } from '$lib/boards';
+  import {
+    newSlug,
+    readRecentBoards,
+    recordRecentBoard,
+    setPendingLabel,
+    type RecentBoard
+  } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
+  import NewRetroModal from '$lib/NewRetroModal.svelte';
 
   let ok = $state<boolean | null>(null);
   let recents = $state<RecentBoard[]>([]);
   let ready = $state(false);
+  let showNewModal = $state(false);
 
   const token = $derived(page.params.token ?? '');
 
@@ -41,7 +49,16 @@
   }
 
   function createFresh() {
-    goto(`/lead/${token}/${newSlug()}`);
+    showNewModal = true;
+  }
+
+  function onNewConfirm({ slug, label }: { slug: string; label: string }) {
+    showNewModal = false;
+    if (label) {
+      recordRecentBoard(slug, { label });
+      setPendingLabel(slug, label);
+    }
+    goto(`/lead/${token}/${slug}`);
   }
 </script>
 
@@ -91,8 +108,15 @@
                   class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
                   onclick={() => openSlug(r.slug)}
                 >
-                  <span class="font-mono text-sm">{r.slug}</span>
-                  <span class="text-xs text-slate-500 dark:text-slate-400">
+                  <span class="flex-1 min-w-0 flex flex-col">
+                    {#if r.label}
+                      <span class="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{r.label}</span>
+                      <span class="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate">{r.slug}</span>
+                    {:else}
+                      <span class="font-mono text-sm text-slate-700 dark:text-slate-200 truncate">{r.slug}</span>
+                    {/if}
+                  </span>
+                  <span class="text-xs text-slate-500 dark:text-slate-400 shrink-0">
                     {new Date(r.lastVisited).toLocaleDateString()}
                   </span>
                 </button>
@@ -103,6 +127,14 @@
       {/if}
     </div>
   </div>
+
+  {#if showNewModal}
+    <NewRetroModal
+      onClose={() => (showNewModal = false)}
+      onConfirm={onNewConfirm}
+      hostMode={true}
+    />
+  {/if}
 {:else if !ok}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">

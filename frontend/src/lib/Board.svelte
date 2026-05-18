@@ -16,7 +16,7 @@
     moveCard,
     setBoardLabel
   } from './yboard';
-  import { recordRecentBoard } from './boards';
+  import { recordRecentBoard, consumePendingLabel } from './boards';
   import {
     setTimerDuration,
     startTimer,
@@ -270,6 +270,24 @@
     if (!slug) return;
     const labelSnapshot = conn.state.label;
     recordRecentBoard(slug, labelSnapshot ? { label: labelSnapshot } : { label: undefined });
+  });
+
+  // If the host arrived from the "Start a new retro" modal with a pre-chosen
+  // name, apply it once the Yjs doc is ready and the board is still unnamed.
+  // Guarded on isLead because only the host can write the meta map.
+  let pendingApplied = false;
+  $effect(() => {
+    if (pendingApplied) return;
+    if (!isLead || !conn.state.board) return;
+    if (conn.state.label) {
+      pendingApplied = true;
+      return;
+    }
+    const pending = consumePendingLabel(slug);
+    if (pending) {
+      setBoardLabel(conn.state.board.meta, pending);
+    }
+    pendingApplied = true;
   });
 
   function setTyping(target: string | null) {

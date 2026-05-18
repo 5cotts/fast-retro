@@ -110,6 +110,37 @@ test.describe('fast-retro smoke', () => {
     await context.close();
   });
 
+  test('homepage Start-a-new-retro modal derives slug from board name', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    // Seed a recent so the homepage renders the CTA list instead of auto-
+    // redirecting to a fresh board for empty-state visitors.
+    await page.addInitScript(() => {
+      localStorage.setItem(
+        'retro-recent-boards',
+        JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])
+      );
+    });
+
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Start a new retro' }).click();
+
+    const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+    await expect(dialog).toBeVisible();
+
+    const label = `Sprint Test ${Math.random().toString(36).slice(2, 5)}`;
+    await dialog.getByLabel('Retro name').fill(label);
+    await dialog.getByRole('button', { name: 'Create retro' }).click();
+
+    // URL slug should derive from the typed label (with a short random suffix).
+    await page.waitForURL(/\/board\/sprint-test-/);
+    const url = new URL(page.url());
+    expect(url.pathname).toMatch(/^\/board\/sprint-test-[a-z0-9-]+$/);
+
+    await context.close();
+  });
+
   test('second browser context sees presence broadcast', async ({ browser }) => {
     const sharedSlug = `pw-presence-${Date.now()}`;
     const ctxA: BrowserContext = await browser.newContext();

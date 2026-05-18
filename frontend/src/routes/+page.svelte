@@ -1,14 +1,24 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
-  import { newSlug, readRecentBoards, getLeadToken, type RecentBoard } from '$lib/boards';
+  import {
+    newSlug,
+    readRecentBoards,
+    getLeadToken,
+    recordRecentBoard,
+    setPendingLabel,
+    type RecentBoard
+  } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
   import HostModal from '$lib/HostModal.svelte';
+  import NewRetroModal from '$lib/NewRetroModal.svelte';
   import { Crown } from 'lucide-svelte';
 
   let recents = $state<RecentBoard[]>([]);
   let ready = $state(false);
   let showHostModal = $state(false);
+  let showNewModal = $state(false);
+  let pendingHostToken = $state<string>('');
   let savedToken = $state<string>('');
 
   onMount(() => {
@@ -23,7 +33,8 @@
   });
 
   function createFresh() {
-    goto(`/board/${newSlug()}`);
+    pendingHostToken = '';
+    showNewModal = true;
   }
 
   function joinRecent(slug: string) {
@@ -31,11 +42,10 @@
   }
 
   function openHost() {
-    // If a token is already saved, skip the modal and go straight to a fresh
-    // hosted board — one click for the recurring facilitator.
     const token = getLeadToken();
     if (token) {
-      goto(`/lead/${token}/${newSlug()}`);
+      pendingHostToken = token;
+      showNewModal = true;
       return;
     }
     showHostModal = true;
@@ -43,7 +53,25 @@
 
   function onHostConfirm(token: string) {
     showHostModal = false;
-    goto(`/lead/${token}/${newSlug()}`);
+    pendingHostToken = token;
+    showNewModal = true;
+  }
+
+  function onNewConfirm({ slug, label }: { slug: string; label: string }) {
+    showNewModal = false;
+    // Stash the label locally so the board page can hydrate Yjs with it on first
+    // mount, and recents shows the name immediately even before the CRDT syncs.
+    if (label) {
+      recordRecentBoard(slug, { label });
+      // Forward to the board: if we land as host, apply this label to Yjs on
+      // first mount so participants see the name too.
+      if (pendingHostToken) setPendingLabel(slug, label);
+    }
+    if (pendingHostToken) {
+      goto(`/lead/${pendingHostToken}/${slug}`);
+    } else {
+      goto(`/board/${slug}`);
+    }
   }
 </script>
 
@@ -114,4 +142,12 @@
 
 {#if showHostModal}
   <HostModal onClose={() => (showHostModal = false)} onConfirm={onHostConfirm} />
+{/if}
+
+{#if showNewModal}
+  <NewRetroModal
+    onClose={() => (showNewModal = false)}
+    onConfirm={onNewConfirm}
+    hostMode={!!pendingHostToken}
+  />
 {/if}
