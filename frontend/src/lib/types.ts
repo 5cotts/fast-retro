@@ -1,10 +1,37 @@
 export type ColumnKey = 'wentWell' | 'toImprove' | 'actions';
 
-export const COLUMNS: { key: ColumnKey; title: string; accent: string }[] = [
-  { key: 'wentWell', title: 'Went Well', accent: 'border-emerald-400/60 bg-emerald-50 dark:bg-emerald-950/40 dark:border-emerald-700/40' },
-  { key: 'toImprove', title: 'To Improve', accent: 'border-amber-400/60 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700/40' },
-  { key: 'actions', title: 'Action Items', accent: 'border-sky-400/60 bg-sky-50 dark:bg-sky-950/40 dark:border-sky-700/40' }
+export const COLUMNS: { key: ColumnKey; title: string; accent: string; dot: string }[] = [
+  {
+    key: 'wentWell',
+    title: 'What went well',
+    accent: 'border-emerald-300/60 bg-emerald-50/70 dark:bg-emerald-950/30 dark:border-emerald-700/50',
+    dot: 'bg-emerald-400 dark:bg-emerald-500'
+  },
+  {
+    key: 'toImprove',
+    title: 'What to improve',
+    accent: 'border-amber-300/60 bg-amber-50/70 dark:bg-amber-950/30 dark:border-amber-700/50',
+    dot: 'bg-amber-400 dark:bg-amber-500'
+  },
+  {
+    key: 'actions',
+    title: 'Action items',
+    accent: 'border-sky-300/60 bg-sky-50/70 dark:bg-sky-950/30 dark:border-sky-700/50',
+    dot: 'bg-sky-400 dark:bg-sky-500'
+  }
 ];
+
+export const COLUMN_EMPTY_HINT: Record<ColumnKey, string> = {
+  wentWell: 'Nothing here yet. What went well?',
+  toImprove: 'Nothing here yet. What could be better?',
+  actions: 'Nothing here yet. What should we do next?'
+};
+
+export const COLUMN_PLACEHOLDER: Record<ColumnKey, string> = {
+  wentWell: 'Add a card…',
+  toImprove: 'Add a card…',
+  actions: 'Add a card…'
+};
 
 export const REACTION_EMOJI = ['👍', '❤️', '🎉', '😂', '😢', '🤔'] as const;
 export type ReactionEmoji = typeof REACTION_EMOJI[number];

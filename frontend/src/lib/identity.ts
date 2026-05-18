@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { getUserId } from './storage';
+import type { PresenceUser } from './types';
 
 const COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899'];
 
@@ -55,4 +56,32 @@ export function resolveDisplayName(authorId: string, ctx: ResolveDisplayNameCtx)
   if (!authorId) return 'Anonymous';
   if (authorId === ctx.selfId) return ctx.selfName || ctx.namesMap[authorId] || 'Anonymous';
   return ctx.namesMap[authorId] || 'Anonymous';
+}
+
+/**
+ * Suffix duplicate display names with `(2)`, `(3)`, … so the presence list and
+ * typing indicators never collapse two real people into one ambiguous label.
+ * Order is deterministic per clientId so the suffix doesn't shuffle on rerender.
+ */
+export function disambiguateNames(presence: PresenceUser[]): PresenceUser[] {
+  const buckets = new Map<string, PresenceUser[]>();
+  for (const p of presence) {
+    const key = p.name.trim().toLowerCase();
+    const list = buckets.get(key) ?? [];
+    list.push(p);
+    buckets.set(key, list);
+  }
+  const suffixByClientId = new Map<number, string>();
+  for (const list of buckets.values()) {
+    if (list.length <= 1) continue;
+    list.sort((a, b) => a.clientId - b.clientId);
+    list.forEach((p, idx) => {
+      if (idx > 0) suffixByClientId.set(p.clientId, ` (${idx + 1})`);
+    });
+  }
+  if (suffixByClientId.size === 0) return presence;
+  return presence.map((p) => {
+    const suf = suffixByClientId.get(p.clientId);
+    return suf ? { ...p, name: `${p.name}${suf}` } : p;
+  });
 }
