@@ -123,8 +123,9 @@
   });
 </script>
 
-<!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_no_noninteractive_element_interactions -->
-<article
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
   draggable={!editing}
   tabindex="0"
   role="group"
@@ -349,4 +350,4 @@
       </div>
     {/if}
   {/if}
-</article>
+</div>
