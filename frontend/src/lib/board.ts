@@ -1,6 +1,7 @@
 // Re-export aggregator. The original board.ts grew unwieldy and has been
 // split into:
-//   - types.ts     : interfaces, COLUMNS, REACTION_EMOJI
+//   - types.ts     : interfaces, COLUMNS, placeholders
+//   - emojis.ts    : reaction emoji catalog + search
 //   - yboard.ts    : Yjs board/card primitives
 //   - timer.ts     : timer state machine + formatting
 //   - csv.ts       : CSV export

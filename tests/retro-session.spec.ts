@@ -215,7 +215,9 @@ test.describe('fast-retro full session', () => {
       {
         const card = cardLocator(alicePage, 'What to improve', bobImprove);
         await card.getByRole('button', { name: 'Add a reaction', exact: true }).click();
-        await card.getByRole('menu').getByRole('menuitem', { name: 'React with party' }).click();
+        await expect(alicePage.getByLabel('Search emoji')).toBeVisible();
+        await alicePage.getByLabel('Search emoji').fill('party');
+        await alicePage.getByRole('menuitem', { name: 'React with party', exact: true }).click();
         await expect(
           card.getByRole('button', { name: /Remove your party reaction \(1/ })
         ).toBeVisible();

@@ -51,9 +51,9 @@ test.describe('fast-retro smoke', () => {
 
     // --- reaction ---
     await card.getByRole('button', { name: 'Add a reaction', exact: true }).click();
-    const reactionMenu = card.getByRole('menu');
-    await expect(reactionMenu).toBeVisible();
-    await reactionMenu.getByRole('menuitem', { name: 'React with party' }).click();
+    await expect(page.getByLabel('Search emoji')).toBeVisible();
+    await page.getByLabel('Search emoji').fill('party');
+    await page.getByRole('menuitem', { name: 'React with party', exact: true }).click();
     await expect(
       card.getByRole('button', { name: /Remove your party reaction \(1/ })
     ).toBeVisible();

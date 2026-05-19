@@ -1,18 +1,10 @@
 <script lang="ts">
   import type { CardData, CommentData, ColumnKey } from './types';
-  import { REACTION_EMOJI } from './types';
+  import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
   import { Pencil, Trash2, ChevronUp, Smile, MessageSquare, X, Check } from 'lucide-svelte';
 
-  const REACTION_LABEL: Record<string, string> = {
-    '👍': 'thumbs up',
-    '❤️': 'heart',
-    '🎉': 'party',
-    '😂': 'laugh',
-    '😢': 'sad',
-    '🤔': 'thinking'
-  };
-  const reactionName = (e: string) => REACTION_LABEL[e] ?? e;
+  const reactionName = (e: string) => emojiName(e);
 
   const COLLAPSED_MAX_CHARS = 280;
 
@@ -69,6 +61,9 @@
   let showComments = $state(false);
   let commentDraft = $state('');
   let showReactionPicker = $state(false);
+  let pickerCategory = $state(EMOJI_CATEGORIES[0].id);
+  let pickerSearch = $state('');
+  let pickerSearchEl = $state<HTMLInputElement | null>(null);
   let confirmingDelete = $state(false);
   let pendingCommentDelete = $state<string | null>(null);
   let dragging = $state(false);
@@ -127,13 +122,25 @@
     }
   }
 
+  const visibleEmojis = $derived(
+    pickerSearch.trim()
+      ? searchEmojis(pickerSearch)
+      : (EMOJI_CATEGORIES.find((c) => c.id === pickerCategory)?.emojis ?? []).map((it) => ({
+          ...it,
+          cat: pickerCategory,
+        }))
+  );
+
   $effect(() => {
-    if (!showReactionPicker) return;
-    // Clamp picker to viewport: if there isn't ~260px of room to the right of
-    // the trigger button, anchor the picker to its right edge instead.
+    if (!showReactionPicker) {
+      pickerSearch = '';
+      return;
+    }
+    // Clamp picker to viewport: the picker is ~300px wide. If there isn't
+    // enough room to the right of the trigger button, anchor it right instead.
     if (pickerBtnEl && typeof window !== 'undefined') {
       const rect = pickerBtnEl.getBoundingClientRect();
-      pickerAlignRight = rect.left + 260 > window.innerWidth;
+      pickerAlignRight = rect.left + 320 > window.innerWidth;
     }
     const close = (e: MouseEvent) => {
       if (pickerEl && e.target instanceof Node && !pickerEl.contains(e.target)) {
@@ -298,23 +305,61 @@
         {#if showReactionPicker}
           <div
             bind:this={pickerEl}
-            class="absolute z-10 top-full mt-1 flex gap-0.5 p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {pickerAlignRight ? 'right-0' : 'left-0'}"
-            role="menu"
+            class="absolute z-10 top-full mt-1 w-[300px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {pickerAlignRight ? 'right-0' : 'left-0'}"
+            role="dialog"
             aria-label="Pick a reaction"
           >
-            {#each REACTION_EMOJI as emoji (emoji)}
-              <button
-                class="text-base hover:bg-slate-100 dark:hover:bg-slate-700 rounded p-1 min-w-[32px] min-h-[32px] flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
-                onclick={() => {
-                  onToggleReaction(card.id, emoji);
-                  showReactionPicker = false;
-                }}
-                role="menuitem"
-                aria-label={`React with ${reactionName(emoji)}`}
-              >
-                <span aria-hidden="true">{emoji}</span>
-              </button>
-            {/each}
+            <div class="p-2 border-b border-slate-200 dark:border-slate-700">
+              <input
+                bind:this={pickerSearchEl}
+                bind:value={pickerSearch}
+                type="text"
+                placeholder="Search emoji..."
+                aria-label="Search emoji"
+                class="w-full text-xs px-2 py-1.5 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400"
+              />
+            </div>
+            {#if !pickerSearch.trim()}
+              <div class="flex gap-0.5 px-2 pt-1.5 overflow-x-auto" role="tablist" aria-label="Emoji categories">
+                {#each EMOJI_CATEGORIES as cat (cat.id)}
+                  <button
+                    class="text-[10px] uppercase tracking-wide px-1.5 py-1 rounded whitespace-nowrap transition-colors
+                      {pickerCategory === cat.id
+                        ? 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200'
+                        : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'}"
+                    onclick={() => (pickerCategory = cat.id)}
+                    role="tab"
+                    aria-selected={pickerCategory === cat.id}
+                  >
+                    {cat.label}
+                  </button>
+                {/each}
+              </div>
+            {/if}
+            <div
+              class="grid grid-cols-7 gap-0.5 p-1.5 max-h-[180px] overflow-y-auto"
+              role="menu"
+              aria-label={pickerSearch.trim() ? 'Search results' : 'Emoji choices'}
+            >
+              {#each visibleEmojis as it (it.e)}
+                <button
+                  class="text-lg hover:bg-slate-100 dark:hover:bg-slate-700 rounded p-1 min-w-[36px] min-h-[36px] flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
+                  onclick={() => {
+                    onToggleReaction(card.id, it.e);
+                    showReactionPicker = false;
+                  }}
+                  role="menuitem"
+                  aria-label={`React with ${it.n}`}
+                  title={it.n}
+                >
+                  <span aria-hidden="true">{it.e}</span>
+                </button>
+              {:else}
+                <div class="col-span-7 px-2 py-4 text-center text-xs text-slate-500 dark:text-slate-400">
+                  No emoji found
+                </div>
+              {/each}
+            </div>
           </div>
         {/if}
       </div>

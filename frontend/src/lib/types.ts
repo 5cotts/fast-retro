@@ -46,9 +46,6 @@ export const COLUMN_PLACEHOLDER: Record<ColumnKey, string> = {
   actions: 'Add a card…'
 };
 
-export const REACTION_EMOJI = ['👍', '❤️', '🎉', '😂', '😢', '🤔'] as const;
-export type ReactionEmoji = typeof REACTION_EMOJI[number];
-
 export interface CommentData {
   id: string;
   text: string;

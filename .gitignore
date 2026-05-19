@@ -25,6 +25,9 @@ tests/screenshots/
 .env.*
 !.env.example
 
+# Runtime data (archive snapshots etc.)
+data/
+
 # Logs
 *.log
 npm-debug.log*

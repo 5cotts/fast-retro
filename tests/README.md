@@ -61,6 +61,14 @@ badge; the lead still sees their own card as "you (hidden)" while
 the participant sees "Anonymous" with no name. Toggle off and the
 name returns.
 
+`custom-emoji.spec.ts` — custom emoji reactions (skipped unless
+`RETRO_LEAD_TOKEN` is set): one lead, one participant. The lead
+opens the reaction picker on their own card, searches for "rocket"
+(not in the legacy six-emoji default set), reacts with 🚀, and
+confirms the participant sees the same reaction. Then switches to
+the Hearts category tab and reacts with 🧡 to verify category
+browsing also works end-to-end.
+
 ### Lead token
 
 The full-session test joins the lead role and therefore needs the
