@@ -49,7 +49,7 @@
     </div>
   </div>
 {:else if ok}
-  <Board isLead={true} {slug} />
+  <Board isLead={true} {slug} leadToken={token} />
 {:else}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">

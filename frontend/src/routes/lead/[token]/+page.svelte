@@ -93,6 +93,13 @@
         Start a new retro
       </button>
 
+      <a
+        href={`/lead/${token}/archives`}
+        class="mt-3 w-full block text-center border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-md px-4 py-2.5 text-sm font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+      >
+        Past retros
+      </a>
+
       {#if recents.length > 0}
         <div class="mt-8">
           <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2 flex items-center justify-between">

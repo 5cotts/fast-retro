@@ -7,11 +7,11 @@ use std::{
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Query, State,
+        Json, Path as AxumPath, Query, State,
     },
-    http::{header, StatusCode, Uri},
+    http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{delete, get, post},
     Router,
 };
 use serde::Deserialize;
@@ -20,6 +20,7 @@ use rust_embed::RustEmbed;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
 
+mod archive;
 mod sync;
 
 use sync::{Awareness, ClientId, Doc};
@@ -139,6 +140,10 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .route("/api/health", get(health))
         .route("/api/lead-token-check/:token", get(lead_token_check))
+        .route("/api/boards/:slug/archive", post(create_archive))
+        .route("/api/archives", get(list_archives))
+        .route("/api/archives/:id", get(get_archive))
+        .route("/api/archives/:id", delete(delete_archive))
         .fallback(static_handler)
         .with_state(state);
 
@@ -335,6 +340,97 @@ async fn process_message(
         }
     }
     Ok(())
+}
+
+fn check_lead_token(headers: &HeaderMap, expected: &str) -> bool {
+    let Some(auth) = headers.get(header::AUTHORIZATION) else {
+        return false;
+    };
+    let Ok(s) = auth.to_str() else {
+        return false;
+    };
+    let token = s.strip_prefix("Bearer ").unwrap_or(s);
+    // Constant-time compare to avoid token oracle.
+    let a = token.as_bytes();
+    let b = expected.as_bytes();
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+async fn create_archive(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    headers: HeaderMap,
+    Json(req): Json<archive::ArchiveRequest>,
+) -> Response {
+    if !check_lead_token(&headers, &state.lead_token) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    let Some(slug) = sanitize_slug(&slug) else {
+        return (StatusCode::BAD_REQUEST, "bad slug").into_response();
+    };
+    match archive::save(&slug, req) {
+        Ok(a) => (StatusCode::OK, Json(serde_json::json!({ "id": a.id }))).into_response(),
+        Err(e) => {
+            warn!("archive save failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "save failed").into_response()
+        }
+    }
+}
+
+async fn list_archives(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !check_lead_token(&headers, &state.lead_token) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    match archive::list() {
+        Ok(items) => (StatusCode::OK, Json(items)).into_response(),
+        Err(e) => {
+            warn!("archive list failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "list failed").into_response()
+        }
+    }
+}
+
+async fn get_archive(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !check_lead_token(&headers, &state.lead_token) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    match archive::load(&id) {
+        Ok(Some(a)) => (StatusCode::OK, Json(a)).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => {
+            warn!("archive load failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "load failed").into_response()
+        }
+    }
+}
+
+async fn delete_archive(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if !check_lead_token(&headers, &state.lead_token) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    match archive::delete(&id) {
+        Ok(true) => (StatusCode::OK, "ok").into_response(),
+        Ok(false) => (StatusCode::NOT_FOUND, "not found").into_response(),
+        Err(e) => {
+            warn!("archive delete failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "delete failed").into_response()
+        }
+    }
 }
 
 async fn static_handler(uri: Uri) -> Response {

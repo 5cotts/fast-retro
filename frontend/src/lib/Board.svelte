@@ -45,7 +45,7 @@
     canVoteInPhase
   } from './phase';
 
-  let { isLead = false, slug } = $props<{ isLead?: boolean; slug: string }>();
+  let { isLead = false, slug, leadToken = '' } = $props<{ isLead?: boolean; slug: string; leadToken?: string }>();
 
   let userName = $state<string>('');
   let promptingName = $state<boolean>(true);
@@ -534,12 +534,44 @@
     endConfirm = false;
   }
 
-  function confirmEndBoard(opts: { exportFirst: boolean }) {
+  let archiving = $state<boolean>(false);
+  let archiveError = $state<string>('');
+
+  async function confirmEndBoard(opts: { exportFirst: boolean }) {
     if (!conn.state.board || !isLead) {
       endConfirm = false;
       return;
     }
     if (opts.exportFirst) downloadCSV();
+    archiveError = '';
+    if (leadToken) {
+      archiving = true;
+      try {
+        const body = {
+          label: conn.state.label,
+          cards: conn.state.cards,
+          names: conn.state.namesMap
+        };
+        const r = await fetch(`/api/boards/${encodeURIComponent(slug)}/archive`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${leadToken}`
+          },
+          body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+          archiveError = `Archive failed (${r.status}). Board not cleared.`;
+          archiving = false;
+          return;
+        }
+      } catch (e) {
+        archiveError = 'Network error while archiving. Board not cleared.';
+        archiving = false;
+        return;
+      }
+      archiving = false;
+    }
     resetBoard(conn.state.board.doc, conn.state.board.board, conn.state.board.timer);
     endConfirm = false;
   }
@@ -678,12 +710,20 @@
           <div class="flex-1 min-w-[200px]">
             <div id="end-board-heading" class="font-semibold text-sm">End this retro?</div>
             <div class="text-xs opacity-80">
-              This clears all cards, comments, and the timer for everyone. This can't be undone.
+              {#if leadToken}
+                Saves a snapshot you can revisit from your archives, then clears the board for everyone.
+              {:else}
+                This clears all cards, comments, and the timer for everyone. This can't be undone.
+              {/if}
             </div>
+            {#if archiveError}
+              <div class="text-xs mt-1 font-medium text-rose-900 dark:text-rose-100">{archiveError}</div>
+            {/if}
           </div>
           {#if cardCount > 0}
             <button
               class="btn text-xs px-3 py-1.5"
+              disabled={archiving}
               onclick={() => confirmEndBoard({ exportFirst: true })}
             >
               <Download size={14} aria-hidden="true" />
@@ -692,11 +732,12 @@
           {/if}
           <button
             class="btn-danger text-xs px-3 py-1.5"
+            disabled={archiving}
             onclick={() => confirmEndBoard({ exportFirst: false })}
           >
-            Clear board
+            {archiving ? 'Saving…' : leadToken ? 'Archive & clear' : 'Clear board'}
           </button>
-          <button class="btn-ghost text-xs px-3 py-1.5" onclick={cancelEndBoard}>Cancel</button>
+          <button class="btn-ghost text-xs px-3 py-1.5" disabled={archiving} onclick={cancelEndBoard}>Cancel</button>
         </div>
       </div>
     {/if}
