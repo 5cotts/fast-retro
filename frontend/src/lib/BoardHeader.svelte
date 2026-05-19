@@ -7,7 +7,7 @@
   import NameBadge from './NameBadge.svelte';
   import Wordmark from './Wordmark.svelte';
   import BoardLabel from './BoardLabel.svelte';
-  import { Menu, Monitor, Sun, Moon, Link2, Check, Crown } from 'lucide-svelte';
+  import { Menu, Monitor, Sun, Moon, Link2, Check, Crown, EyeOff } from 'lucide-svelte';
   import { getLeadToken } from './boards';
   import HostModal from './HostModal.svelte';
   import { goto } from '$app/navigation';
@@ -27,6 +27,7 @@
     presence,
     currentClientId,
     userName,
+    anonymous,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -35,7 +36,8 @@
     onEndBoard,
     onCycleTheme,
     onChangeName,
-    onChangeLabel
+    onChangeLabel,
+    onToggleAnonymous
   } = $props<{
     isLead: boolean;
     connected: boolean;
@@ -51,6 +53,7 @@
     presence: PresenceUser[];
     currentClientId: number;
     userName: string;
+    anonymous: boolean;
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -60,6 +63,7 @@
     onCycleTheme: () => void;
     onChangeName: (newName: string) => void;
     onChangeLabel: (next: string) => void;
+    onToggleAnonymous: () => void;
   }>();
 
   let showMobileMenu = $state(false);
@@ -156,6 +160,17 @@
       <span class="hidden sm:inline">{connected ? 'Live' : 'Connecting…'}</span>
     </span>
 
+    {#if anonymous}
+      <span
+        class="inline-flex items-center gap-1 text-[10px] sm:text-xs font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-200 border border-violet-200/80 dark:border-violet-700/50 rounded px-1.5 py-0.5"
+        title="Anonymous mode is on — author names are hidden on cards and comments."
+        aria-label="Anonymous mode on"
+      >
+        <EyeOff size={11} aria-hidden="true" />
+        Anonymous
+      </span>
+    {/if}
+
     {#if !isLead && timerVisible}
       <div
         class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-sm tabular-nums
@@ -220,12 +235,14 @@
             {remainingSec}
             {timerRunning}
             {timerExpired}
+            {anonymous}
             onSet={onSetTimer}
             onStart={onStartTimer}
             onPause={onPauseTimer}
             onReset={onResetTimer}
             {onExportCSV}
             onEnd={onEndBoard}
+            {onToggleAnonymous}
           />
         {/if}
 
@@ -261,12 +278,14 @@
           {remainingSec}
           {timerRunning}
           {timerExpired}
+          {anonymous}
           onSet={onSetTimer}
           onStart={onStartTimer}
           onPause={onPauseTimer}
           onReset={onResetTimer}
           {onExportCSV}
           onEnd={onEndBoard}
+          {onToggleAnonymous}
           mobile
         />
       {/if}

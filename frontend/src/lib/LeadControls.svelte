@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Timer, Play, Pause, RotateCcw, Download, X } from 'lucide-svelte';
+  import { Timer, Play, Pause, RotateCcw, Download, X, EyeOff, Eye } from 'lucide-svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
 
@@ -9,12 +9,14 @@
     remainingSec,
     timerRunning,
     timerExpired,
+    anonymous,
     onSet,
     onStart,
     onPause,
     onReset,
     onExportCSV,
     onEnd,
+    onToggleAnonymous,
     mobile = false
   } = $props<{
     timerInputMin: string;
@@ -22,12 +24,14 @@
     remainingSec: number;
     timerRunning: boolean;
     timerExpired: boolean;
+    anonymous: boolean;
     onSet: () => void;
     onStart: () => void;
     onPause: () => void;
     onReset: () => void;
     onExportCSV: () => void;
     onEnd: () => void;
+    onToggleAnonymous: () => void;
     mobile?: boolean;
   }>();
 
@@ -106,6 +110,19 @@
       </button>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
+      <button
+        class="btn text-sm px-3 py-2 min-h-[44px] {anonymous ? 'border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200 bg-violet-50 dark:bg-violet-900/30' : ''}"
+        onclick={onToggleAnonymous}
+        aria-pressed={anonymous}
+        aria-label={anonymous ? 'Turn off anonymous mode' : 'Turn on anonymous mode'}
+        title={anonymous ? 'Anonymous mode is ON — author names are hidden' : 'Anonymous mode is OFF — hide author names on cards and comments'}
+      >
+        {#if anonymous}
+          <EyeOff size={14} aria-hidden="true" /> Anonymous: On
+        {:else}
+          <Eye size={14} aria-hidden="true" /> Anonymous: Off
+        {/if}
+      </button>
       <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onExportCSV}>
         <Download size={14} aria-hidden="true" /> Download CSV
       </button>
@@ -181,6 +198,22 @@
       </div>
     {/if}
   </div>
+
+  <button
+    class="btn text-xs px-2 py-1 min-h-[32px] {anonymous ? 'border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200 bg-violet-50 dark:bg-violet-900/30' : ''}"
+    onclick={onToggleAnonymous}
+    aria-pressed={anonymous}
+    aria-label={anonymous ? 'Turn off anonymous mode' : 'Turn on anonymous mode'}
+    title={anonymous ? 'Anonymous mode is ON — author names are hidden on cards and comments' : 'Hide author names on cards and comments'}
+  >
+    {#if anonymous}
+      <EyeOff size={14} aria-hidden="true" />
+      <span class="hidden lg:inline">Anonymous</span>
+    {:else}
+      <Eye size={14} aria-hidden="true" />
+      <span class="hidden lg:inline">Anonymous</span>
+    {/if}
+  </button>
 
   <button class="btn text-xs px-2 py-1" onclick={onExportCSV} title="Download as CSV">
     <Download size={14} aria-hidden="true" />

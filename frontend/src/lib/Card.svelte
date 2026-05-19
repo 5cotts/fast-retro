@@ -23,6 +23,7 @@
     userName,
     isLead,
     canVote = true,
+    anonymous = false,
     namesMap,
     onEdit,
     onDelete,
@@ -42,6 +43,7 @@
     userName: string;
     isLead: boolean;
     canVote?: boolean;
+    anonymous?: boolean;
     namesMap: Record<string, string>;
     onEdit: (cardId: string, text: string) => void;
     onDelete: (cardId: string) => void;
@@ -221,11 +223,24 @@
       {/if}
     {/if}
     {#if card.authorId}
+      {@const showName = isSelfAuthor || !anonymous}
       <div
         class="mt-1.5 text-xs text-slate-500 dark:text-slate-500"
-        title={isSelfAuthor ? 'Added by you' : `Added by ${authorName}`}
+        title={isSelfAuthor
+          ? anonymous
+            ? 'Added by you — hidden from others (Anonymous mode)'
+            : 'Added by you'
+          : showName
+            ? `Added by ${authorName}`
+            : 'Author hidden — Anonymous mode'}
       >
-        {isSelfAuthor ? 'you' : authorName}
+        {#if isSelfAuthor}
+          you{anonymous ? ' (hidden)' : ''}
+        {:else if showName}
+          {authorName}
+        {:else}
+          Anonymous
+        {/if}
       </div>
     {/if}
 
@@ -365,8 +380,16 @@
           <div class="text-xs flex items-start gap-1 group/c">
             <div class="flex-1 min-w-0">
               {#if c.authorId}
+                {@const isSelfComment = c.authorId === userId}
+                {@const showCommentName = isSelfComment || !anonymous}
                 <span class="text-xs font-medium text-slate-600 dark:text-slate-300 mr-1.5">
-                  {displayName(c.authorId)}{c.authorId === userId ? ' (you)' : ''}
+                  {#if isSelfComment}
+                    {displayName(c.authorId)} (you{anonymous ? ', hidden' : ''})
+                  {:else if showCommentName}
+                    {displayName(c.authorId)}
+                  {:else}
+                    Anonymous
+                  {/if}
                 </span>
               {/if}
               <span class="text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{c.text}</span>

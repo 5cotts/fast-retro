@@ -53,6 +53,14 @@ E2E_BASE_URL=http://localhost:5102 bun run test:e2e
 Each run uses random names and a random slug so it doesn't collide
 with itself.
 
+`anonymous.spec.ts` — anonymous mode (skipped unless
+`RETRO_LEAD_TOKEN` is set): one lead, one participant. The lead
+drops a card; the participant sees the lead's name on the byline.
+The lead toggles "Anonymous" on; both pages surface the Anonymous
+badge; the lead still sees their own card as "you (hidden)" while
+the participant sees "Anonymous" with no name. Toggle off and the
+name returns.
+
 ### Lead token
 
 The full-session test joins the lead role and therefore needs the

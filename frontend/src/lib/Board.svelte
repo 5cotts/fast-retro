@@ -14,7 +14,8 @@
     addComment,
     deleteComment,
     moveCard,
-    setBoardLabel
+    setBoardLabel,
+    setBoardAnonymous
   } from './yboard';
   import { recordRecentBoard, consumePendingLabel } from './boards';
   import {
@@ -262,6 +263,11 @@
   function changeLabel(next: string) {
     if (!conn.state.board || !isLead) return;
     setBoardLabel(conn.state.board.meta, next);
+  }
+
+  function toggleAnonymous() {
+    if (!conn.state.board || !isLead) return;
+    setBoardAnonymous(conn.state.board.meta, !conn.state.anonymous);
   }
 
   // Mirror the board label into this browser's recent-boards list so the
@@ -606,6 +612,7 @@
       presence={presenceDisambiguated}
       currentClientId={conn.state.currentClientId}
       {userName}
+      anonymous={conn.state.anonymous}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -615,6 +622,7 @@
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
       onChangeLabel={changeLabel}
+      onToggleAnonymous={toggleAnonymous}
     />
 
     <div
@@ -786,6 +794,7 @@
                     {userName}
                     {isLead}
                     {canVote}
+                    anonymous={conn.state.anonymous}
                     namesMap={namesMapDisambiguated}
                     onEdit={(id, text) => handleEdit(col.key, id, text)}
                     onDelete={(id) => handleDelete(col.key, id)}

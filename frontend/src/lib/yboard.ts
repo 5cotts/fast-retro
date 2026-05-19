@@ -61,6 +61,15 @@ export function setBoardLabel(meta: Y.Map<unknown>, label: string): void {
   }
 }
 
+export function readBoardAnonymous(meta: Y.Map<unknown>): boolean {
+  return meta.get('anonymous') === true;
+}
+
+export function setBoardAnonymous(meta: Y.Map<unknown>, on: boolean): void {
+  if (on) meta.set('anonymous', true);
+  else meta.delete('anonymous');
+}
+
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
   const card = new Y.Map<unknown>();
   card.set('id', newId());

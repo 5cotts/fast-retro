@@ -1,4 +1,4 @@
-import { createBoard, readCards, readBoardLabel, type BoardState } from './yboard';
+import { createBoard, readCards, readBoardLabel, readBoardAnonymous, type BoardState } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
@@ -23,6 +23,7 @@ export interface UseBoardConnectionState {
   presence: PresenceUser[];
   phase: Phase;
   label: string;
+  anonymous: boolean;
 }
 
 /**
@@ -46,7 +47,8 @@ export function useBoardConnection() {
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
     presence: [],
     phase: 'brainstorm',
-    label: ''
+    label: '',
+    anonymous: false
   });
 
   function start(init: UseBoardConnectionInit) {
@@ -73,20 +75,21 @@ export function useBoardConnection() {
     const recomputePhase = () => {
       state.phase = readPhase(phase);
     };
-    const recomputeLabel = () => {
+    const recomputeMeta = () => {
       state.label = readBoardLabel(meta);
+      state.anonymous = readBoardAnonymous(meta);
     };
 
     board.observeDeep(recomputeCards);
     timer.observeDeep(recomputeTimer);
     names.observe(recomputeNames);
     phase.observe(recomputePhase);
-    meta.observe(recomputeLabel);
+    meta.observe(recomputeMeta);
     recomputeCards();
     recomputeTimer();
     recomputeNames();
     recomputePhase();
-    recomputeLabel();
+    recomputeMeta();
 
     setDisplayName(names, init.userId, init.userName);
 
@@ -134,7 +137,7 @@ export function useBoardConnection() {
       timer.unobserveDeep(recomputeTimer);
       names.unobserve(recomputeNames);
       phase.unobserve(recomputePhase);
-      meta.unobserve(recomputeLabel);
+      meta.unobserve(recomputeMeta);
       aw.off('change', refreshPresence);
       provider.off('status', onStatus);
       aw.setLocalState(null);
