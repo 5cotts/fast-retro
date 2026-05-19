@@ -140,6 +140,7 @@ async fn main() {
         .route("/ws", get(ws_handler))
         .route("/api/health", get(health))
         .route("/api/lead-token-check/:token", get(lead_token_check))
+        .route("/api/boards", get(list_boards))
         .route("/api/boards/:slug/archive", post(create_archive))
         .route("/api/archives", get(list_archives))
         .route("/api/archives/:id", get(get_archive))
@@ -166,6 +167,51 @@ async fn lead_token_check(
     } else {
         (StatusCode::FORBIDDEN, "no").into_response()
     }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveBoardSummary {
+    slug: String,
+    label: String,
+    card_count: usize,
+    phase: String,
+    anonymous: bool,
+    participant_count: usize,
+}
+
+async fn list_boards(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    if !check_lead_token(&headers, &state.lead_token) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    let rooms = state.rooms.read().await;
+    let mut out: Vec<LiveBoardSummary> = Vec::with_capacity(rooms.len());
+    for (slug, room) in rooms.iter() {
+        let participant_count = room.clients.read().await.len();
+        // Skip rooms with no participants AND no content — they're just stale entries.
+        let summary = {
+            let doc = room.doc.lock().unwrap();
+            doc.read_summary()
+        };
+        if participant_count == 0 && summary.card_count == 0 && summary.label.is_empty() {
+            continue;
+        }
+        out.push(LiveBoardSummary {
+            slug: slug.clone(),
+            label: summary.label,
+            card_count: summary.card_count,
+            phase: summary.phase,
+            anonymous: summary.anonymous,
+            participant_count,
+        });
+    }
+    out.sort_by(|a, b| {
+        b.participant_count
+            .cmp(&a.participant_count)
+            .then_with(|| b.card_count.cmp(&a.card_count))
+            .then_with(|| a.slug.cmp(&b.slug))
+    });
+    (StatusCode::OK, Json(out)).into_response()
 }
 
 async fn ws_handler(

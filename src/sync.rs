@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use yrs::{
     updates::{decoder::Decode, encoder::Encode},
-    Doc as YDoc, ReadTxn, StateVector, Transact, Update,
+    Any, Array, Doc as YDoc, Map, Out, ReadTxn, StateVector, Transact, Update,
 };
 
 pub type ClientId = u64;
@@ -146,6 +146,14 @@ pub struct Doc {
     doc: YDoc,
 }
 
+#[derive(Debug, Clone)]
+pub struct BoardSummary {
+    pub label: String,
+    pub card_count: usize,
+    pub phase: String,
+    pub anonymous: bool,
+}
+
 impl Doc {
     pub fn new() -> Self {
         Self { doc: YDoc::new() }
@@ -173,6 +181,44 @@ impl Doc {
         txn.apply_update(update)
             .map_err(|e| format!("apply update: {}", e))?;
         Ok(update_v1.to_vec())
+    }
+
+    /// Read a lightweight summary of the board (label, total cards, phase, anonymous mode).
+    /// Used by the host dashboard to list active boards without subscribing to each room.
+    pub fn read_summary(&self) -> BoardSummary {
+        let meta = self.doc.get_or_insert_map("meta");
+        let phase_map = self.doc.get_or_insert_map("phase");
+        let board = self.doc.get_or_insert_map("board");
+        let txn = self.doc.transact();
+
+        let label = match meta.get(&txn, "label") {
+            Some(Out::Any(Any::String(s))) => s.to_string(),
+            _ => String::new(),
+        };
+
+        let anonymous = matches!(
+            meta.get(&txn, "anonymous"),
+            Some(Out::Any(Any::Bool(true)))
+        );
+
+        let phase = match phase_map.get(&txn, "current") {
+            Some(Out::Any(Any::String(s))) => s.to_string(),
+            _ => "brainstorm".to_string(),
+        };
+
+        let mut card_count = 0usize;
+        for col in ["wentWell", "toImprove", "actions"] {
+            if let Some(Out::YArray(arr)) = board.get(&txn, col) {
+                card_count += arr.len(&txn) as usize;
+            }
+        }
+
+        BoardSummary {
+            label,
+            card_count,
+            phase,
+            anonymous,
+        }
     }
 }
 
