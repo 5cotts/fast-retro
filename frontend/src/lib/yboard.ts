@@ -329,6 +329,102 @@ function rehydrateCard(snap: {
   return card;
 }
 
+// Merge source card into target: union votes, union reactions per emoji,
+// append comments in createdAt order, append source text after a separator,
+// then delete the source. Runs in a single Yjs transaction so peers see the
+// post-merge state in one tick (no flicker where the source vanishes before
+// the target absorbs it).
+export function mergeCards(
+  doc: Y.Doc,
+  board: Y.Map<Y.Array<Y.Map<unknown>>>,
+  fromCol: ColumnKey,
+  fromId: string,
+  toCol: ColumnKey,
+  toId: string
+) {
+  if (fromId === toId && fromCol === toCol) return;
+  doc.transact(() => {
+    const fromArr = board.get(fromCol);
+    const toArr = board.get(toCol);
+    if (!fromArr || !toArr) return;
+
+    let fromIdx = -1;
+    let fromText = '';
+    let fromVotes: string[] = [];
+    let fromReactions: Record<string, string[]> = {};
+    let fromComments: CommentData[] = [];
+    fromArr.forEach((card, i) => {
+      if (card.get('id') !== fromId) return;
+      fromIdx = i;
+      fromText = (card.get('text') as string | undefined) ?? '';
+      fromVotes = ((card.get('votes') as Y.Array<string> | undefined)?.toArray()) ?? [];
+      const rm = card.get('reactions') as Y.Map<Y.Array<string>> | undefined;
+      if (rm) {
+        rm.forEach((users, emoji) => {
+          fromReactions[emoji] = users.toArray();
+        });
+      }
+      const cm = card.get('comments') as Y.Array<Y.Map<unknown>> | undefined;
+      if (cm) {
+        cm.forEach((c) => {
+          const id = c.get('id');
+          const text = c.get('text');
+          const createdAt = c.get('createdAt');
+          const authorId = (c.get('authorId') as string | undefined) ?? '';
+          if (typeof id === 'string' && typeof text === 'string' && typeof createdAt === 'number') {
+            fromComments.push({ id, text, authorId, createdAt });
+          }
+        });
+      }
+    });
+    if (fromIdx < 0) return;
+
+    let merged = false;
+    toArr.forEach((card) => {
+      if (merged) return;
+      if (card.get('id') !== toId) return;
+      merged = true;
+      const toText = (card.get('text') as string | undefined) ?? '';
+      const trimmedFrom = fromText.trim();
+      if (trimmedFrom.length > 0) {
+        const sep = toText.endsWith('\n') ? '— — —\n' : '\n— — —\n';
+        card.set('text', `${toText}${sep}${trimmedFrom}`);
+      }
+
+      const toVotes = card.get('votes') as Y.Array<string>;
+      const existing = new Set(toVotes.toArray());
+      const toAdd = fromVotes.filter((v) => !existing.has(v));
+      if (toAdd.length) toVotes.push(toAdd);
+
+      const toReactions = card.get('reactions') as Y.Map<Y.Array<string>>;
+      for (const [emoji, users] of Object.entries(fromReactions)) {
+        let bucket = toReactions.get(emoji);
+        if (!bucket) {
+          bucket = new Y.Array<string>();
+          toReactions.set(emoji, bucket);
+        }
+        const have = new Set(bucket.toArray());
+        const adds = users.filter((u) => !have.has(u));
+        if (adds.length) bucket.push(adds);
+      }
+
+      const toComments = card.get('comments') as Y.Array<Y.Map<unknown>>;
+      fromComments.sort((a, b) => a.createdAt - b.createdAt);
+      for (const c of fromComments) {
+        const cm = new Y.Map<unknown>();
+        cm.set('id', c.id);
+        cm.set('text', c.text);
+        cm.set('authorId', c.authorId);
+        cm.set('createdAt', c.createdAt);
+        toComments.push([cm]);
+      }
+    });
+
+    if (!merged) return;
+    fromArr.delete(fromIdx, 1);
+  });
+}
+
 export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: ColumnKey): CardData[] {
   const arr = board.get(column);
   if (!arr) return [];

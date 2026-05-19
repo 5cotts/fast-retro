@@ -14,6 +14,7 @@
     addComment,
     deleteComment,
     moveCard,
+    mergeCards,
     setBoardLabel,
     setBoardAnonymous
   } from './yboard';
@@ -70,6 +71,7 @@
   let dragFromCol = $state<ColumnKey | null>(null);
   let dragOverCol = $state<ColumnKey | null>(null);
   let dragOverIndex = $state<number>(-1);
+  let dragMergeTargetId = $state<string | null>(null);
   let coarsePointer = $state<boolean>(false);
   let reducedMotion = $state<boolean>(false);
   let prevTimerExpired = $state<boolean>(false);
@@ -360,6 +362,42 @@
     dragFromCol = null;
     dragOverCol = null;
     dragOverIndex = -1;
+    dragMergeTargetId = null;
+  }
+
+  // Group-phase merge: lead drags one card onto another to combine them.
+  // The Card component fires this when the pointer is over its body (not the
+  // inter-card slot). We stash the target id so the card shows a "merge
+  // here" affordance, and clear the reorder indicator so the two visuals
+  // don't fight.
+  function onCardMergeDragOver(cardId: string) {
+    if (!mergeMode || !dragCardId || dragCardId === cardId) return;
+    dragMergeTargetId = cardId;
+    dragOverIndex = -1;
+  }
+
+  function onCardMergeDragLeave(cardId: string) {
+    if (dragMergeTargetId === cardId) dragMergeTargetId = null;
+  }
+
+  function onCardMergeDrop(targetCol: ColumnKey, targetId: string) {
+    if (!conn.state.board || !dragCardId || !dragFromCol) {
+      onDragEnd();
+      return;
+    }
+    if (!mergeMode || dragCardId === targetId) {
+      onDragEnd();
+      return;
+    }
+    mergeCards(
+      conn.state.board.doc,
+      conn.state.board.board,
+      dragFromCol,
+      dragCardId,
+      targetCol,
+      targetId
+    );
+    onDragEnd();
   }
 
   function onCardSlotDragOver(e: DragEvent, col: ColumnKey, index: number) {
@@ -510,6 +548,7 @@
   const isLastPhase = $derived(phaseIndex === PHASES.length - 1);
   const isFirstPhase = $derived(phaseIndex === 0);
   const canVote = $derived(canVoteInPhase(conn.state.phase));
+  const mergeMode = $derived(isLead && conn.state.phase === 'group');
 
   function downloadCSV() {
     const csv = exportCSV(conn.state.cards);
@@ -796,6 +835,8 @@
                     {canVote}
                     anonymous={conn.state.anonymous}
                     namesMap={namesMapDisambiguated}
+                    mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
+                    isMergeTarget={dragMergeTargetId === card.id}
                     onEdit={(id, text) => handleEdit(col.key, id, text)}
                     onDelete={(id) => handleDelete(col.key, id)}
                     onToggleVote={(id) => handleVote(col.key, id)}
@@ -807,6 +848,9 @@
                     onFocusCard={() => (focusedCardId = card.id)}
                     {onDragStart}
                     {onDragEnd}
+                    onMergeDragOver={() => onCardMergeDragOver(card.id)}
+                    onMergeDragLeave={() => onCardMergeDragLeave(card.id)}
+                    onMergeDrop={() => onCardMergeDrop(col.key, card.id)}
                   />
                   {#if typers.length > 0}
                     <div
