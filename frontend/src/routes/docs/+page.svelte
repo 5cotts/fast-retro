@@ -113,7 +113,9 @@
             </li>
             <li>
               <strong class="text-sky-700 dark:text-sky-300">2. Group.</strong>
-              The lead clusters related cards. You can drag cards too, or use
+              The lead clusters related cards, and may <strong>merge duplicates</strong> by
+              dragging one card onto another — the merged card keeps everyone's votes,
+              reactions, and comments. You can drag cards too, or use
               <kbd class="kbd-inline">Shift</kbd>+<kbd class="kbd-inline">←/→</kbd> with a card
               focused.
             </li>
@@ -124,8 +126,9 @@
             </li>
             <li>
               <strong class="text-sky-700 dark:text-sky-300">4. Discuss.</strong>
-              The team works through the top-voted cards. Use 💬 to leave context, and reactions
-              (😄 🎉 🤔) to signal agreement without interrupting.
+              The team works through the top-voted cards. Use 💬 to leave context, and the
+              emoji picker (😀) to react with <em>any</em> emoji — agreement, laughter,
+              skepticism — without interrupting.
             </li>
             <li>
               <strong class="text-sky-700 dark:text-sky-300">5. Actions.</strong>
@@ -139,7 +142,7 @@
           <h2 class="font-semibold text-lg mb-2">Card actions</h2>
           <ul class="space-y-1 list-disc pl-5">
             <li><strong>Vote</strong> (Vote phase) — click ▲ to upvote, click again to undo.</li>
-            <li><strong>React</strong> (anytime) — 😀 button opens the picker.</li>
+            <li><strong>React</strong> (anytime) — 😀 opens a searchable picker; pick any emoji.</li>
             <li><strong>Comment</strong> (anytime) — 💬 button opens the comment thread.</li>
             <li><strong>Edit / delete your own card</strong> (anytime) — pencil and trash icons appear on cards you authored.</li>
             <li><strong>Move a card</strong> (anytime) — drag, or focus the card and press
@@ -151,8 +154,24 @@
           <h2 class="font-semibold text-lg mb-2">Privacy &amp; identity</h2>
           <p>
             Your display name is local to your browser. Authorship is shown on every card and
-            comment, so write knowing your name is attached. The footer pencil icon lets you change
-            your name at any time.
+            comment, so write knowing your name is attached. The footer pencil icon lets you
+            change your name at any time.
+          </p>
+          <p class="mt-3">
+            If the lead has turned on <strong>Anonymous mode</strong>, the board header shows
+            an "Anonymous" badge and bylines on cards and comments are hidden for everyone.
+            Authorship is still recorded — just not displayed — so use it when the team needs
+            psychological safety rather than as a guarantee.
+          </p>
+        </section>
+
+        <section>
+          <h2 class="font-semibold text-lg mb-2">Are you actually the lead?</h2>
+          <p>
+            If someone shared the participant URL with you but you're meant to be hosting,
+            click <strong>Open as host</strong> in the header. It swaps you onto the
+            <code class="font-mono text-xs">/lead/&lt;token&gt;/&lt;slug&gt;</code> URL using
+            the token saved in your browser, so you don't have to edit the URL bar by hand.
           </p>
         </section>
       </article>
@@ -172,20 +191,15 @@
           <h2 class="font-semibold text-lg mb-2">Setting up the retro</h2>
           <ol class="space-y-3 list-decimal pl-5">
             <li>
-              Confirm the deployment has a stable <code class="font-mono text-xs">RETRO_LEAD_TOKEN</code>
-              set. (If it isn't, the lead URL changes every server restart — fine for testing,
-              fragile for a recurring retro.)
+              On the homepage, click <strong>Host a retro</strong> and paste the deployment's
+              lead token. It's saved to this browser's local storage — you only do this once
+              per device.
             </li>
             <li>
-              Pick a slug for this session — anything URL-safe works, e.g.
-              <code class="font-mono text-xs">sprint-42</code> or
-              <code class="font-mono text-xs">2026-q2-mobile</code>. Going to a slug that doesn't
-              exist creates a fresh board.
-            </li>
-            <li>
-              Visit
-              <code class="font-mono text-xs break-all">/lead/&lt;token&gt;/&lt;slug&gt;</code>
-              and join with your name. The header shows a <strong>Host</strong> badge.
+              Click <strong>New retro</strong>. You'll land on a fresh board with a generated
+              slug and a <strong>Host</strong> badge in the header. Give the board a label
+              (pencil icon next to the slug) so it's recognizable in the dashboard later —
+              e.g. <em>Sprint 42 — Mobile</em>.
             </li>
             <li>
               Click <strong>Share</strong> in the header to copy the participant URL (the
@@ -193,6 +207,12 @@
               automatically). Paste it in your team channel.
             </li>
           </ol>
+          <p class="mt-3">
+            Your host dashboard lives at
+            <code class="font-mono text-xs break-all">/lead/&lt;token&gt;</code>. It lists every
+            board that's currently live (with participant counts, current phase, and card
+            counts) plus a link to your archive of past retros.
+          </p>
         </section>
 
         <section>
@@ -202,7 +222,7 @@
           </p>
           <ul class="space-y-2 list-disc pl-5">
             <li><strong>Brainstorm — 10 min.</strong> Start the timer (click the clock pill, set the minutes, hit Start). Everyone silently adds cards.</li>
-            <li><strong>Group — 5 min.</strong> Click <em>Next phase</em>. Cluster related cards together by dragging.</li>
+            <li><strong>Group — 5 min.</strong> Click <em>Next phase</em>. Cluster related cards by dragging. To collapse duplicates, drag one card onto another — they <strong>merge</strong> and the target keeps the combined votes, reactions, and comments.</li>
             <li><strong>Vote — 5 min.</strong> Advance again. Everyone votes; the highest counts surface what to talk about.</li>
             <li><strong>Discuss — 20 min.</strong> Walk through cards in vote order. Use comments to capture insights you want to keep.</li>
             <li><strong>Actions — 5 min.</strong> Capture concrete next steps with owners and dates.</li>
@@ -214,8 +234,10 @@
           <ul class="space-y-1 list-disc pl-5">
             <li><strong>Timer.</strong> Click the timer pill in the header — set minutes, Start, Pause, Reset. Engineers see the same countdown.</li>
             <li><strong>Next / Previous phase.</strong> Advance when the room is ready. The <em>← Previous</em> button is there for misclicks — phases don't lose data when you go back.</li>
-            <li><strong>Download CSV.</strong> Snapshot of every card, comment, vote count and reaction. Keep it for your records before clearing.</li>
-            <li><strong>End retro.</strong> Wipes the board for the next session. The confirm dialog also offers an "Export CSV &amp; clear" shortcut if you forgot.</li>
+            <li><strong>Merge cards</strong> (Group phase). Drag one card onto another to collapse duplicates; the combined votes, reactions, and comments carry over.</li>
+            <li><strong>Anonymous mode.</strong> Toggle in the header to hide all bylines on cards and comments board-wide. Authorship is still recorded on the server — it's a display switch, not a guarantee — so use it to lower the bar for honest feedback.</li>
+            <li><strong>Download CSV.</strong> Snapshot of every card, comment, vote count and reaction. Optional now that <em>End retro</em> auto-archives, but useful if you want a file in your own tools.</li>
+            <li><strong>End retro.</strong> Auto-archives the board to <code class="font-mono text-xs break-all">/lead/&lt;token&gt;/archives</code> (cards, votes, reactions, comments, label, timestamp) and then clears it for the next session. Past archives stay browsable from the host dashboard.</li>
           </ul>
         </section>
 
@@ -233,10 +255,13 @@
         <section>
           <h2 class="font-semibold text-lg mb-2">Recurring retros</h2>
           <p>
-            Each slug is its own board. To run the same team every two weeks, reuse the same
-            slug — or use a date stamp (<code class="font-mono text-xs">2026-q2-mobile</code>)
-            and visit <code class="font-mono text-xs break-all">/lead/&lt;token&gt;/history</code>
-            to see your recent boards. Always export the CSV before ending a board.
+            Each slug is its own board. To run the same team every two weeks, give each
+            session its own slug (e.g. <code class="font-mono text-xs">sprint-42</code>,
+            <code class="font-mono text-xs">sprint-43</code>) and let <em>End retro</em>
+            push each one to <code class="font-mono text-xs break-all">/lead/&lt;token&gt;/archives</code>.
+            The archive page is the canonical place to find past retros — labels, dates, and
+            full card content survive there. The host dashboard at
+            <code class="font-mono text-xs break-all">/lead/&lt;token&gt;</code> links to it.
           </p>
         </section>
       </article>
