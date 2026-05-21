@@ -22,30 +22,63 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 - **Frontend**: [SvelteKit](https://kit.svelte.dev/) + [Bun](https://bun.sh) + [Tailwind CSS](https://tailwindcss.com/)
 - **Deploy**: single self-contained binary — the SvelteKit static build is embedded into the Rust binary via [`rust-embed`](https://github.com/pyrossh/rust-embed). No separate web server needed.
 
-## Quickstart
+## Local development
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) (stable)
-- [Bun](https://bun.sh)
+- [Rust](https://www.rust-lang.org/tools/install) — stable toolchain (a `rust-toolchain.toml` is checked in, so `rustup` will pick the right channel automatically)
+- [Bun](https://bun.sh) ≥ 1.1
 
-### Build
+No Docker needed — both runtimes install cleanly on macOS and Linux.
+
+### Get the code
+
+```bash
+git clone https://github.com/5cotts/fast-retro.git
+cd fast-retro
+( cd frontend && bun install )
+```
+
+### Run it — two-terminal dev loop (recommended)
+
+This gives you Rust auto-rebuilds on backend changes and Vite HMR on the frontend.
+
+```bash
+# Terminal 1 — backend (port 5102)
+RETRO_LEAD_TOKEN=dev-token cargo run
+
+# Terminal 2 — frontend dev server (port 5173)
+cd frontend && bun run dev
+```
+
+Then open <http://localhost:5173>. Vite proxies `/api/*` and the `/ws` websocket to the backend on `5102` (see `frontend/vite.config.ts`). Point at a different backend with `VITE_BACKEND_URL=http://host:port bun run dev`.
+
+The "lead" controls (timer, phase changes, board reset) are gated by a secret URL: `/lead/dev-token`. Share the public URL with participants; keep the lead URL to yourself.
+
+### Run it — single binary (production-like)
 
 ```bash
 ./build.sh
+RETRO_LEAD_TOKEN=dev-token ./target/release/fast-retro
 ```
 
-This builds the frontend (`bun run build`) and then the release binary (`cargo build --release`). The frontend's static assets are embedded into the final binary at compile time.
+Then open <http://localhost:5102>. `build.sh` runs `bun run build` then `cargo build --release`; the SvelteKit static output is embedded into the binary via `rust-embed`.
 
-### Run
+### Tests
 
 ```bash
-RETRO_LEAD_TOKEN=your-secret-token ./target/release/fast-retro
+# Rust unit tests
+cargo test
+
+# Frontend type-check
+( cd frontend && bun run check )
+
+# Playwright end-to-end (first run only: install browsers)
+bunx playwright install
+bun run test:e2e
 ```
 
-Then open <http://localhost:5102>.
-
-The "lead" controls (timer, phase changes, board reset) are gated by a secret URL: `/lead/<RETRO_LEAD_TOKEN>`. Share the public URL with participants; keep the lead URL to yourself.
+The e2e suite hits the live deployment by default; see `playwright.config.ts` to point it at `http://localhost:5173` or `http://localhost:5102`.
 
 ### Environment variables
 
@@ -54,18 +87,9 @@ The "lead" controls (timer, phase changes, board reset) are gated by a secret UR
 | `RETRO_LEAD_TOKEN` | random 16-char string printed at start | Secret token gating the lead/host controls. Set this in production.         |
 | `PORT`             | `5102`                                 | HTTP port to bind.                                                          |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
+| `VITE_BACKEND_URL` | `http://localhost:5102`                | (dev only) Backend the Vite dev server proxies `/api` and `/ws` to.         |
 
 If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment.
-
-### Dev mode (frontend hot reload)
-
-For frontend iteration:
-
-```bash
-cd frontend && bun install && bun run dev
-```
-
-The Vite dev server proxies the websocket and API requests to a separately-running backend on port 5102.
 
 ## Architecture
 
