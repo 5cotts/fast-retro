@@ -29,7 +29,7 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 - [Rust](https://www.rust-lang.org/tools/install) — stable toolchain (a `rust-toolchain.toml` is checked in, so `rustup` will pick the right channel automatically)
 - [Bun](https://bun.sh) ≥ 1.1
 
-No Docker needed — both runtimes install cleanly on macOS and Linux.
+No Docker needed — both runtimes install cleanly on macOS and Linux. If you'd rather not install them on your host, see [Dev container](#dev-container-vs-code--cursor--codespaces) below.
 
 ### Get the code
 
@@ -61,6 +61,17 @@ The "lead" controls (timer, phase changes, board reset) are gated by a secret UR
 ./build.sh
 RETRO_LEAD_TOKEN=dev-token ./target/release/fast-retro
 ```
+
+### Dev container (VS Code / Cursor / Codespaces)
+
+A `.devcontainer/` is checked in so you can develop without installing Rust or Bun on your host. You'll need [Docker](https://www.docker.com/) and the Dev Containers extension for your editor (or just open the repo in GitHub Codespaces).
+
+1. Open the repo in VS Code or Cursor.
+2. Run **Dev Containers: Reopen in Container** from the command palette.
+3. The container builds, `bun install` runs automatically, and `rust-analyzer` / Svelte / Tailwind / Playwright extensions are pre-installed.
+4. In the container terminal, run the two-terminal dev loop above. Ports `5102` and `5173` are forwarded to your host, and `RETRO_LEAD_TOKEN=dev-token` is already set.
+
+Playwright browsers aren't bundled in the image — run `cd frontend && bunx playwright install --with-deps chromium` once if you want to run e2e tests inside the container.
 
 Then open <http://localhost:5102>. `build.sh` runs `bun run build` then `cargo build --release`; the SvelteKit static output is embedded into the binary via `rust-embed`.
 
