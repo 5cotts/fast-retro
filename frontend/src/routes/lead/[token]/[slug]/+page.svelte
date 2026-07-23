@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import Board from '$lib/Board.svelte';
@@ -11,29 +10,36 @@
   const token = $derived(page.params.token ?? '');
   const slug = $derived(page.params.slug ?? '');
 
-  onMount(async () => {
-    if (!token) {
+  // Same SvelteKit component-reuse pitfall as /board/[slug]: use an effect
+  // keyed on token+slug so this reruns on every in-app navigation between two
+  // /lead/... URLs, not just on first mount.
+  $effect(() => {
+    const currentToken = token;
+    const currentSlug = slug;
+    if (!currentToken) {
       ok = false;
       return;
     }
-    if (!isValidSlug(slug)) {
-      goto(`/lead/${token}`, { replaceState: true });
+    if (!isValidSlug(currentSlug)) {
+      goto(`/lead/${currentToken}`, { replaceState: true });
       return;
     }
-    try {
-      const r = await fetch(`/api/lead-token-check/${encodeURIComponent(token)}`);
-      ok = r.ok;
-    } catch {
-      ok = false;
-    }
-    if (ok) {
-      try {
-        localStorage.setItem('retro-was-lead', '1');
-      } catch {
-        // ignore
-      }
-      recordRecentBoard(slug);
-    }
+    ok = null;
+    fetch(`/api/lead-token-check/${encodeURIComponent(currentToken)}`)
+      .then((r) => r.ok)
+      .catch(() => false)
+      .then((result) => {
+        if (currentToken !== token || currentSlug !== slug) return;
+        ok = result;
+        if (result) {
+          try {
+            localStorage.setItem('retro-was-lead', '1');
+          } catch {
+            // ignore
+          }
+          recordRecentBoard(currentSlug);
+        }
+      });
   });
 </script>
 
@@ -49,7 +55,9 @@
     </div>
   </div>
 {:else if ok}
-  <Board isLead={true} {slug} leadToken={token} />
+  {#key slug}
+    <Board isLead={true} {slug} leadToken={token} />
+  {/key}
 {:else}
   <div class="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 p-6">
     <div class="text-center max-w-sm">
