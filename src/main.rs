@@ -173,6 +173,12 @@ async fn main() {
     });
     info!("database: {}", db_path);
 
+    match archive::migrate_from_json(&db) {
+        Ok(0) => {}
+        Ok(n) => info!("imported {} archive(s) from data/archives/*.json into the DB", n),
+        Err(e) => warn!("archive JSON migration failed: {}", e),
+    }
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
@@ -481,7 +487,7 @@ async fn create_archive(
     let Some(slug) = sanitize_slug(&slug) else {
         return (StatusCode::BAD_REQUEST, "bad slug").into_response();
     };
-    match archive::save(&slug, req) {
+    match archive::save(&state.db, &slug, req) {
         Ok(a) => (StatusCode::OK, Json(serde_json::json!({ "id": a.id }))).into_response(),
         Err(e) => {
             warn!("archive save failed: {}", e);
@@ -494,7 +500,7 @@ async fn list_archives(State(state): State<AppState>, headers: HeaderMap) -> Res
     if !check_lead_token(&headers, &state.lead_token) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
-    match archive::list() {
+    match archive::list(&state.db) {
         Ok(items) => (StatusCode::OK, Json(items)).into_response(),
         Err(e) => {
             warn!("archive list failed: {}", e);
@@ -511,7 +517,7 @@ async fn get_archive(
     if !check_lead_token(&headers, &state.lead_token) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
-    match archive::load(&id) {
+    match archive::load(&state.db, &id) {
         Ok(Some(a)) => (StatusCode::OK, Json(a)).into_response(),
         Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => {
@@ -529,7 +535,7 @@ async fn delete_archive(
     if !check_lead_token(&headers, &state.lead_token) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
-    match archive::delete(&id) {
+    match archive::delete(&state.db, &id) {
         Ok(true) => (StatusCode::OK, "ok").into_response(),
         Ok(false) => (StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => {

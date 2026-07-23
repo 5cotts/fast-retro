@@ -1,14 +1,19 @@
 //! SQLite persistence for fast-retro.
 //!
-//! Phase 1 (this module): durable live boards. The CRDT `Doc` for each board is
-//! persisted as a compacted snapshot in `board_docs` plus an append-only log of
-//! raw updates in `doc_updates`. On room creation we hydrate from the snapshot
-//! and replay the log; on shutdown/idle we compact. A restart therefore restores
-//! every board exactly as it was.
+//! Phase 1: durable live boards. The CRDT `Doc` for each board is persisted as
+//! a compacted snapshot in `board_docs` plus an append-only log of raw updates
+//! in `doc_updates`. On room creation we hydrate from the snapshot and replay
+//! the log; on shutdown/idle we compact. A restart therefore restores every
+//! board exactly as it was.
 //!
-//! The schema also declares the tables the later phases (archives-in-DB, users,
-//! sessions, participants) will use, so migrations are a no-op when we get there.
-//! Only `board_docs` and `doc_updates` are wired up for now.
+//! Phase 2 (this module also handles): archives move from flat JSON files into
+//! the `archives` table. The full `Archive` is stored as a JSON blob (same
+//! shape the frontend already expects) alongside indexed `slug`/`ended_at`
+//! columns for listing. A one-time migration imports any pre-existing
+//! `data/archives/*.json` files; the JSON files are left on disk as a backup.
+//!
+//! The schema also declares the tables later phases (users, sessions,
+//! participants) will use, so those migrations are a no-op when we get there.
 
 use std::{
     path::Path,
@@ -17,6 +22,8 @@ use std::{
 };
 
 use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::archive::Archive;
 
 #[derive(Clone)]
 pub struct Db {
@@ -41,6 +48,16 @@ CREATE TABLE IF NOT EXISTS doc_updates (
     created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_doc_updates_slug ON doc_updates(slug, id);
+
+CREATE TABLE IF NOT EXISTS archives (
+    id         TEXT PRIMARY KEY,
+    slug       TEXT NOT NULL,
+    label      TEXT NOT NULL DEFAULT '',
+    ended_at   INTEGER NOT NULL,
+    created_by TEXT,
+    snapshot   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_archives_ended_at ON archives(ended_at);
 
 -- Declared now for later phases; not yet written to.
 CREATE TABLE IF NOT EXISTS boards (
@@ -172,5 +189,74 @@ impl Db {
             }
             Err(e) => tracing::warn!("db compact failed for {}: {}", slug, e),
         }
+    }
+
+    // ---------- archives ----------
+
+    /// Insert (or overwrite) an archive row. The whole `Archive` is stored as a
+    /// JSON blob in `snapshot`; `slug`/`label`/`ended_at` are duplicated into
+    /// their own columns purely so `list_archives` can sort/filter without
+    /// deserializing every row.
+    pub fn save_archive(&self, archive: &Archive) -> rusqlite::Result<()> {
+        let snapshot = serde_json::to_string(archive)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO archives (id, slug, label, ended_at, snapshot) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, label = excluded.label,
+                 ended_at = excluded.ended_at, snapshot = excluded.snapshot",
+            params![archive.id, archive.slug, archive.label, archive.ended_at, snapshot],
+        )?;
+        Ok(())
+    }
+
+    /// True if an archive with this id is already stored (used by the JSON
+    /// migration to skip files that were already imported).
+    pub fn archive_exists(&self, id: &str) -> bool {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT 1 FROM archives WHERE id = ?1",
+            params![id],
+            |_| Ok(()),
+        )
+        .optional()
+        .unwrap_or(None)
+        .is_some()
+    }
+
+    /// All archives, newest first, for the summary list view.
+    pub fn list_archives(&self) -> rusqlite::Result<Vec<Archive>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt =
+            conn.prepare("SELECT snapshot FROM archives ORDER BY ended_at DESC")?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            let json = r?;
+            match serde_json::from_str::<Archive>(&json) {
+                Ok(a) => out.push(a),
+                Err(e) => tracing::warn!("skipping corrupt archive row: {}", e),
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn load_archive(&self, id: &str) -> rusqlite::Result<Option<Archive>> {
+        let conn = self.conn.lock().unwrap();
+        let json: Option<String> = conn
+            .query_row(
+                "SELECT snapshot FROM archives WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(json.and_then(|j| serde_json::from_str(&j).ok()))
+    }
+
+    /// Returns true if a row was deleted.
+    pub fn delete_archive(&self, id: &str) -> rusqlite::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let n = conn.execute("DELETE FROM archives WHERE id = ?1", params![id])?;
+        Ok(n > 0)
     }
 }
