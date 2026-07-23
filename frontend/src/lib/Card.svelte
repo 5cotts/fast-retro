@@ -15,6 +15,7 @@
     userName,
     isLead,
     canVote = true,
+    readOnly = false,
     anonymous = false,
     namesMap,
     mergeMode = false,
@@ -40,6 +41,7 @@
     userName: string;
     isLead: boolean;
     canVote?: boolean;
+    readOnly?: boolean;
     anonymous?: boolean;
     namesMap: Record<string, string>;
     mergeMode?: boolean;
@@ -172,7 +174,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  draggable={!editing}
+  draggable={!editing && !readOnly}
   tabindex="0"
   role="group"
   aria-label={`Card: ${card.text.slice(0, 80)}`}
@@ -302,7 +304,7 @@
             ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200'
             : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:hover:bg-transparent'}"
         onclick={() => onToggleVote(card.id)}
-        disabled={!canVote && !hasVoted}
+        disabled={(!canVote && !hasVoted) || readOnly}
         aria-label={hasVoted
           ? `Remove vote (${voteCount})`
           : canVote
@@ -315,6 +317,7 @@
         <span class="tabular-nums">{voteCount}</span>
       </button>
 
+      {#if !readOnly}
       <div class="relative">
         <button
           bind:this={pickerBtnEl}
@@ -387,6 +390,7 @@
           </div>
         {/if}
       </div>
+      {/if}
 
       <button
         class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[40px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -400,7 +404,7 @@
 
       <span class="flex-1"></span>
 
-      {#if canEdit}
+      {#if canEdit && !readOnly}
         <button
           class="md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 rounded min-w-[40px] min-h-[40px] md:min-w-[32px] md:min-h-[32px] flex items-center justify-center"
           aria-label="Edit card"
@@ -492,25 +496,27 @@
             {/if}
           </div>
         {/each}
-        <div class="flex gap-1.5 mt-2">
-          <input
-            bind:value={commentDraft}
-            type="text"
-            placeholder="Add a comment…"
-            aria-label="Add a comment"
-            class="flex-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
-            onkeydown={onCommentKey}
-            onfocus={() => onTypingComment(card.id)}
-            onblur={() => onTypingComment(null)}
-          />
-          <button
-            class="text-xs px-2.5 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md disabled:opacity-40 hover:opacity-90 transition-opacity"
-            disabled={!commentDraft.trim()}
-            onclick={submitComment}
-          >
-            Post
-          </button>
-        </div>
+        {#if !readOnly}
+          <div class="flex gap-1.5 mt-2">
+            <input
+              bind:value={commentDraft}
+              type="text"
+              placeholder="Add a comment…"
+              aria-label="Add a comment"
+              class="flex-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
+              onkeydown={onCommentKey}
+              onfocus={() => onTypingComment(card.id)}
+              onblur={() => onTypingComment(null)}
+            />
+            <button
+              class="text-xs px-2.5 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md disabled:opacity-40 hover:opacity-90 transition-opacity"
+              disabled={!commentDraft.trim()}
+              onclick={submitComment}
+            >
+              Post
+            </button>
+          </div>
+        {/if}
       </div>
     {/if}
   {/if}
