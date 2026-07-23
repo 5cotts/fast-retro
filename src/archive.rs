@@ -125,7 +125,12 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn save(db: &Db, slug: &str, req: ArchiveRequest) -> Result<Archive, String> {
+pub fn save(
+    db: &Db,
+    slug: &str,
+    req: ArchiveRequest,
+    created_by: Option<&str>,
+) -> Result<Archive, String> {
     let archive = Archive {
         id: generate_id(),
         slug: slug.to_string(),
@@ -134,7 +139,7 @@ pub fn save(db: &Db, slug: &str, req: ArchiveRequest) -> Result<Archive, String>
         cards: req.cards,
         names: req.names,
     };
-    db.save_archive(&archive).map_err(|e| e.to_string())?;
+    db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
 }
 
@@ -185,7 +190,7 @@ pub fn migrate_from_json(db: &Db) -> std::io::Result<usize> {
         if db.archive_exists(&arch.id) {
             continue;
         }
-        if let Err(e) = db.save_archive(&arch) {
+        if let Err(e) = db.save_archive(&arch, None) {
             tracing::warn!("archive migration: failed to import {}: {}", arch.id, e);
             continue;
         }

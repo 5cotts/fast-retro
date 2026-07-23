@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -14,7 +14,7 @@ use axum::{
     },
     http::{header, HeaderMap, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{get, post},
     Router,
 };
 use serde::Deserialize;
@@ -24,10 +24,12 @@ use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
 
 mod archive;
+mod auth;
 mod db;
 mod sync;
 
-use db::Db;
+use auth::GoogleVerifier;
+use db::{BoardRow, Db, User};
 use sync::{Awareness, ClientId, Doc};
 
 #[derive(RustEmbed)]
@@ -46,6 +48,8 @@ struct Room {
     next_client_id: Mutex<u64>,
     /// Updates appended to the log since the last compaction.
     dirty: AtomicU64,
+    /// Board has been ended by its host — read-only, rejects further writes.
+    ended: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -65,6 +69,11 @@ impl Room {
                 warn!("hydrate {} skipped a bad update: {}", slug, e);
             }
         }
+        // A board that was already ended stays read-only after a restart.
+        let ended = db
+            .get_board(&slug)
+            .map(|b| b.ended_at.is_some())
+            .unwrap_or(false);
         Arc::new(Self {
             slug,
             db,
@@ -74,7 +83,12 @@ impl Room {
             broadcast: tx,
             next_client_id: Mutex::new(1),
             dirty: AtomicU64::new(0),
+            ended: AtomicBool::new(ended),
         })
+    }
+
+    fn is_ended(&self) -> bool {
+        self.ended.load(Ordering::Relaxed)
     }
 
     fn next_client_id(&self) -> ClientId {
@@ -108,6 +122,33 @@ struct AppState {
     rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>,
     lead_token: String,
     db: Db,
+    /// Google ID-token verifier; None when GOOGLE_CLIENT_ID isn't configured
+    /// (SSO simply stays off and the sign-in button is hidden).
+    google: Option<Arc<GoogleVerifier>>,
+    /// Mark session cookies Secure (production HTTPS). Off for local http tests.
+    cookie_secure: bool,
+}
+
+impl AppState {
+    /// The signed-in user behind the request's session cookie, if any.
+    fn session_user(&self, headers: &HeaderMap) -> Option<User> {
+        let cookie = headers.get(header::COOKIE).and_then(|v| v.to_str().ok());
+        let token = auth::session_from_cookies(cookie)?;
+        self.db.user_for_session(&token)
+    }
+
+    /// Is the caller authorized to host `slug`? True if they're the signed-in
+    /// creator, presented the board host key (`X-Host-Key`), or hold the global
+    /// admin lead token.
+    fn is_host(&self, slug: &str, headers: &HeaderMap) -> bool {
+        if check_lead_token(headers, &self.lead_token) {
+            return true;
+        }
+        let user = self.session_user(headers);
+        let host_key = headers.get("x-host-key").and_then(|v| v.to_str().ok());
+        self.db
+            .is_host(slug, user.as_ref().map(|u| u.id.as_str()), host_key)
+    }
 }
 
 const DEFAULT_BOARD_SLUG: &str = "default";
@@ -179,10 +220,28 @@ async fn main() {
         Err(e) => warn!("archive JSON migration failed: {}", e),
     }
 
+    let google = match std::env::var("GOOGLE_CLIENT_ID") {
+        Ok(id) if !id.trim().is_empty() => {
+            info!("Google SSO enabled (client id ...{})", &id[id.len().saturating_sub(12)..]);
+            Some(Arc::new(GoogleVerifier::new(id.trim().to_string())))
+        }
+        _ => {
+            info!("Google SSO disabled (set GOOGLE_CLIENT_ID to enable)");
+            None
+        }
+    };
+
+    // Cookies default to Secure; set COOKIE_SECURE=0 for local http testing.
+    let cookie_secure = std::env::var("COOKIE_SECURE")
+        .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+        .unwrap_or(true);
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
         db,
+        google,
+        cookie_secure,
     };
 
     println!("=================================================");
@@ -195,12 +254,21 @@ async fn main() {
     let app = Router::new()
         .route("/ws", get(ws_handler))
         .route("/api/health", get(health))
+        .route("/api/config", get(config))
         .route("/api/lead-token-check/:token", get(lead_token_check))
-        .route("/api/boards", get(list_boards))
+        // Accounts (Google SSO)
+        .route("/api/auth/google", post(auth_google))
+        .route("/api/auth/logout", post(auth_logout))
+        .route("/api/me", get(me))
+        .route("/api/me/boards", get(my_boards))
+        .route("/api/me/archives", get(my_archives))
+        // Per-board host model + admin host-dashboard (global lead token)
+        .route("/api/boards", post(create_board).get(list_boards))
+        .route("/api/boards/:slug", get(board_status))
+        .route("/api/boards/:slug/end", post(end_board))
         .route("/api/boards/:slug/archive", post(create_archive))
         .route("/api/archives", get(list_archives))
-        .route("/api/archives/:id", get(get_archive))
-        .route("/api/archives/:id", delete(delete_archive))
+        .route("/api/archives/:id", get(get_archive).delete(delete_archive))
         .fallback(static_handler)
         .with_state(state);
 
@@ -415,7 +483,12 @@ async fn process_message(
                         let _ = out_tx.send(Message::Binary(reply));
                     }
                     1 | 2 => {
-                        // SyncStep2 or Update: apply to our doc, broadcast
+                        // SyncStep2 or Update: apply to our doc, broadcast.
+                        // Ended boards are read-only — silently drop writes so a
+                        // stale client can't mutate an archived retro.
+                        if room.is_ended() {
+                            continue;
+                        }
                         let applied = {
                             let mut doc = room.doc.lock().unwrap();
                             doc.apply_update_v1(payload).map_err(|e| e.to_string())?
@@ -475,6 +548,216 @@ fn check_lead_token(headers: &HeaderMap, expected: &str) -> bool {
     diff == 0
 }
 
+async fn config(State(state): State<AppState>) -> Response {
+    let (enabled, client_id) = match &state.google {
+        Some(v) => (true, v.client_id().to_string()),
+        None => (false, String::new()),
+    };
+    Json(serde_json::json!({ "googleEnabled": enabled, "googleClientId": client_id })).into_response()
+}
+
+#[derive(Deserialize)]
+struct GoogleAuthReq {
+    credential: String,
+}
+
+async fn auth_google(
+    State(state): State<AppState>,
+    Json(req): Json<GoogleAuthReq>,
+) -> Response {
+    let Some(verifier) = state.google.as_ref() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Google SSO not configured").into_response();
+    };
+    let claims = match verifier.verify(&req.credential).await {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("google token verify failed: {}", e);
+            return (StatusCode::UNAUTHORIZED, "invalid Google token").into_response();
+        }
+    };
+    let user = match state
+        .db
+        .upsert_user(&claims.sub, &claims.email, &claims.name, &claims.picture)
+    {
+        Ok(u) => u,
+        Err(e) => {
+            warn!("upsert_user failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed").into_response();
+        }
+    };
+    let token = match state.db.create_session(&user.id) {
+        Ok(t) => t,
+        Err(e) => {
+            warn!("create_session failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "sign-in failed").into_response();
+        }
+    };
+    let cookie = auth::session_cookie(&token, state.cookie_secure);
+    (
+        [(header::SET_COOKIE, cookie)],
+        Json(serde_json::json!({ "user": user })),
+    )
+        .into_response()
+}
+
+async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let cookie = headers.get(header::COOKIE).and_then(|v| v.to_str().ok());
+    if let Some(token) = auth::session_from_cookies(cookie) {
+        state.db.delete_session(&token);
+    }
+    (
+        [(header::SET_COOKIE, auth::clear_cookie(state.cookie_secure))],
+        Json(serde_json::json!({ "ok": true })),
+    )
+        .into_response()
+}
+
+async fn me(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let user = state.session_user(&headers);
+    Json(serde_json::json!({ "user": user })).into_response()
+}
+
+async fn my_boards(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let Some(user) = state.session_user(&headers) else {
+        return (StatusCode::UNAUTHORIZED, "not signed in").into_response();
+    };
+    match state.db.list_boards_for_user(&user.id) {
+        Ok(boards) => {
+            let out: Vec<_> = boards.iter().map(|b| board_summary_json(b, &user.id)).collect();
+            Json(out).into_response()
+        }
+        Err(e) => {
+            warn!("list_boards_for_user failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "failed").into_response()
+        }
+    }
+}
+
+async fn my_archives(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let Some(user) = state.session_user(&headers) else {
+        return (StatusCode::UNAUTHORIZED, "not signed in").into_response();
+    };
+    match state.db.list_archives_for_user(&user.id) {
+        Ok(items) => Json(items).into_response(),
+        Err(e) => {
+            warn!("list_archives_for_user failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "failed").into_response()
+        }
+    }
+}
+
+fn board_summary_json(b: &BoardRow, user_id: &str) -> serde_json::Value {
+    serde_json::json!({
+        "slug": b.slug,
+        "label": b.label,
+        "ended": b.ended_at.is_some(),
+        "createdAt": b.created_at,
+        "isOwner": b.created_by.as_deref() == Some(user_id),
+    })
+}
+
+#[derive(Deserialize)]
+struct CreateBoardReq {
+    #[serde(default)]
+    slug: String,
+    #[serde(default)]
+    label: String,
+}
+
+async fn create_board(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(req): Json<CreateBoardReq>,
+) -> Response {
+    let Some(slug) = sanitize_slug(&req.slug) else {
+        return (StatusCode::BAD_REQUEST, "bad slug").into_response();
+    };
+    let label = req.label.trim().chars().take(60).collect::<String>();
+    let user = state.session_user(&headers);
+    let created_by = user.as_ref().map(|u| u.id.as_str());
+    match state.db.create_board(&slug, &label, created_by) {
+        Ok(Some(host_key)) => {
+            if let Some(uid) = created_by {
+                state.db.upsert_participant(&slug, uid);
+            }
+            Json(serde_json::json!({ "slug": slug, "hostKey": host_key })).into_response()
+        }
+        Ok(None) => (
+            StatusCode::CONFLICT,
+            Json(serde_json::json!({ "error": "slug taken" })),
+        )
+            .into_response(),
+        Err(e) => {
+            warn!("create_board failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, "create failed").into_response()
+        }
+    }
+}
+
+async fn board_status(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    let Some(slug) = sanitize_slug(&slug) else {
+        return (StatusCode::BAD_REQUEST, "bad slug").into_response();
+    };
+    let board = state.db.get_board(&slug);
+    let exists = board.is_some();
+    let ended = board.as_ref().map(|b| b.ended_at.is_some()).unwrap_or(false);
+    let label = board.as_ref().map(|b| b.label.clone()).unwrap_or_default();
+    let am_host = state.is_host(&slug, &headers);
+    // A signed-in visitor to an existing board counts as a participant (powers
+    // "My retros"). Idempotent.
+    if exists {
+        if let Some(user) = state.session_user(&headers) {
+            state.db.upsert_participant(&slug, &user.id);
+        }
+    }
+    Json(serde_json::json!({
+        "slug": slug,
+        "exists": exists,
+        "ended": ended,
+        "label": label,
+        "amHost": am_host,
+    }))
+    .into_response()
+}
+
+async fn end_board(
+    State(state): State<AppState>,
+    AxumPath(slug): AxumPath<String>,
+    headers: HeaderMap,
+    Json(req): Json<archive::ArchiveRequest>,
+) -> Response {
+    let Some(slug) = sanitize_slug(&slug) else {
+        return (StatusCode::BAD_REQUEST, "bad slug").into_response();
+    };
+    if !state.is_host(&slug, &headers) {
+        return (StatusCode::FORBIDDEN, "forbidden").into_response();
+    }
+    let user = state.session_user(&headers);
+    let created_by = user.as_ref().map(|u| u.id.as_str());
+    let label = req.label.clone();
+    let archive = match archive::save(&state.db, &slug, req, created_by) {
+        Ok(a) => a,
+        Err(e) => {
+            warn!("end_board archive failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "archive failed").into_response();
+        }
+    };
+    state.db.end_board(&slug);
+    if !label.is_empty() {
+        state.db.set_board_label(&slug, &label);
+    }
+    // Flip the live room to read-only and snapshot its final state.
+    if let Some(room) = state.rooms.read().await.get(&slug) {
+        room.ended.store(true, Ordering::Relaxed);
+        room.compact();
+    }
+    Json(serde_json::json!({ "archiveId": archive.id })).into_response()
+}
+
 async fn create_archive(
     State(state): State<AppState>,
     AxumPath(slug): AxumPath<String>,
@@ -487,7 +770,8 @@ async fn create_archive(
     let Some(slug) = sanitize_slug(&slug) else {
         return (StatusCode::BAD_REQUEST, "bad slug").into_response();
     };
-    match archive::save(&state.db, &slug, req) {
+    let created_by = state.session_user(&headers).map(|u| u.id);
+    match archive::save(&state.db, &slug, req, created_by.as_deref()) {
         Ok(a) => (StatusCode::OK, Json(serde_json::json!({ "id": a.id }))).into_response(),
         Err(e) => {
             warn!("archive save failed: {}", e);
