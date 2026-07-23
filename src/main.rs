@@ -1,7 +1,10 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use axum::{
@@ -21,8 +24,10 @@ use tokio::sync::{broadcast, RwLock};
 use tracing::{info, warn};
 
 mod archive;
+mod db;
 mod sync;
 
+use db::Db;
 use sync::{Awareness, ClientId, Doc};
 
 #[derive(RustEmbed)]
@@ -32,11 +37,15 @@ struct StaticAssets;
 type ClientSink = tokio::sync::mpsc::UnboundedSender<Message>;
 
 struct Room {
+    slug: String,
+    db: Db,
     doc: Mutex<Doc>,
     awareness: Mutex<Awareness>,
     clients: RwLock<HashMap<ClientId, ClientSink>>,
     broadcast: broadcast::Sender<BroadcastMsg>,
     next_client_id: Mutex<u64>,
+    /// Updates appended to the log since the last compaction.
+    dirty: AtomicU64,
 }
 
 #[derive(Clone)]
@@ -46,14 +55,25 @@ enum BroadcastMsg {
 }
 
 impl Room {
-    fn new() -> Arc<Self> {
+    /// Build a room for `slug`, hydrating its CRDT doc from the database
+    /// (compacted snapshot + replayed update log). A brand-new board starts empty.
+    fn new(slug: String, db: Db) -> Arc<Self> {
         let (tx, _) = broadcast::channel(256);
+        let mut doc = Doc::new();
+        for update in db.load_doc(&slug) {
+            if let Err(e) = doc.apply_update_v1(&update) {
+                warn!("hydrate {} skipped a bad update: {}", slug, e);
+            }
+        }
         Arc::new(Self {
-            doc: Mutex::new(Doc::new()),
+            slug,
+            db,
+            doc: Mutex::new(doc),
             awareness: Mutex::new(Awareness::new()),
             clients: RwLock::new(HashMap::new()),
             broadcast: tx,
             next_client_id: Mutex::new(1),
+            dirty: AtomicU64::new(0),
         })
     }
 
@@ -63,12 +83,31 @@ impl Room {
         *id += 1;
         v
     }
+
+    /// Persist an applied update to the log, and compact if the log has grown
+    /// past the threshold.
+    fn persist_update(&self, update: &[u8]) {
+        self.db.append_update(&self.slug, update);
+        if self.dirty.fetch_add(1, Ordering::Relaxed) + 1 >= db::COMPACT_THRESHOLD {
+            self.compact();
+        }
+    }
+
+    /// Fold the update log into a fresh snapshot. Holds the doc lock across the
+    /// snapshot + DB swap so no un-snapshotted update is ever deleted from the log.
+    fn compact(&self) {
+        let doc = self.doc.lock().unwrap();
+        let snapshot = doc.encode_state_as_update_v1(&[]);
+        self.db.compact(&self.slug, &snapshot);
+        self.dirty.store(0, Ordering::Relaxed);
+    }
 }
 
 #[derive(Clone)]
 struct AppState {
     rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>,
     lead_token: String,
+    db: Db,
 }
 
 const DEFAULT_BOARD_SLUG: &str = "default";
@@ -92,10 +131,14 @@ async fn get_or_create_room(state: &AppState, slug: &str) -> Arc<Room> {
         return room.clone();
     }
     let mut rooms = state.rooms.write().await;
-    rooms
-        .entry(slug.to_string())
-        .or_insert_with(Room::new)
-        .clone()
+    // Re-check under the write lock: another task may have created it while we
+    // waited (hydration below is not idempotent-cheap enough to race).
+    if let Some(room) = rooms.get(slug) {
+        return room.clone();
+    }
+    let room = Room::new(slug.to_string(), state.db.clone());
+    rooms.insert(slug.to_string(), room.clone());
+    room
 }
 
 #[derive(Deserialize)]
@@ -124,9 +167,16 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(5102);
 
+    let db_path = std::env::var("FASTRETRO_DB").unwrap_or_else(|_| "data/fastretro.db".to_string());
+    let db = Db::open(&db_path).unwrap_or_else(|e| {
+        panic!("failed to open database at {}: {}", db_path, e);
+    });
+    info!("database: {}", db_path);
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
+        db,
     };
 
     println!("=================================================");
@@ -313,7 +363,16 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
     }
 
     info!("client {} disconnected", client_id);
-    room.clients.write().await.remove(&client_id);
+    let remaining = {
+        let mut clients = room.clients.write().await;
+        clients.remove(&client_id);
+        clients.len()
+    };
+    // When the last participant leaves, fold the update log into a snapshot so
+    // the board is stored compactly and is ready to survive a restart.
+    if remaining == 0 {
+        room.compact();
+    }
 
     // We don't proactively broadcast awareness removal: frontends publish a
     // final "null" awareness state on unload, and the y-protocols client-side
@@ -356,6 +415,7 @@ async fn process_message(
                             doc.apply_update_v1(payload).map_err(|e| e.to_string())?
                         };
                         if !applied.is_empty() {
+                            room.persist_update(&applied);
                             let _ = room.broadcast.send(BroadcastMsg::DocUpdate {
                                 from: client_id,
                                 update: applied,
