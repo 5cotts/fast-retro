@@ -4,20 +4,31 @@ End-to-end smoke tests for fast-retro, run with Playwright (Chromium).
 
 ## Run
 
-From the project root:
+Tests only run against a **locally-running instance** — never a public
+deployment. Hitting a public `*.zocomputer.io` URL from a sandboxed browser
+adds enough proxy/CDN latency to make even basic UI interactions flaky.
+
+From the project root, start a local instance first:
+
+```bash
+./build.sh
+RETRO_LEAD_TOKEN=dev-token ./target/release/fast-retro   # serves on :5102
+```
+
+Then, in another terminal:
 
 ```bash
 bun install            # installs @playwright/test
 bunx playwright install chromium   # one-time browser download
-bun run test:e2e
+RETRO_LEAD_TOKEN=dev-token bun run test:e2e
 ```
 
-By default the tests hit the live deployment at
-`https://retro-board-5cotts.zocomputer.io`. To point them at a different
-instance:
+Tests default to `http://localhost:5102`. `E2E_BASE_URL` only exists to
+point at a different *local* port — e.g. the two-terminal dev loop's Vite
+server:
 
 ```bash
-E2E_BASE_URL=http://localhost:5102 bun run test:e2e
+E2E_BASE_URL=http://localhost:5173 bun run test:e2e
 ```
 
 ## What they cover
@@ -68,6 +79,32 @@ opens the reaction picker on their own card, searches for "rocket"
 confirms the participant sees the same reaction. Then switches to
 the Hearts category tab and reacts with 🧡 to verify category
 browsing also works end-to-end.
+
+`reload-persistence.spec.ts` — regression test for a CRDT init race
+(fixed in `yboard.ts`'s `createBoard()`): a returning user (name
+already in localStorage) joins, adds a card, then reloads 8 times in
+a row, asserting the card stays visible after every reload. The bug
+this guards against set default empty Y.Arrays for the board columns
+*before* the WebsocketProvider's initial sync completed, which could
+race the server's real column data and — empirically, about half the
+time per load — silently wipe existing cards once the empty state
+synced back and persisted. A single reload only catches that
+regression half the time, hence the loop.
+
+`cross-tab-isolation.spec.ts` — regression test for a shared
+cross-tab BroadcastChannel (fixed in `yboard.ts`'s `createBoard()`
+via `disableBc: true`): two pages in the *same* browser context join
+two *different* boards; a card added on board A must not appear on
+board B. y-websocket keys its same-origin BroadcastChannel sync by
+`serverUrl + '/' + roomname`, and this app hardcodes `roomname` to
+`'ws'` for every board (the real per-board routing goes through the
+`?board=<slug>` query param instead), so with BC enabled *any* two
+boards open at once in one browser synced their Yjs docs directly
+with each other — label, phase, presence every time, and card data
+non-deterministically (same Y.Map last-write-wins race as the reload
+bug above) — regardless of which slugs they pointed at. Two separate
+Playwright *contexts* would NOT catch this (BroadcastChannel is
+scoped per browser profile); it has to be two pages in one context.
 
 ### Lead token
 

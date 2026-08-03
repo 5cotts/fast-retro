@@ -1,34 +1,45 @@
 const KEY_RECENT_BOARDS = 'retro-recent-boards';
-const KEY_HOST_TOKEN = 'retro-host-token';
+const KEY_HOST_KEYS = 'retro-host-keys';
 const SLUG_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
 const MAX_RECENT = 30;
 
-// Host token is the deployment's RETRO_LEAD_TOKEN, saved per-browser so a
-// recurring facilitator doesn't have to retype the lead URL each session.
-// It's never broadcast — purely a local convenience.
-export function getLeadToken(): string {
+// Per-board host keys. When you create a board you become its host; the server
+// returns a capability key that we stash here, keyed by slug. Presenting it
+// (via the X-Host-Key header) proves you're the host on this device — no shared
+// token, no login required. Signing in additionally ties ownership to your
+// account so you're host on any device.
+function readHostKeys(): Record<string, string> {
   try {
-    return localStorage.getItem(KEY_HOST_TOKEN) ?? '';
+    const raw = localStorage.getItem(KEY_HOST_KEYS);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
-    return '';
+    return {};
   }
 }
 
-export function setLeadToken(token: string): void {
-  const t = token.trim();
-  if (!t) return;
+export function getHostKey(slug: string): string {
+  return readHostKeys()[slug] ?? '';
+}
+
+export function setHostKey(slug: string, key: string): void {
+  if (!isValidSlug(slug) || !key) return;
   try {
-    localStorage.setItem(KEY_HOST_TOKEN, t);
+    const keys = readHostKeys();
+    keys[slug] = key;
+    localStorage.setItem(KEY_HOST_KEYS, JSON.stringify(keys));
   } catch {
-    // ignore
+    // best-effort
   }
 }
 
-export function clearLeadToken(): void {
+export function clearHostKey(slug: string): void {
   try {
-    localStorage.removeItem(KEY_HOST_TOKEN);
+    const keys = readHostKeys();
+    delete keys[slug];
+    localStorage.setItem(KEY_HOST_KEYS, JSON.stringify(keys));
   } catch {
-    // ignore
+    // best-effort
   }
 }
 

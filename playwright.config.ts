@@ -1,6 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const baseURL = process.env.E2E_BASE_URL ?? 'https://retro-board-5cotts.zocomputer.io';
+// E2E tests only run against a locally-running fast-retro instance — never
+// a public deployment. Hitting a public *.zocomputer.io URL from this
+// sandboxed browser adds proxy/CDN latency severe enough to make even the
+// golden-path smoke test flaky (fails waiting on basic UI interactions that
+// pass instantly against localhost). E2E_BASE_URL exists only to point at a
+// different local port (e.g. the two-terminal dev loop's Vite server on
+// 5173), not to opt back into testing a remote deployment.
+const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5102';
 
 export default defineConfig({
   testDir: './tests',
@@ -11,8 +18,6 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   expect: {
-    // Hydration on the live deployment can be sluggish on cold cache;
-    // give expect() locators a bit more headroom than the 5s default.
     timeout: 15_000
   },
   use: {

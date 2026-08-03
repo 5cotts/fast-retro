@@ -1,11 +1,12 @@
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
+
+use crate::db::Db;
 
 const ARCHIVES_DIR: &str = "data/archives";
 
@@ -110,25 +111,6 @@ fn archives_dir() -> PathBuf {
     PathBuf::from(ARCHIVES_DIR)
 }
 
-fn ensure_dir() -> std::io::Result<()> {
-    fs::create_dir_all(archives_dir())
-}
-
-fn id_is_safe(id: &str) -> bool {
-    !id.is_empty()
-        && id.len() <= 64
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-}
-
-fn archive_path(id: &str) -> Option<PathBuf> {
-    if !id_is_safe(id) {
-        return None;
-    }
-    Some(archives_dir().join(format!("{id}.json")))
-}
-
 fn generate_id() -> String {
     use rand::Rng;
     let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyz0123456789".chars().collect();
@@ -143,34 +125,47 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-pub fn save(slug: &str, req: ArchiveRequest) -> std::io::Result<Archive> {
-    ensure_dir()?;
-    let id = generate_id();
+pub fn save(
+    db: &Db,
+    slug: &str,
+    req: ArchiveRequest,
+    created_by: Option<&str>,
+) -> Result<Archive, String> {
     let archive = Archive {
-        id: id.clone(),
+        id: generate_id(),
         slug: slug.to_string(),
         label: req.label,
         ended_at: now_ms(),
         cards: req.cards,
         names: req.names,
     };
-    let path = archives_dir().join(format!("{id}.json"));
-    let tmp = archives_dir().join(format!(".{id}.json.tmp"));
-    let bytes = serde_json::to_vec_pretty(&archive)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-    {
-        let mut f = fs::File::create(&tmp)?;
-        f.write_all(&bytes)?;
-        f.sync_all()?;
-    }
-    fs::rename(tmp, path)?;
+    db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
 }
 
-pub fn list() -> std::io::Result<Vec<ArchiveSummary>> {
-    ensure_dir()?;
-    let mut out: Vec<Archive> = Vec::new();
-    for entry in fs::read_dir(archives_dir())? {
+pub fn list(db: &Db) -> Result<Vec<ArchiveSummary>, String> {
+    let archives = db.list_archives().map_err(|e| e.to_string())?;
+    Ok(archives.into_iter().map(|a| a.summary()).collect())
+}
+
+pub fn load(db: &Db, id: &str) -> Result<Option<Archive>, String> {
+    db.load_archive(id).map_err(|e| e.to_string())
+}
+
+pub fn delete(db: &Db, id: &str) -> Result<bool, String> {
+    db.delete_archive(id).map_err(|e| e.to_string())
+}
+
+/// One-time import of any pre-existing `data/archives/*.json` files into the
+/// DB. Idempotent — skips ids already present, so it's safe to call on every
+/// startup. The JSON files are left in place as a backup (not deleted).
+pub fn migrate_from_json(db: &Db) -> std::io::Result<usize> {
+    let dir = archives_dir();
+    if !dir.exists() {
+        return Ok(0);
+    }
+    let mut imported = 0;
+    for entry in fs::read_dir(&dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -188,38 +183,20 @@ pub fn list() -> std::io::Result<Vec<ArchiveSummary>> {
             Ok(b) => b,
             Err(_) => continue,
         };
-        if let Ok(arch) = serde_json::from_slice::<Archive>(&bytes) {
-            out.push(arch);
+        let arch: Archive = match serde_json::from_slice(&bytes) {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        if db.archive_exists(&arch.id) {
+            continue;
         }
+        if let Err(e) = db.save_archive(&arch, None) {
+            tracing::warn!("archive migration: failed to import {}: {}", arch.id, e);
+            continue;
+        }
+        imported += 1;
     }
-    out.sort_by(|a, b| b.ended_at.cmp(&a.ended_at));
-    Ok(out.into_iter().map(|a| a.summary()).collect())
-}
-
-pub fn load(id: &str) -> std::io::Result<Option<Archive>> {
-    let path = match archive_path(id) {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-    if !path.exists() {
-        return Ok(None);
-    }
-    let bytes = fs::read(&path)?;
-    let arch: Archive = serde_json::from_slice(&bytes)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    Ok(Some(arch))
-}
-
-pub fn delete(id: &str) -> std::io::Result<bool> {
-    let path = match archive_path(id) {
-        Some(p) => p,
-        None => return Ok(false),
-    };
-    if !path.exists() {
-        return Ok(false);
-    }
-    fs::remove_file(path)?;
-    Ok(true)
+    Ok(imported)
 }
 
 #[allow(dead_code)]

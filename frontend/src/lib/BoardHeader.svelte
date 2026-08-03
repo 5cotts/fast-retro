@@ -7,10 +7,7 @@
   import NameBadge from './NameBadge.svelte';
   import Wordmark from './Wordmark.svelte';
   import BoardLabel from './BoardLabel.svelte';
-  import { Menu, Monitor, Sun, Moon, Link2, Check, Crown, EyeOff } from 'lucide-svelte';
-  import { getLeadToken } from './boards';
-  import HostModal from './HostModal.svelte';
-  import { goto } from '$app/navigation';
+  import { Menu, Monitor, Sun, Moon, Link2, Check, EyeOff } from 'lucide-svelte';
 
   let {
     isLead,
@@ -69,30 +66,6 @@
   let showMobileMenu = $state(false);
   let linkCopied = $state(false);
   let copyTimer: ReturnType<typeof setTimeout> | null = null;
-
-  let showHostModal = $state(false);
-
-  function currentSlug(): string {
-    if (typeof window === 'undefined') return '';
-    const m = window.location.pathname.match(/\/board\/([^/]+)|\/lead\/[^/]+\/([^/]+)/);
-    return m ? m[1] || m[2] : '';
-  }
-
-  function openAsHost() {
-    const token = getLeadToken();
-    const slug = currentSlug();
-    if (token && slug) {
-      goto(`/lead/${token}/${slug}`);
-      return;
-    }
-    showHostModal = true;
-  }
-
-  function onHostConfirm(token: string) {
-    showHostModal = false;
-    const slug = currentSlug();
-    if (slug) goto(`/lead/${token}/${slug}`);
-  }
 
   const timerVisible = $derived(
     timerState.durationSec > 0 || timerState.startedAt !== null || timerState.paused
@@ -202,17 +175,6 @@
 
     <div class="hidden sm:contents">
       <div class="ml-auto flex items-center gap-2 flex-wrap">
-        {#if !isLead}
-          <button
-            class="btn text-xs px-2 py-1 min-h-[32px] border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 hover:bg-sky-50 dark:hover:bg-sky-900/30"
-            onclick={openAsHost}
-            title="Open this board as host"
-            aria-label="Open this board as host"
-          >
-            <Crown size={13} aria-hidden="true" />
-            <span>Host</span>
-          </button>
-        {/if}
         <button
           class="btn text-xs px-2 py-1 min-h-[32px]"
           onclick={copyBoardLink}
@@ -290,15 +252,6 @@
         />
       {/if}
       <div class="flex items-center gap-2 flex-wrap">
-        {#if !isLead}
-          <button
-            class="btn text-sm px-3 py-2 min-h-[44px] border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200"
-            onclick={openAsHost}
-          >
-            <Crown size={14} aria-hidden="true" />
-            Host this board
-          </button>
-        {/if}
         <button
           class="btn text-sm px-3 py-2 min-h-[44px]"
           onclick={copyBoardLink}
@@ -328,7 +281,3 @@
     </div>
   {/if}
 </header>
-
-{#if showHostModal}
-  <HostModal onClose={() => (showHostModal = false)} onConfirm={onHostConfirm} />
-{/if}

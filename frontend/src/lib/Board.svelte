@@ -8,7 +8,6 @@
     addCard,
     editCardText,
     deleteCard,
-    resetBoard,
     toggleVote,
     toggleReaction,
     addComment,
@@ -18,7 +17,16 @@
     setBoardLabel,
     setBoardAnonymous
   } from './yboard';
-  import { recordRecentBoard, consumePendingLabel } from './boards';
+  import {
+    recordRecentBoard,
+    consumePendingLabel,
+    setHostKey,
+    setPendingLabel,
+    newSlug,
+    slugifyLabel
+  } from './boards';
+  import { createBoard, endBoard } from './api';
+  import { goto } from '$app/navigation';
   import {
     setTimerDuration,
     startTimer,
@@ -47,7 +55,27 @@
     canVoteInPhase
   } from './phase';
 
-  let { isLead = false, slug, leadToken = '' } = $props<{ isLead?: boolean; slug: string; leadToken?: string }>();
+  let {
+    isLead = false,
+    slug,
+    leadToken = '',
+    hostKey = '',
+    readOnly = false
+  } = $props<{
+    isLead?: boolean;
+    slug: string;
+    leadToken?: string;
+    hostKey?: string;
+    readOnly?: boolean;
+  }>();
+
+  // A board the host has ended is read-only for everyone. Seeded from the
+  // server status (readOnly prop) and flipped locally the moment this host
+  // ends it.
+  let ended = $state<boolean>(readOnly);
+  let startingNext = $state<boolean>(false);
+  // Lead controls only apply to a live board — an ended retro is frozen.
+  const effectiveLead = $derived(isLead && !ended);
 
   let userName = $state<string>('');
   let promptingName = $state<boolean>(true);
@@ -548,7 +576,7 @@
   const isLastPhase = $derived(phaseIndex === PHASES.length - 1);
   const isFirstPhase = $derived(phaseIndex === 0);
   const canVote = $derived(canVoteInPhase(conn.state.phase));
-  const mergeMode = $derived(isLead && conn.state.phase === 'group');
+  const mergeMode = $derived(effectiveLead && conn.state.phase === 'group');
 
   function downloadCSV() {
     const csv = exportCSV(conn.state.cards);
@@ -583,42 +611,55 @@
   let archiveError = $state<string>('');
 
   async function confirmEndBoard(opts: { exportFirst: boolean }) {
-    if (!conn.state.board || !isLead) {
+    if (!conn.state.board || !effectiveLead) {
       endConfirm = false;
       return;
     }
     if (opts.exportFirst) downloadCSV();
     archiveError = '';
-    if (leadToken) {
-      archiving = true;
-      try {
-        const body = {
+    archiving = true;
+    try {
+      await endBoard(
+        slug,
+        {
           label: conn.state.label,
           cards: conn.state.cards,
           names: conn.state.namesMap
-        };
-        const r = await fetch(`/api/boards/${encodeURIComponent(slug)}/archive`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${leadToken}`
-          },
-          body: JSON.stringify(body)
-        });
-        if (!r.ok) {
-          archiveError = `Archive failed (${r.status}). Board not cleared.`;
-          archiving = false;
-          return;
-        }
-      } catch (e) {
-        archiveError = 'Network error while archiving. Board not cleared.';
-        archiving = false;
-        return;
-      }
+        },
+        { hostKey, leadToken }
+      );
+    } catch (e) {
+      archiveError = 'Ending failed. The retro is still open — try again.';
       archiving = false;
+      return;
     }
-    resetBoard(conn.state.board.doc, conn.state.board.board, conn.state.board.timer);
+    archiving = false;
+    // Archived + frozen server-side. Flip to read-only in place — the board
+    // stays viewable; we don't wipe it.
+    ended = true;
     endConfirm = false;
+  }
+
+  // Seamless "next retro": spin up a brand-new board (never reuse this slug),
+  // become its host, and navigate there. Carries the label forward.
+  async function startNextRetro() {
+    if (startingNext) return;
+    startingNext = true;
+    try {
+      const base = conn.state.label ? conn.state.label.trim().slice(0, 60) : '';
+      const body = slugifyLabel(base);
+      const wanted = body ? `${body}-${newSlug(3)}` : newSlug();
+      let res = await createBoard(wanted, base).catch(() => null);
+      if (!res) res = await createBoard(newSlug(), base);
+      setHostKey(res.slug, res.hostKey);
+      if (base) {
+        recordRecentBoard(res.slug, { label: base });
+        setPendingLabel(res.slug, base);
+      }
+      goto(`/board/${res.slug}`);
+    } catch {
+      startingNext = false;
+    }
   }
 </script>
 
@@ -637,7 +678,7 @@
 {:else}
   <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
     <BoardHeader
-      {isLead}
+      isLead={effectiveLead}
       connected={conn.state.connected}
       label={conn.state.label}
       {slug}
@@ -689,7 +730,7 @@
           {/each}
         </div>
         <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {PHASE_HINT[conn.state.phase]}</span>
-        {#if isLead}
+        {#if effectiveLead}
           <div class="ml-auto flex items-center gap-1.5">
             {#if !isFirstPhase}
               <button
@@ -715,6 +756,33 @@
         {/if}
       </div>
     </div>
+
+    {#if ended}
+      <div
+        class="border-b border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200"
+        role="status"
+        aria-live="polite"
+      >
+        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex items-center gap-3 flex-wrap">
+          <div class="flex-1 min-w-[200px]">
+            <div class="font-semibold text-sm">This retro has ended</div>
+            <div class="text-xs opacity-80">
+              It's archived and read-only now. {isLead ? 'Start a fresh one for your next session.' : 'Ask your host to start a new one.'}
+            </div>
+          </div>
+          {#if isLead}
+            <button
+              class="inline-flex items-center gap-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md text-xs px-3 py-2 min-h-[36px] font-medium hover:opacity-90 disabled:opacity-60 transition-opacity"
+              disabled={startingNext}
+              onclick={startNextRetro}
+            >
+              {startingNext ? 'Starting…' : 'Start next retro'}
+            </button>
+          {/if}
+          <a href="/" class="btn-ghost text-xs px-3 py-2 min-h-[36px]">Home</a>
+        </div>
+      </div>
+    {/if}
 
     {#if timerJustExpired}
       <div
@@ -757,11 +825,8 @@
           <div class="flex-1 min-w-[200px]">
             <div id="end-board-heading" class="font-semibold text-sm">End this retro?</div>
             <div class="text-xs opacity-80">
-              {#if leadToken}
-                Saves a snapshot you can revisit from your archives, then clears the board for everyone.
-              {:else}
-                This clears all cards, comments, and the timer for everyone. This can't be undone.
-              {/if}
+              Saves a snapshot to your archives and makes the board read-only for everyone.
+              You can start a fresh retro right after.
             </div>
             {#if archiveError}
               <div class="text-xs mt-1 font-medium text-rose-900 dark:text-rose-100">{archiveError}</div>
@@ -774,7 +839,7 @@
               onclick={() => confirmEndBoard({ exportFirst: true })}
             >
               <Download size={14} aria-hidden="true" />
-              Export CSV &amp; clear
+              Export CSV &amp; end
             </button>
           {/if}
           <button
@@ -782,7 +847,7 @@
             disabled={archiving}
             onclick={() => confirmEndBoard({ exportFirst: false })}
           >
-            {archiving ? 'Saving…' : leadToken ? 'Archive & clear' : 'Clear board'}
+            {archiving ? 'Saving…' : 'Archive & end'}
           </button>
           <button class="btn-ghost text-xs px-3 py-1.5" disabled={archiving} onclick={cancelEndBoard}>Cancel</button>
         </div>
@@ -794,7 +859,7 @@
         {#each COLUMNS as col (col.key)}
           {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
           {@const colCards = conn.state.cards[col.key]}
-          {@const canAdd = canAddCardInColumn(col.key, conn.state.phase)}
+          {@const canAdd = canAddCardInColumn(col.key, conn.state.phase) && !ended}
           <section
             class="border rounded-xl shadow-sm flex flex-col {col.accent}"
             role="list"
@@ -831,7 +896,8 @@
                     column={col.key}
                     {userId}
                     {userName}
-                    {isLead}
+                    isLead={effectiveLead}
+                    readOnly={ended}
                     {canVote}
                     anonymous={conn.state.anonymous}
                     namesMap={namesMapDisambiguated}
