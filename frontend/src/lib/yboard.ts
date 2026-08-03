@@ -34,12 +34,22 @@ export function createBoard(slug: string): BoardState {
   const phase = doc.getMap<unknown>('phase');
   const meta = doc.getMap<unknown>('meta');
 
-  doc.transact(() => {
-    for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
-      if (!board.has(col)) {
-        board.set(col, new Y.Array<Y.Map<unknown>>());
+  // Wait for the initial server sync before deciding which columns are
+  // "missing" and need a default empty array. Setting defaults eagerly
+  // (before this doc has merged in the server's state) races the server's
+  // real column data: Y.Map resolves concurrent writes to the same key via
+  // an effectively random per-doc client-ID tie-break, so a fresh client's
+  // pre-sync empty array can — and empirically does, roughly half the time —
+  // beat an existing column full of cards, wiping it once the empty state
+  // gets synced back and persisted.
+  provider.once('sync', () => {
+    doc.transact(() => {
+      for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+        if (!board.has(col)) {
+          board.set(col, new Y.Array<Y.Map<unknown>>());
+        }
       }
-    }
+    });
   });
 
   return { doc, provider, board, timer, names, phase, meta, slug };
