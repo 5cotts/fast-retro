@@ -69,6 +69,17 @@ confirms the participant sees the same reaction. Then switches to
 the Hearts category tab and reacts with 🧡 to verify category
 browsing also works end-to-end.
 
+`reload-persistence.spec.ts` — regression test for a CRDT init race
+(fixed in `yboard.ts`'s `createBoard()`): a returning user (name
+already in localStorage) joins, adds a card, then reloads 8 times in
+a row, asserting the card stays visible after every reload. The bug
+this guards against set default empty Y.Arrays for the board columns
+*before* the WebsocketProvider's initial sync completed, which could
+race the server's real column data and — empirically, about half the
+time per load — silently wipe existing cards once the empty state
+synced back and persisted. A single reload only catches that
+regression half the time, hence the loop.
+
 ### Lead token
 
 The full-session test joins the lead role and therefore needs the
