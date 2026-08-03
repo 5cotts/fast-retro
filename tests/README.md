@@ -4,20 +4,31 @@ End-to-end smoke tests for fast-retro, run with Playwright (Chromium).
 
 ## Run
 
-From the project root:
+Tests only run against a **locally-running instance** — never a public
+deployment. Hitting a public `*.zocomputer.io` URL from a sandboxed browser
+adds enough proxy/CDN latency to make even basic UI interactions flaky.
+
+From the project root, start a local instance first:
+
+```bash
+./build.sh
+RETRO_LEAD_TOKEN=dev-token ./target/release/fast-retro   # serves on :5102
+```
+
+Then, in another terminal:
 
 ```bash
 bun install            # installs @playwright/test
 bunx playwright install chromium   # one-time browser download
-bun run test:e2e
+RETRO_LEAD_TOKEN=dev-token bun run test:e2e
 ```
 
-By default the tests hit the live deployment at
-`https://retro-board-5cotts.zocomputer.io`. To point them at a different
-instance:
+Tests default to `http://localhost:5102`. `E2E_BASE_URL` only exists to
+point at a different *local* port — e.g. the two-terminal dev loop's Vite
+server:
 
 ```bash
-E2E_BASE_URL=http://localhost:5102 bun run test:e2e
+E2E_BASE_URL=http://localhost:5173 bun run test:e2e
 ```
 
 ## What they cover
