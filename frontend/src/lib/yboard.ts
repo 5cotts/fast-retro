@@ -25,7 +25,20 @@ export function createBoard(slug: string): BoardState {
   const base = wsUrl.replace(/\/ws$/, '');
   const provider = new WebsocketProvider(base, 'ws', doc, {
     connect: true,
-    params: { board: slug }
+    params: { board: slug },
+    // y-websocket's cross-tab BroadcastChannel sync is keyed by `serverUrl +
+    // '/' + roomname` — NOT by the `board` query param. Every board on this
+    // origin uses the same hardcoded roomname ('ws', required so the actual
+    // WebSocket URL still resolves to the server's /ws route), so with BC
+    // enabled, any two tabs open on *different* boards at the same time sync
+    // their Yjs docs directly with each other, bypassing the server's
+    // per-slug room separation entirely — confirmed live: opening two
+    // unrelated boards in separate tabs caused one to inherit the other's
+    // label/phase/presence immediately, and card data intermittently (same
+    // Y.Map last-write-wins race as the reload bug above). The server
+    // round-trip already provides real-time sync, so this same-browser
+    // optimization isn't needed — just turn it off.
+    disableBc: true
   });
 
   const board = doc.getMap<Y.Array<Y.Map<unknown>>>('board');

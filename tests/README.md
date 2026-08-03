@@ -91,6 +91,21 @@ time per load — silently wipe existing cards once the empty state
 synced back and persisted. A single reload only catches that
 regression half the time, hence the loop.
 
+`cross-tab-isolation.spec.ts` — regression test for a shared
+cross-tab BroadcastChannel (fixed in `yboard.ts`'s `createBoard()`
+via `disableBc: true`): two pages in the *same* browser context join
+two *different* boards; a card added on board A must not appear on
+board B. y-websocket keys its same-origin BroadcastChannel sync by
+`serverUrl + '/' + roomname`, and this app hardcodes `roomname` to
+`'ws'` for every board (the real per-board routing goes through the
+`?board=<slug>` query param instead), so with BC enabled *any* two
+boards open at once in one browser synced their Yjs docs directly
+with each other — label, phase, presence every time, and card data
+non-deterministically (same Y.Map last-write-wins race as the reload
+bug above) — regardless of which slugs they pointed at. Two separate
+Playwright *contexts* would NOT catch this (BroadcastChannel is
+scoped per browser profile); it has to be two pages in one context.
+
 ### Lead token
 
 The full-session test joins the lead role and therefore needs the
