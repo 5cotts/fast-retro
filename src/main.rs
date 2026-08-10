@@ -13,16 +13,18 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path as AxumPath, Query, State,
     },
-    http::{header, HeaderMap, StatusCode, Uri},
+    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
+use base64::Engine;
 use serde::Deserialize;
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use rust_embed::RustEmbed;
+use sha2::{Digest, Sha256};
 use tokio::sync::{broadcast, RwLock};
-use tower_http::limit::RequestBodyLimitLayer;
+use tower_http::{limit::RequestBodyLimitLayer, set_header::SetResponseHeaderLayer};
 use tracing::{info, warn};
 
 mod archive;
@@ -371,6 +373,22 @@ async fn main() {
         .route("/api/archives/:id", get(get_archive).delete(delete_archive))
         .fallback(static_handler)
         .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            compute_csp(),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
@@ -704,6 +722,10 @@ async fn auth_google(
             return (StatusCode::UNAUTHORIZED, "invalid Google token").into_response();
         }
     };
+    if !claims.email_verified {
+        warn!("google sign-in rejected: unverified email ({})", claims.sub);
+        return (StatusCode::UNAUTHORIZED, "Google account email not verified").into_response();
+    }
     let user = match state
         .db
         .upsert_user(&claims.sub, &claims.email, &claims.name, &claims.picture)
@@ -956,6 +978,46 @@ async fn delete_archive(
             (StatusCode::INTERNAL_SERVER_ERROR, "delete failed").into_response()
         }
     }
+}
+
+/// Build the Content-Security-Policy header value. `script-src` is locked to
+/// `'self'` plus Google's GIS script, with the embedded `index.html`'s one
+/// inline hydration `<script>` (SvelteKit's static-adapter bootstrap) allowed
+/// by hash rather than a blanket `'unsafe-inline'` — the app has no other
+/// inline scripts and never injects HTML (`{@html}`/`innerHTML` aren't used
+/// anywhere), so nothing else should ever need to execute.
+fn compute_csp() -> HeaderValue {
+    let script_src = StaticAssets::get("index.html")
+        .and_then(|f| String::from_utf8(f.data.into_owned()).ok())
+        .and_then(|html| {
+            let start = html.find("<script>")? + "<script>".len();
+            let end = start + html[start..].find("</script>")?;
+            Some(html[start..end].to_string())
+        })
+        .map(|script_body| {
+            let digest = Sha256::digest(script_body.as_bytes());
+            let hash = base64::engine::general_purpose::STANDARD.encode(digest);
+            format!("'self' 'sha256-{hash}' https://accounts.google.com")
+        })
+        .unwrap_or_else(|| {
+            warn!("couldn't extract inline hydration script for CSP hash; falling back to 'unsafe-inline' for script-src");
+            "'self' 'unsafe-inline' https://accounts.google.com".to_string()
+        });
+
+    let csp = format!(
+        "default-src 'self'; \
+         script-src {script_src}; \
+         style-src 'self' 'unsafe-inline'; \
+         img-src 'self' data: https://*.googleusercontent.com; \
+         font-src 'self'; \
+         connect-src 'self' ws: wss: https://accounts.google.com; \
+         frame-src https://accounts.google.com; \
+         object-src 'none'; \
+         base-uri 'self'; \
+         form-action 'self'; \
+         frame-ancestors 'none'"
+    );
+    HeaderValue::from_str(&csp).unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'"))
 }
 
 async fn static_handler(uri: Uri) -> Response {

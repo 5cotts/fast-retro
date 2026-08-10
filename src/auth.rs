@@ -35,10 +35,20 @@ pub struct GoogleClaims {
     pub sub: String,
     #[serde(default)]
     pub email: String,
+    /// Google's own attestation that `email` has been verified. Defaults to
+    /// `true` when absent: GIS tokens for real sign-ins always include it as
+    /// `true`, and callers should only ever see `false` for edge-case Google
+    /// account types we don't want to silently treat as verified.
+    #[serde(default = "default_true")]
+    pub email_verified: bool,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub picture: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 struct CachedJwks {
