@@ -49,17 +49,19 @@ test.describe('fast-retro archive flow', () => {
       await wentWell.getByRole('button', { name: 'Add card', exact: true }).click();
       await expect(wentWell.getByRole('group', { name: `Card: ${cardText}` })).toBeVisible();
 
-      // End retro → confirm dialog → Archive & clear.
+      // End retro → confirm dialog → Archive & end.
       await page.getByRole('button', { name: 'End retro' }).click();
       const dialog = page.getByRole('alertdialog');
       await expect(dialog).toBeVisible();
-      await dialog.getByRole('button', { name: 'Archive & clear' }).click();
+      await dialog.getByRole('button', { name: 'Archive & end' }).click();
       await expect(dialog).toBeHidden({ timeout: 15_000 });
 
-      // Board should be cleared.
+      // Board is archived and frozen read-only in place, not cleared — the
+      // card stays visible, but the board shows the "ended" state.
+      await expect(page.getByText('This retro has ended')).toBeVisible();
       await expect(
         wentWell.getByRole('group', { name: `Card: ${cardText}` })
-      ).toBeHidden();
+      ).toBeVisible();
 
       // Open the archives index — the snapshot should be there.
       await page.goto(`/lead/${LEAD_TOKEN}/archives`);
