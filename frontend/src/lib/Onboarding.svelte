@@ -64,8 +64,8 @@
         <div>
           <div class="text-sm font-medium text-slate-800 dark:text-slate-100">Add cards</div>
           <div class="text-sm text-slate-500 dark:text-slate-400">
-            Type in a column's text box and hit <kbd class="px-1 py-0.5 text-[10px] rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 tabular-nums">⌘↵</kbd>
-            or <em>Add card</em>. One thought per card.
+            Type in a column's text box and hit <kbd class="px-1 py-0.5 text-[10px] rounded border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 tabular-nums">↵</kbd>
+            or <em>Add card</em> (Shift+Enter for a new line). One thought per card.
           </div>
         </div>
       </li>
@@ -77,7 +77,7 @@
         <div>
           <div class="text-sm font-medium text-slate-800 dark:text-slate-100">Vote on what matters</div>
           <div class="text-sm text-slate-500 dark:text-slate-400">
-            Click the ▲ on any card to upvote — the top of each column shows what the group most wants to talk about.
+            Once the retro reaches the Vote phase, click the ▲ on any card to upvote — the top of each column shows what the group most wants to talk about.
           </div>
         </div>
       </li>
