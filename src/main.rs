@@ -13,24 +13,29 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Json, Path as AxumPath, Query, State,
     },
-    http::{header, HeaderMap, StatusCode, Uri},
+    http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
+use base64::Engine;
 use serde::Deserialize;
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use rust_embed::RustEmbed;
+use sha2::{Digest, Sha256};
 use tokio::sync::{broadcast, RwLock};
+use tower_http::{limit::RequestBodyLimitLayer, set_header::SetResponseHeaderLayer};
 use tracing::{info, warn};
 
 mod archive;
 mod auth;
 mod db;
+mod ratelimit;
 mod sync;
 
 use auth::GoogleVerifier;
 use db::{BoardRow, Db, User};
+use ratelimit::RateLimiter;
 use sync::{Awareness, ClientId, Doc};
 
 #[derive(RustEmbed)]
@@ -128,6 +133,10 @@ struct AppState {
     google: Option<Arc<GoogleVerifier>>,
     /// Mark session cookies Secure (production HTTPS). Off for local http tests.
     cookie_secure: bool,
+    /// Shared per-IP budget for endpoints that create resources or double as
+    /// a token-guessing oracle (WS upgrade, board create, lead-token-check,
+    /// Google sign-in).
+    rate_limiter: RateLimiter,
 }
 
 impl AppState {
@@ -162,6 +171,27 @@ const DEFAULT_BOARD_SLUG: &str = "default";
 // wouldn't otherwise make (it's a no-op if both sides already agree).
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
+/// Caps on request/message size, to bound per-request memory use against a
+/// client sending an oversized body/frame (a board full of large cards still
+/// fits comfortably well under this).
+const MAX_HTTP_BODY_BYTES: usize = 5 * 1024 * 1024; // 5 MiB
+const MAX_WS_MESSAGE_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+const MAX_WS_FRAME_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+
+/// Shared per-IP budget for resource-creating / oracle-ish endpoints.
+/// Generous enough for a real user reconnecting or switching boards a bunch
+/// in a minute; tight enough to sharply slow a scripted flood.
+const RATE_LIMIT_MAX_REQUESTS: u32 = 60;
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+
+/// How often to sweep `state.rooms` for idle, empty rooms so an unbounded
+/// stream of connections to fresh slugs doesn't grow memory forever. Safe to
+/// evict freely: an evicted room that was genuinely empty has nothing
+/// persisted to lose, and `get_or_create_room` transparently recreates it
+/// (re-hydrating from the DB, which is a no-op for an empty board) if anyone
+/// reconnects afterward.
+const ROOM_EVICTION_INTERVAL: Duration = Duration::from_secs(10 * 60);
+
 fn sanitize_slug(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed.len() > 64 {
@@ -191,9 +221,112 @@ async fn get_or_create_room(state: &AppState, slug: &str) -> Arc<Room> {
     room
 }
 
+/// A room with no one connected and no content is just a stale in-memory
+/// entry — safe to hide from the dashboard and safe to evict.
+fn is_stale_room(participant_count: usize, summary: &sync::BoardSummary) -> bool {
+    participant_count == 0 && summary.card_count == 0 && summary.label.is_empty()
+}
+
+/// Periodically remove idle, empty rooms from memory so an unauthenticated
+/// stream of connections to fresh slugs (each one auto-creates a room, see
+/// `get_or_create_room`) can't grow the process's memory without bound.
+async fn evict_idle_rooms(rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>, sweep_every: Duration) {
+    let mut interval = tokio::time::interval(sweep_every);
+    interval.tick().await; // skip the immediate first tick
+    loop {
+        interval.tick().await;
+        let mut to_evict = Vec::new();
+        for (slug, room) in rooms.read().await.iter() {
+            let participant_count = room.clients.read().await.len();
+            let summary = {
+                let doc = room.doc.lock().unwrap();
+                doc.read_summary()
+            };
+            if is_stale_room(participant_count, &summary) {
+                to_evict.push(slug.clone());
+            }
+        }
+        if to_evict.is_empty() {
+            continue;
+        }
+        let mut rooms = rooms.write().await;
+        for slug in &to_evict {
+            // Re-check under the write lock: someone may have joined since the
+            // read-locked scan above.
+            let still_stale = match rooms.get(slug) {
+                Some(room) => {
+                    let participant_count = room.clients.read().await.len();
+                    let summary = {
+                        let doc = room.doc.lock().unwrap();
+                        doc.read_summary()
+                    };
+                    is_stale_room(participant_count, &summary)
+                }
+                None => false,
+            };
+            if still_stale {
+                rooms.remove(slug);
+            }
+        }
+        info!("evicted {} idle empty room(s)", to_evict.len());
+    }
+}
+
 #[derive(Deserialize)]
 struct WsQuery {
     board: Option<String>,
+}
+
+/// Build the full router: all routes, rate limiting on the
+/// resource-creating/oracle-ish ones, body-size limit, and security headers.
+/// Pulled out of `main` so tests can exercise it directly with `tower::ServiceExt::oneshot`.
+fn build_router(state: AppState) -> Router {
+    let rl = axum::middleware::from_fn_with_state(state.clone(), ratelimit::rate_limit);
+    Router::new()
+        // Rate-limited: creates a resource (a room) or doubles as a
+        // token-guessing oracle, per an unauthenticated caller's request alone.
+        .route("/ws", get(ws_handler).route_layer(rl.clone()))
+        .route(
+            "/api/lead-token-check/:token",
+            get(lead_token_check).route_layer(rl.clone()),
+        )
+        .route("/api/auth/google", post(auth_google).route_layer(rl.clone()))
+        .route(
+            "/api/boards",
+            post(create_board).get(list_boards).route_layer(rl),
+        )
+        .route("/api/health", get(health))
+        .route("/api/config", get(config))
+        // Accounts (Google SSO)
+        .route("/api/auth/logout", post(auth_logout))
+        .route("/api/me", get(me))
+        .route("/api/me/boards", get(my_boards))
+        .route("/api/me/archives", get(my_archives))
+        // Per-board host model + admin host-dashboard (global lead token)
+        .route("/api/boards/:slug", get(board_status))
+        .route("/api/boards/:slug/end", post(end_board))
+        .route("/api/boards/:slug/archive", post(create_archive))
+        .route("/api/archives", get(list_archives))
+        .route("/api/archives/:id", get(get_archive).delete(delete_archive))
+        .fallback(static_handler)
+        .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            compute_csp(),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .with_state(state)
 }
 
 #[tokio::main]
@@ -251,7 +384,10 @@ async fn main() {
         db,
         google,
         cookie_secure,
+        rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
     };
+
+    tokio::spawn(evict_idle_rooms(state.rooms.clone(), ROOM_EVICTION_INTERVAL));
 
     println!("=================================================");
     println!("Fast Retro starting");
@@ -260,31 +396,17 @@ async fn main() {
     println!("Lead URL path: /lead/{}", lead_token);
     println!("=================================================");
 
-    let app = Router::new()
-        .route("/ws", get(ws_handler))
-        .route("/api/health", get(health))
-        .route("/api/config", get(config))
-        .route("/api/lead-token-check/:token", get(lead_token_check))
-        // Accounts (Google SSO)
-        .route("/api/auth/google", post(auth_google))
-        .route("/api/auth/logout", post(auth_logout))
-        .route("/api/me", get(me))
-        .route("/api/me/boards", get(my_boards))
-        .route("/api/me/archives", get(my_archives))
-        // Per-board host model + admin host-dashboard (global lead token)
-        .route("/api/boards", post(create_board).get(list_boards))
-        .route("/api/boards/:slug", get(board_status))
-        .route("/api/boards/:slug/end", post(end_board))
-        .route("/api/boards/:slug/archive", post(create_archive))
-        .route("/api/archives", get(list_archives))
-        .route("/api/archives/:id", get(get_archive).delete(delete_archive))
-        .fallback(static_handler)
-        .with_state(state);
+    let app = build_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 async fn health() -> &'static str {
@@ -321,12 +443,12 @@ async fn list_boards(State(state): State<AppState>, headers: HeaderMap) -> Respo
     let mut out: Vec<LiveBoardSummary> = Vec::with_capacity(rooms.len());
     for (slug, room) in rooms.iter() {
         let participant_count = room.clients.read().await.len();
-        // Skip rooms with no participants AND no content — they're just stale entries.
         let summary = {
             let doc = room.doc.lock().unwrap();
             doc.read_summary()
         };
-        if participant_count == 0 && summary.card_count == 0 && summary.label.is_empty() {
+        // Skip rooms with no participants AND no content — they're just stale entries.
+        if is_stale_room(participant_count, &summary) {
             continue;
         }
         out.push(LiveBoardSummary {
@@ -358,7 +480,9 @@ async fn ws_handler(
         .and_then(sanitize_slug)
         .unwrap_or_else(|| DEFAULT_BOARD_SLUG.to_string());
     let room = get_or_create_room(&state, &slug).await;
-    ws.on_upgrade(move |socket| handle_socket(socket, room))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_WS_FRAME_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, room))
 }
 
 async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
@@ -605,6 +729,10 @@ async fn auth_google(
             return (StatusCode::UNAUTHORIZED, "invalid Google token").into_response();
         }
     };
+    if !claims.email_verified {
+        warn!("google sign-in rejected: unverified email ({})", claims.sub);
+        return (StatusCode::UNAUTHORIZED, "Google account email not verified").into_response();
+    }
     let user = match state
         .db
         .upsert_user(&claims.sub, &claims.email, &claims.name, &claims.picture)
@@ -859,6 +987,46 @@ async fn delete_archive(
     }
 }
 
+/// Build the Content-Security-Policy header value. `script-src` is locked to
+/// `'self'` plus Google's GIS script, with the embedded `index.html`'s one
+/// inline hydration `<script>` (SvelteKit's static-adapter bootstrap) allowed
+/// by hash rather than a blanket `'unsafe-inline'` — the app has no other
+/// inline scripts and never injects HTML (`{@html}`/`innerHTML` aren't used
+/// anywhere), so nothing else should ever need to execute.
+fn compute_csp() -> HeaderValue {
+    let script_src = StaticAssets::get("index.html")
+        .and_then(|f| String::from_utf8(f.data.into_owned()).ok())
+        .and_then(|html| {
+            let start = html.find("<script>")? + "<script>".len();
+            let end = start + html[start..].find("</script>")?;
+            Some(html[start..end].to_string())
+        })
+        .map(|script_body| {
+            let digest = Sha256::digest(script_body.as_bytes());
+            let hash = base64::engine::general_purpose::STANDARD.encode(digest);
+            format!("'self' 'sha256-{hash}' https://accounts.google.com")
+        })
+        .unwrap_or_else(|| {
+            warn!("couldn't extract inline hydration script for CSP hash; falling back to 'unsafe-inline' for script-src");
+            "'self' 'unsafe-inline' https://accounts.google.com".to_string()
+        });
+
+    let csp = format!(
+        "default-src 'self'; \
+         script-src {script_src}; \
+         style-src 'self' 'unsafe-inline'; \
+         img-src 'self' data: https://*.googleusercontent.com; \
+         font-src 'self'; \
+         connect-src 'self' ws: wss: https://accounts.google.com; \
+         frame-src https://accounts.google.com; \
+         object-src 'none'; \
+         base-uri 'self'; \
+         form-action 'self'; \
+         frame-ancestors 'none'"
+    );
+    HeaderValue::from_str(&csp).unwrap_or_else(|_| HeaderValue::from_static("default-src 'self'"))
+}
+
 async fn static_handler(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
 
@@ -890,4 +1058,210 @@ async fn static_handler(uri: Uri) -> Response {
     }
 
     (StatusCode::NOT_FOUND, "Not found").into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::extract::connect_info::ConnectInfo;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn test_state() -> AppState {
+        AppState {
+            rooms: Arc::new(RwLock::new(HashMap::new())),
+            lead_token: "test-lead-token".to_string(),
+            db: Db::open(":memory:").expect("open in-memory db"),
+            google: None,
+            cookie_secure: true,
+            rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
+        }
+    }
+
+    /// The rate-limit middleware extracts `ConnectInfo<SocketAddr>`, which
+    /// `oneshot` doesn't populate the way a real listener would — set it
+    /// manually so requests to rate-limited routes don't fail extraction.
+    fn with_peer(mut req: Request<Body>) -> Request<Body> {
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))));
+        req
+    }
+
+    #[tokio::test]
+    async fn oversized_body_is_rejected() {
+        let app = build_router(test_state());
+        let big_body = vec![b'a'; MAX_HTTP_BODY_BYTES + 1];
+        let req = with_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/api/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(big_body))
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn normal_sized_body_is_accepted() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/api/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"slug":"size-test","label":"hi"}"#))
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn rate_limit_allows_up_to_budget_then_blocks() {
+        let app = build_router(test_state());
+
+        let mut last_status = StatusCode::OK;
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            let req = with_peer(
+                Request::builder()
+                    .uri("/api/lead-token-check/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            );
+            last_status = app.clone().oneshot(req).await.unwrap().status();
+        }
+        assert_eq!(
+            last_status,
+            StatusCode::FORBIDDEN,
+            "wrong-token response, but still let through within budget"
+        );
+
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/lead-token-check/nope")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn rate_limit_is_scoped_per_ip() {
+        let app = build_router(test_state());
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            let req = with_peer(
+                Request::builder()
+                    .uri("/api/lead-token-check/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            );
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        let mut other_peer = Request::builder()
+            .uri("/api/lead-token-check/nope")
+            .body(Body::empty())
+            .unwrap();
+        other_peer
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([10, 0, 0, 1], 1))));
+        let res = app.oneshot(other_peer).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::FORBIDDEN,
+            "a different IP should have its own budget"
+        );
+    }
+
+    #[tokio::test]
+    async fn security_headers_present() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        let headers = res.headers();
+        assert_eq!(headers.get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(
+            headers.get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        let csp = headers
+            .get(header::CONTENT_SECURITY_POLICY)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(csp.starts_with("default-src 'self'"));
+        assert!(csp.contains("frame-ancestors 'none'"));
+        assert!(
+            csp.contains("script-src 'self' 'sha256-"),
+            "script-src should be locked to a hash, not 'unsafe-inline': {csp}"
+        );
+    }
+
+    #[test]
+    fn stale_room_detection() {
+        fn summary(label: &str, card_count: usize) -> sync::BoardSummary {
+            sync::BoardSummary {
+                label: label.to_string(),
+                card_count,
+                phase: "brainstorm".to_string(),
+                anonymous: false,
+            }
+        }
+
+        assert!(is_stale_room(0, &summary("", 0)));
+        assert!(!is_stale_room(1, &summary("", 0)), "has a participant");
+        assert!(!is_stale_room(0, &summary("", 3)), "has cards");
+        assert!(!is_stale_room(0, &summary("Sprint 1", 0)), "has a label");
+    }
+
+    #[tokio::test]
+    async fn idle_empty_rooms_are_evicted() {
+        let rooms: Arc<RwLock<HashMap<String, Arc<Room>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let db = Db::open(":memory:").unwrap();
+        rooms
+            .write()
+            .await
+            .insert("empty-room".to_string(), Room::new("empty-room".to_string(), db));
+        assert!(rooms.read().await.contains_key("empty-room"));
+
+        let sweep_interval = Duration::from_millis(20);
+        tokio::spawn(evict_idle_rooms(rooms.clone(), sweep_interval));
+
+        tokio::time::sleep(sweep_interval * 4).await;
+        assert!(
+            !rooms.read().await.contains_key("empty-room"),
+            "idle empty room should have been evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn rooms_with_content_are_not_evicted() {
+        let rooms: Arc<RwLock<HashMap<String, Arc<Room>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let db = Db::open(":memory:").unwrap();
+        let room = Room::new("has-a-client".to_string(), db);
+        room.clients
+            .write()
+            .await
+            .insert(1, tokio::sync::mpsc::unbounded_channel().0);
+        rooms.write().await.insert("has-a-client".to_string(), room);
+
+        let sweep_interval = Duration::from_millis(20);
+        tokio::spawn(evict_idle_rooms(rooms.clone(), sweep_interval));
+
+        tokio::time::sleep(sweep_interval * 4).await;
+        assert!(
+            rooms.read().await.contains_key("has-a-client"),
+            "a room with a connected client should not be evicted"
+        );
+    }
 }

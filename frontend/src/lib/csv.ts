@@ -1,9 +1,16 @@
 import type { CardData, ColumnKey } from './types';
 import { COLUMNS } from './types';
 
+// Neutralize CSV/formula injection: a cell starting with =, +, -, @, tab, or
+// CR is interpreted as a formula by Excel/Sheets when the file is opened.
+// Card text and comments are unauthenticated free-text from any participant,
+// so this has to be enforced here rather than trusted from the source.
+const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+
 export function csvCell(v: string): string {
-  if (/[",\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
-  return v;
+  const safe = FORMULA_PREFIX.test(v) ? `'${v}` : v;
+  if (/[",\n]/.test(safe)) return `"${safe.replace(/"/g, '""')}"`;
+  return safe;
 }
 
 export function exportCSV(boardSnapshot: Record<ColumnKey, CardData[]>): string {
