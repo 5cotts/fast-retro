@@ -5,6 +5,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
+    time::Duration,
 };
 
 use axum::{
@@ -152,6 +153,14 @@ impl AppState {
 }
 
 const DEFAULT_BOARD_SLUG: &str = "default";
+
+// The y-websocket client tears down and reconnects a socket if it hasn't
+// received *any* application-level message in `messageReconnectTimeout`
+// (30s, hardcoded in the client lib). An idle board otherwise never sends
+// anything, so periodically resending sync step 1 (same as on initial
+// connect) keeps the client's timer alive without requiring changes it
+// wouldn't otherwise make (it's a no-op if both sides already agree).
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
 fn sanitize_slug(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -393,6 +402,26 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
         let _ = ws_tx.close().await;
     });
 
+    // keepalive: periodically resend sync step 1 so idle boards don't churn
+    // client reconnects every messageReconnectTimeout (see KEEPALIVE_INTERVAL)
+    let keepalive_room = room.clone();
+    let keepalive_tx = out_tx.clone();
+    let keepalive_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(KEEPALIVE_INTERVAL);
+        interval.tick().await; // first tick fires immediately; skip it, we just synced above
+        loop {
+            interval.tick().await;
+            let sv = {
+                let doc = keepalive_room.doc.lock().unwrap();
+                doc.state_vector()
+            };
+            let msg = sync::encode_sync_step1(&sv);
+            if keepalive_tx.send(Message::Binary(msg)).is_err() {
+                break;
+            }
+        }
+    });
+
     // broadcast: forward broadcasts to this client (except own messages)
     let bcast_tx = out_tx.clone();
     let bcast_task = tokio::spawn(async move {
@@ -453,6 +482,7 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
     // timeout sweeps stragglers. See Awareness::apply_update in sync.rs.
 
     bcast_task.abort();
+    keepalive_task.abort();
     outbound.abort();
 }
 
