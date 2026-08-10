@@ -15,6 +15,8 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 - **Presence** — see who's currently on the board
 - **Light / dark / auto theme**
 - **Named users** with persistent identity per browser
+- **Google Sign-In** (optional) — ties board ownership to your Google account instead of a device-bound key, so you can recover host access from any browser
+- **SQLite persistence** — boards and archives survive restarts
 
 ## Tech stack
 
@@ -97,10 +99,27 @@ The e2e suite hits the live deployment by default; see `playwright.config.ts` to
 | ------------------ | -------------------------------------- | --------------------------------------------------------------------------- |
 | `RETRO_LEAD_TOKEN` | random 16-char string printed at start | Secret token gating the lead/host controls. Set this in production.         |
 | `PORT`             | `5102`                                 | HTTP port to bind.                                                          |
+| `FASTRETRO_DB`     | `data/fastretro.db`                    | Path to the SQLite database file. Created automatically on first run.       |
+| `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
+| `COOKIE_SECURE`    | `true`                                 | Whether session cookies are marked `Secure`. Set to `0`/`false` for local HTTP testing. |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
 | `VITE_BACKEND_URL` | `http://localhost:5102`                | (dev only) Backend the Vite dev server proxies `/api` and `/ws` to.         |
 
 If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment.
+
+A `.env.example` listing all of these is checked in — copy it to `.env` and adjust for local use (`.env` itself is gitignored).
+
+### Google Sign-In
+
+Signing in with Google ties board ownership to your account instead of a `localStorage` key, so you can recover host access from a new browser or device. It's entirely optional — anonymous use works the same as before.
+
+To enable it:
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), create an OAuth consent screen (External, publish to Production) and an OAuth Client ID of type "Web application."
+2. Add your deployment's origin(s) (e.g. `https://retro.example.com`) under **Authorized JavaScript origins**. No redirect URI is needed — this app uses Google Identity Services' ID-token flow, not the OAuth redirect flow, so there's no client secret involved either.
+3. Set `GOOGLE_CLIENT_ID` to the resulting client ID and restart the server.
+
+This app only requests the non-sensitive `openid`/`email`/`profile` scopes, so there's no Google verification process or user cap to worry about regardless of how many people sign in.
 
 ## Architecture
 
@@ -138,7 +157,7 @@ Because the binary embeds the frontend, deployment is just:
 
 Example reverse-proxy target URL (replace with your own host): `https://retro.example.com → http://127.0.0.1:5102`.
 
-The process is stateless apart from the in-memory Yjs document, so it restarts cleanly; if you need persistence across restarts, persist the Yjs update stream out of band.
+Board state, archives, and (if Google Sign-In is enabled) user accounts all persist to the SQLite database at `FASTRETRO_DB` (default `data/fastretro.db`), so the process restarts cleanly without losing data. Back up that file if you want durability beyond the server's disk.
 
 ## License
 

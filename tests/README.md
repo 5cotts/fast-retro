@@ -5,8 +5,8 @@ End-to-end smoke tests for fast-retro, run with Playwright (Chromium).
 ## Run
 
 Tests only run against a **locally-running instance** — never a public
-deployment. Hitting a public `*.zocomputer.io` URL from a sandboxed browser
-adds enough proxy/CDN latency to make even basic UI interactions flaky.
+deployment. Hitting a public deployment through a proxy/CDN from a sandboxed
+browser adds enough latency to make even basic UI interactions flaky.
 
 From the project root, start a local instance first:
 
