@@ -22,15 +22,18 @@ use serde::Deserialize;
 use futures_util::{sink::SinkExt, stream::StreamExt};
 use rust_embed::RustEmbed;
 use tokio::sync::{broadcast, RwLock};
+use tower_http::limit::RequestBodyLimitLayer;
 use tracing::{info, warn};
 
 mod archive;
 mod auth;
 mod db;
+mod ratelimit;
 mod sync;
 
 use auth::GoogleVerifier;
 use db::{BoardRow, Db, User};
+use ratelimit::RateLimiter;
 use sync::{Awareness, ClientId, Doc};
 
 #[derive(RustEmbed)]
@@ -128,6 +131,10 @@ struct AppState {
     google: Option<Arc<GoogleVerifier>>,
     /// Mark session cookies Secure (production HTTPS). Off for local http tests.
     cookie_secure: bool,
+    /// Shared per-IP budget for endpoints that create resources or double as
+    /// a token-guessing oracle (WS upgrade, board create, lead-token-check,
+    /// Google sign-in).
+    rate_limiter: RateLimiter,
 }
 
 impl AppState {
@@ -162,6 +169,27 @@ const DEFAULT_BOARD_SLUG: &str = "default";
 // wouldn't otherwise make (it's a no-op if both sides already agree).
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 
+/// Caps on request/message size, to bound per-request memory use against a
+/// client sending an oversized body/frame (a board full of large cards still
+/// fits comfortably well under this).
+const MAX_HTTP_BODY_BYTES: usize = 5 * 1024 * 1024; // 5 MiB
+const MAX_WS_MESSAGE_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+const MAX_WS_FRAME_BYTES: usize = 2 * 1024 * 1024; // 2 MiB
+
+/// Shared per-IP budget for resource-creating / oracle-ish endpoints.
+/// Generous enough for a real user reconnecting or switching boards a bunch
+/// in a minute; tight enough to sharply slow a scripted flood.
+const RATE_LIMIT_MAX_REQUESTS: u32 = 60;
+const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
+
+/// How often to sweep `state.rooms` for idle, empty rooms so an unbounded
+/// stream of connections to fresh slugs doesn't grow memory forever. Safe to
+/// evict freely: an evicted room that was genuinely empty has nothing
+/// persisted to lose, and `get_or_create_room` transparently recreates it
+/// (re-hydrating from the DB, which is a no-op for an empty board) if anyone
+/// reconnects afterward.
+const ROOM_EVICTION_INTERVAL: Duration = Duration::from_secs(10 * 60);
+
 fn sanitize_slug(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() || trimmed.len() > 64 {
@@ -189,6 +217,57 @@ async fn get_or_create_room(state: &AppState, slug: &str) -> Arc<Room> {
     let room = Room::new(slug.to_string(), state.db.clone());
     rooms.insert(slug.to_string(), room.clone());
     room
+}
+
+/// A room with no one connected and no content is just a stale in-memory
+/// entry — safe to hide from the dashboard and safe to evict.
+fn is_stale_room(participant_count: usize, summary: &sync::BoardSummary) -> bool {
+    participant_count == 0 && summary.card_count == 0 && summary.label.is_empty()
+}
+
+/// Periodically remove idle, empty rooms from memory so an unauthenticated
+/// stream of connections to fresh slugs (each one auto-creates a room, see
+/// `get_or_create_room`) can't grow the process's memory without bound.
+async fn evict_idle_rooms(rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>) {
+    let mut interval = tokio::time::interval(ROOM_EVICTION_INTERVAL);
+    interval.tick().await; // skip the immediate first tick
+    loop {
+        interval.tick().await;
+        let mut to_evict = Vec::new();
+        for (slug, room) in rooms.read().await.iter() {
+            let participant_count = room.clients.read().await.len();
+            let summary = {
+                let doc = room.doc.lock().unwrap();
+                doc.read_summary()
+            };
+            if is_stale_room(participant_count, &summary) {
+                to_evict.push(slug.clone());
+            }
+        }
+        if to_evict.is_empty() {
+            continue;
+        }
+        let mut rooms = rooms.write().await;
+        for slug in &to_evict {
+            // Re-check under the write lock: someone may have joined since the
+            // read-locked scan above.
+            let still_stale = match rooms.get(slug) {
+                Some(room) => {
+                    let participant_count = room.clients.read().await.len();
+                    let summary = {
+                        let doc = room.doc.lock().unwrap();
+                        doc.read_summary()
+                    };
+                    is_stale_room(participant_count, &summary)
+                }
+                None => false,
+            };
+            if still_stale {
+                rooms.remove(slug);
+            }
+        }
+        info!("evicted {} idle empty room(s)", to_evict.len());
+    }
 }
 
 #[derive(Deserialize)]
@@ -251,7 +330,10 @@ async fn main() {
         db,
         google,
         cookie_secure,
+        rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
     };
+
+    tokio::spawn(evict_idle_rooms(state.rooms.clone()));
 
     println!("=================================================");
     println!("Fast Retro starting");
@@ -260,31 +342,46 @@ async fn main() {
     println!("Lead URL path: /lead/{}", lead_token);
     println!("=================================================");
 
+    let rl = axum::middleware::from_fn_with_state(state.clone(), ratelimit::rate_limit);
     let app = Router::new()
-        .route("/ws", get(ws_handler))
+        // Rate-limited: creates a resource (a room) or doubles as a
+        // token-guessing oracle, per an unauthenticated caller's request alone.
+        .route("/ws", get(ws_handler).route_layer(rl.clone()))
+        .route(
+            "/api/lead-token-check/:token",
+            get(lead_token_check).route_layer(rl.clone()),
+        )
+        .route("/api/auth/google", post(auth_google).route_layer(rl.clone()))
+        .route(
+            "/api/boards",
+            post(create_board).get(list_boards).route_layer(rl),
+        )
         .route("/api/health", get(health))
         .route("/api/config", get(config))
-        .route("/api/lead-token-check/:token", get(lead_token_check))
         // Accounts (Google SSO)
-        .route("/api/auth/google", post(auth_google))
         .route("/api/auth/logout", post(auth_logout))
         .route("/api/me", get(me))
         .route("/api/me/boards", get(my_boards))
         .route("/api/me/archives", get(my_archives))
         // Per-board host model + admin host-dashboard (global lead token)
-        .route("/api/boards", post(create_board).get(list_boards))
         .route("/api/boards/:slug", get(board_status))
         .route("/api/boards/:slug/end", post(end_board))
         .route("/api/boards/:slug/archive", post(create_archive))
         .route("/api/archives", get(list_archives))
         .route("/api/archives/:id", get(get_archive).delete(delete_archive))
         .fallback(static_handler)
+        .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 async fn health() -> &'static str {
@@ -321,12 +418,12 @@ async fn list_boards(State(state): State<AppState>, headers: HeaderMap) -> Respo
     let mut out: Vec<LiveBoardSummary> = Vec::with_capacity(rooms.len());
     for (slug, room) in rooms.iter() {
         let participant_count = room.clients.read().await.len();
-        // Skip rooms with no participants AND no content — they're just stale entries.
         let summary = {
             let doc = room.doc.lock().unwrap();
             doc.read_summary()
         };
-        if participant_count == 0 && summary.card_count == 0 && summary.label.is_empty() {
+        // Skip rooms with no participants AND no content — they're just stale entries.
+        if is_stale_room(participant_count, &summary) {
             continue;
         }
         out.push(LiveBoardSummary {
@@ -358,7 +455,9 @@ async fn ws_handler(
         .and_then(sanitize_slug)
         .unwrap_or_else(|| DEFAULT_BOARD_SLUG.to_string());
     let room = get_or_create_room(&state, &slug).await;
-    ws.on_upgrade(move |socket| handle_socket(socket, room))
+    ws.max_message_size(MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(MAX_WS_FRAME_BYTES)
+        .on_upgrade(move |socket| handle_socket(socket, room))
 }
 
 async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
