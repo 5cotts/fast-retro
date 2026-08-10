@@ -159,6 +159,10 @@ Example reverse-proxy target URL (replace with your own host): `https://retro.ex
 
 Board state, archives, and (if Google Sign-In is enabled) user accounts all persist to the SQLite database at `FASTRETRO_DB` (default `data/fastretro.db`), so the process restarts cleanly without losing data. Back up that file if you want durability beyond the server's disk.
 
+## Contributing
+
+Bug reports and PRs are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for the local dev/test workflow and PR conventions. For security vulnerabilities, see [SECURITY.md](./SECURITY.md) instead of filing a public issue.
+
 ## License
 
 [MIT](./LICENSE) © 2026 Scott Schmidt
