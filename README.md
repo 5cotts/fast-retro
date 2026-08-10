@@ -15,7 +15,7 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 - **Presence** — see who's currently on the board
 - **Light / dark / auto theme**
 - **Named users** with persistent identity per browser
-- **Google Sign-In** (optional) — ties board ownership to your Google account instead of a device-bound key, so you can recover host access from any browser
+- **Google Sign-In** (optional) — ties board ownership to your Google account, so you can recover host access from any browser
 - **SQLite persistence** — boards and archives survive restarts
 
 ## Tech stack
@@ -111,7 +111,7 @@ A `.env.example` listing all of these is checked in — copy it to `.env` and ad
 
 ### Google Sign-In
 
-Signing in with Google ties board ownership to your account instead of a `localStorage` key, so you can recover host access from a new browser or device. It's entirely optional — anonymous use works the same as before.
+Signing in with Google ties board ownership to your account instead of a `localStorage` key, so you can recover host access from a new browser or device. It's entirely optional — you can also use fast-retro anonymously, with host access tied to a device-bound key instead.
 
 To enable it:
 

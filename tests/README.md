@@ -75,7 +75,7 @@ name returns.
 `custom-emoji.spec.ts` — custom emoji reactions (skipped unless
 `RETRO_LEAD_TOKEN` is set): one lead, one participant. The lead
 opens the reaction picker on their own card, searches for "rocket"
-(not in the legacy six-emoji default set), reacts with 🚀, and
+(not among the default quick-reaction emojis), reacts with 🚀, and
 confirms the participant sees the same reaction. Then switches to
 the Hearts category tab and reacts with 🧡 to verify category
 browsing also works end-to-end.
