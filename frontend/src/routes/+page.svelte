@@ -149,7 +149,7 @@
         {:else if googleEnabled}
           <div class="rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-3">
             <p class="text-xs text-slate-500 dark:text-slate-400 mb-2 text-center">
-              Sign in to keep your past retros across devices. Optional — you can host without it.
+              Sign in to keep host access. Without it, clearing your browser or switching devices locks you out of your own retro for good.
             </p>
             <GoogleSignIn clientId={googleClientId} onSignedIn={handleSignIn} {darkMode} />
           </div>
