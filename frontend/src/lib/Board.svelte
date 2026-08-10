@@ -28,6 +28,7 @@
   import { createBoard, endBoard } from './api';
   import { goto } from '$app/navigation';
   import {
+    readTimer,
     setTimerDuration,
     startTimer,
     pauseTimer,
@@ -340,7 +341,7 @@
   }
 
   function onNewKey(e: KeyboardEvent, col: ColumnKey) {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submitNew(col);
     }
@@ -547,7 +548,16 @@
 
   function leadStart() {
     if (!conn.state.board || !isLead) return;
-    startTimer(conn.state.board.timer);
+    const timer = conn.state.board.timer;
+    const state = readTimer(timer);
+    const isResumable = state.paused && state.pausedRemaining !== null && state.pausedRemaining > 0;
+    if (state.durationSec <= 0 && !isResumable) {
+      const mins = parseFloat(timerInputMin);
+      if (!Number.isNaN(mins) && mins > 0) {
+        setTimerDuration(timer, Math.round(mins * 60));
+      }
+    }
+    startTimer(timer);
   }
 
   function leadPause() {
@@ -680,6 +690,7 @@
     <BoardHeader
       isLead={effectiveLead}
       connected={conn.state.connected}
+      {ended}
       label={conn.state.label}
       {slug}
       timerState={conn.state.timerState}
@@ -963,8 +974,8 @@
                   {#if !coarsePointer}
                     <kbd
                       class="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 tabular-nums"
-                      title="Keyboard shortcut: ⌘ or Ctrl + Enter"
-                    >⌘↵</kbd>
+                      title="Enter to add, Shift+Enter for a new line"
+                    >↵</kbd>
                   {/if}
                 </div>
               {:else}

@@ -82,6 +82,7 @@
   let pickerEl = $state<HTMLElement | null>(null);
   let pickerBtnEl = $state<HTMLButtonElement | null>(null);
   let pickerAlignRight = $state(false);
+  let pickerAlignUp = $state(false);
   let editTextarea = $state<HTMLTextAreaElement | null>(null);
   let expanded = $state(false);
   const isLong = $derived(card.text.length > COLLAPSED_MAX_CHARS);
@@ -148,11 +149,14 @@
       pickerSearch = '';
       return;
     }
-    // Clamp picker to viewport: the picker is ~300px wide. If there isn't
-    // enough room to the right of the trigger button, anchor it right instead.
+    // Clamp picker to viewport: the picker is ~300px wide and ~280px tall.
+    // If there isn't enough room to the right/below the trigger button,
+    // anchor it right/above instead.
     if (pickerBtnEl && typeof window !== 'undefined') {
       const rect = pickerBtnEl.getBoundingClientRect();
       pickerAlignRight = rect.left + 320 > window.innerWidth;
+      pickerAlignUp =
+        window.innerHeight - rect.bottom < 280 && rect.top > 280;
     }
     const close = (e: MouseEvent) => {
       if (pickerEl && e.target instanceof Node && !pickerEl.contains(e.target)) {
@@ -332,7 +336,7 @@
         {#if showReactionPicker}
           <div
             bind:this={pickerEl}
-            class="absolute z-10 top-full mt-1 w-[300px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {pickerAlignRight ? 'right-0' : 'left-0'}"
+            class="absolute z-10 w-[300px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {pickerAlignRight ? 'right-0' : 'left-0'} {pickerAlignUp ? 'bottom-full mb-1' : 'top-full mt-1'}"
             role="dialog"
             aria-label="Pick a reaction"
           >

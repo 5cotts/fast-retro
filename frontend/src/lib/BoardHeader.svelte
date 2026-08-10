@@ -12,6 +12,7 @@
   let {
     isLead,
     connected,
+    ended = false,
     label,
     slug,
     timerState,
@@ -38,6 +39,7 @@
   } = $props<{
     isLead: boolean;
     connected: boolean;
+    ended?: boolean;
     label: string;
     slug: string;
     timerState: TimerState;
@@ -122,15 +124,16 @@
 
     <span
       class="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400"
-      title={connected ? 'Connected to the board' : 'Reconnecting…'}
+      title={ended ? 'This retro has ended' : connected ? 'Connected to the board' : 'Reconnecting…'}
       aria-live="polite"
     >
       <span
         class="inline-block w-2 h-2 rounded-full transition-colors"
-        class:bg-emerald-500={connected}
-        class:bg-amber-500={!connected}
+        class:bg-slate-400={ended}
+        class:bg-emerald-500={!ended && connected}
+        class:bg-amber-500={!ended && !connected}
       ></span>
-      <span class="hidden sm:inline">{connected ? 'Live' : 'Connecting…'}</span>
+      <span class="hidden sm:inline">{ended ? 'Ended' : connected ? 'Live' : 'Connecting…'}</span>
     </span>
 
     {#if anonymous}
