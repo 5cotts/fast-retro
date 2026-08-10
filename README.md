@@ -84,6 +84,9 @@ cargo test
 # Frontend type-check
 ( cd frontend && bun run check )
 
+# Frontend unit tests
+( cd frontend && bun run test:unit )
+
 # Playwright end-to-end (first run only: install browsers)
 bunx playwright install
 bun run test:e2e

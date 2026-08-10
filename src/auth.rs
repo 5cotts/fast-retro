@@ -173,3 +173,35 @@ pub fn session_from_cookies(cookie_header: Option<&str>) -> Option<String> {
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn email_verified_defaults_true_when_claim_absent() {
+        let json = r#"{"sub":"123","email":"a@b.com","name":"A","picture":""}"#;
+        let claims: GoogleClaims = serde_json::from_str(json).unwrap();
+        assert!(
+            claims.email_verified,
+            "GIS tokens for real sign-ins always include this as true; absence \
+             shouldn't be treated as unverified"
+        );
+    }
+
+    #[test]
+    fn email_verified_respects_explicit_false() {
+        let json =
+            r#"{"sub":"123","email":"a@b.com","email_verified":false,"name":"A","picture":""}"#;
+        let claims: GoogleClaims = serde_json::from_str(json).unwrap();
+        assert!(!claims.email_verified);
+    }
+
+    #[test]
+    fn email_verified_respects_explicit_true() {
+        let json =
+            r#"{"sub":"123","email":"a@b.com","email_verified":true,"name":"A","picture":""}"#;
+        let claims: GoogleClaims = serde_json::from_str(json).unwrap();
+        assert!(claims.email_verified);
+    }
+}

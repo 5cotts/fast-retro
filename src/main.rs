@@ -230,8 +230,8 @@ fn is_stale_room(participant_count: usize, summary: &sync::BoardSummary) -> bool
 /// Periodically remove idle, empty rooms from memory so an unauthenticated
 /// stream of connections to fresh slugs (each one auto-creates a room, see
 /// `get_or_create_room`) can't grow the process's memory without bound.
-async fn evict_idle_rooms(rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>) {
-    let mut interval = tokio::time::interval(ROOM_EVICTION_INTERVAL);
+async fn evict_idle_rooms(rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>, sweep_every: Duration) {
+    let mut interval = tokio::time::interval(sweep_every);
     interval.tick().await; // skip the immediate first tick
     loop {
         interval.tick().await;
@@ -275,6 +275,58 @@ async fn evict_idle_rooms(rooms: Arc<RwLock<HashMap<String, Arc<Room>>>>) {
 #[derive(Deserialize)]
 struct WsQuery {
     board: Option<String>,
+}
+
+/// Build the full router: all routes, rate limiting on the
+/// resource-creating/oracle-ish ones, body-size limit, and security headers.
+/// Pulled out of `main` so tests can exercise it directly with `tower::ServiceExt::oneshot`.
+fn build_router(state: AppState) -> Router {
+    let rl = axum::middleware::from_fn_with_state(state.clone(), ratelimit::rate_limit);
+    Router::new()
+        // Rate-limited: creates a resource (a room) or doubles as a
+        // token-guessing oracle, per an unauthenticated caller's request alone.
+        .route("/ws", get(ws_handler).route_layer(rl.clone()))
+        .route(
+            "/api/lead-token-check/:token",
+            get(lead_token_check).route_layer(rl.clone()),
+        )
+        .route("/api/auth/google", post(auth_google).route_layer(rl.clone()))
+        .route(
+            "/api/boards",
+            post(create_board).get(list_boards).route_layer(rl),
+        )
+        .route("/api/health", get(health))
+        .route("/api/config", get(config))
+        // Accounts (Google SSO)
+        .route("/api/auth/logout", post(auth_logout))
+        .route("/api/me", get(me))
+        .route("/api/me/boards", get(my_boards))
+        .route("/api/me/archives", get(my_archives))
+        // Per-board host model + admin host-dashboard (global lead token)
+        .route("/api/boards/:slug", get(board_status))
+        .route("/api/boards/:slug/end", post(end_board))
+        .route("/api/boards/:slug/archive", post(create_archive))
+        .route("/api/archives", get(list_archives))
+        .route("/api/archives/:id", get(get_archive).delete(delete_archive))
+        .fallback(static_handler)
+        .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            compute_csp(),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("x-frame-options"),
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .with_state(state)
 }
 
 #[tokio::main]
@@ -335,7 +387,7 @@ async fn main() {
         rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
     };
 
-    tokio::spawn(evict_idle_rooms(state.rooms.clone()));
+    tokio::spawn(evict_idle_rooms(state.rooms.clone(), ROOM_EVICTION_INTERVAL));
 
     println!("=================================================");
     println!("Fast Retro starting");
@@ -344,52 +396,7 @@ async fn main() {
     println!("Lead URL path: /lead/{}", lead_token);
     println!("=================================================");
 
-    let rl = axum::middleware::from_fn_with_state(state.clone(), ratelimit::rate_limit);
-    let app = Router::new()
-        // Rate-limited: creates a resource (a room) or doubles as a
-        // token-guessing oracle, per an unauthenticated caller's request alone.
-        .route("/ws", get(ws_handler).route_layer(rl.clone()))
-        .route(
-            "/api/lead-token-check/:token",
-            get(lead_token_check).route_layer(rl.clone()),
-        )
-        .route("/api/auth/google", post(auth_google).route_layer(rl.clone()))
-        .route(
-            "/api/boards",
-            post(create_board).get(list_boards).route_layer(rl),
-        )
-        .route("/api/health", get(health))
-        .route("/api/config", get(config))
-        // Accounts (Google SSO)
-        .route("/api/auth/logout", post(auth_logout))
-        .route("/api/me", get(me))
-        .route("/api/me/boards", get(my_boards))
-        .route("/api/me/archives", get(my_archives))
-        // Per-board host model + admin host-dashboard (global lead token)
-        .route("/api/boards/:slug", get(board_status))
-        .route("/api/boards/:slug/end", post(end_board))
-        .route("/api/boards/:slug/archive", post(create_archive))
-        .route("/api/archives", get(list_archives))
-        .route("/api/archives/:id", get(get_archive).delete(delete_archive))
-        .fallback(static_handler)
-        .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::CONTENT_SECURITY_POLICY,
-            compute_csp(),
-        ))
-        .layer(SetResponseHeaderLayer::overriding(
-            HeaderName::from_static("x-frame-options"),
-            HeaderValue::from_static("DENY"),
-        ))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::X_CONTENT_TYPE_OPTIONS,
-            HeaderValue::from_static("nosniff"),
-        ))
-        .layer(SetResponseHeaderLayer::overriding(
-            header::REFERRER_POLICY,
-            HeaderValue::from_static("strict-origin-when-cross-origin"),
-        ))
-        .with_state(state);
+    let app = build_router(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
     info!("listening on {}", addr);
@@ -1051,4 +1058,210 @@ async fn static_handler(uri: Uri) -> Response {
     }
 
     (StatusCode::NOT_FOUND, "Not found").into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::extract::connect_info::ConnectInfo;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    fn test_state() -> AppState {
+        AppState {
+            rooms: Arc::new(RwLock::new(HashMap::new())),
+            lead_token: "test-lead-token".to_string(),
+            db: Db::open(":memory:").expect("open in-memory db"),
+            google: None,
+            cookie_secure: true,
+            rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
+        }
+    }
+
+    /// The rate-limit middleware extracts `ConnectInfo<SocketAddr>`, which
+    /// `oneshot` doesn't populate the way a real listener would — set it
+    /// manually so requests to rate-limited routes don't fail extraction.
+    fn with_peer(mut req: Request<Body>) -> Request<Body> {
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))));
+        req
+    }
+
+    #[tokio::test]
+    async fn oversized_body_is_rejected() {
+        let app = build_router(test_state());
+        let big_body = vec![b'a'; MAX_HTTP_BODY_BYTES + 1];
+        let req = with_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/api/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(big_body))
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn normal_sized_body_is_accepted() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/api/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"slug":"size-test","label":"hi"}"#))
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn rate_limit_allows_up_to_budget_then_blocks() {
+        let app = build_router(test_state());
+
+        let mut last_status = StatusCode::OK;
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            let req = with_peer(
+                Request::builder()
+                    .uri("/api/lead-token-check/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            );
+            last_status = app.clone().oneshot(req).await.unwrap().status();
+        }
+        assert_eq!(
+            last_status,
+            StatusCode::FORBIDDEN,
+            "wrong-token response, but still let through within budget"
+        );
+
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/lead-token-check/nope")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    #[tokio::test]
+    async fn rate_limit_is_scoped_per_ip() {
+        let app = build_router(test_state());
+        for _ in 0..RATE_LIMIT_MAX_REQUESTS {
+            let req = with_peer(
+                Request::builder()
+                    .uri("/api/lead-token-check/nope")
+                    .body(Body::empty())
+                    .unwrap(),
+            );
+            app.clone().oneshot(req).await.unwrap();
+        }
+
+        let mut other_peer = Request::builder()
+            .uri("/api/lead-token-check/nope")
+            .body(Body::empty())
+            .unwrap();
+        other_peer
+            .extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([10, 0, 0, 1], 1))));
+        let res = app.oneshot(other_peer).await.unwrap();
+        assert_eq!(
+            res.status(),
+            StatusCode::FORBIDDEN,
+            "a different IP should have its own budget"
+        );
+    }
+
+    #[tokio::test]
+    async fn security_headers_present() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        let headers = res.headers();
+        assert_eq!(headers.get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(headers.get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(
+            headers.get("referrer-policy").unwrap(),
+            "strict-origin-when-cross-origin"
+        );
+        let csp = headers
+            .get(header::CONTENT_SECURITY_POLICY)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(csp.starts_with("default-src 'self'"));
+        assert!(csp.contains("frame-ancestors 'none'"));
+        assert!(
+            csp.contains("script-src 'self' 'sha256-"),
+            "script-src should be locked to a hash, not 'unsafe-inline': {csp}"
+        );
+    }
+
+    #[test]
+    fn stale_room_detection() {
+        fn summary(label: &str, card_count: usize) -> sync::BoardSummary {
+            sync::BoardSummary {
+                label: label.to_string(),
+                card_count,
+                phase: "brainstorm".to_string(),
+                anonymous: false,
+            }
+        }
+
+        assert!(is_stale_room(0, &summary("", 0)));
+        assert!(!is_stale_room(1, &summary("", 0)), "has a participant");
+        assert!(!is_stale_room(0, &summary("", 3)), "has cards");
+        assert!(!is_stale_room(0, &summary("Sprint 1", 0)), "has a label");
+    }
+
+    #[tokio::test]
+    async fn idle_empty_rooms_are_evicted() {
+        let rooms: Arc<RwLock<HashMap<String, Arc<Room>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let db = Db::open(":memory:").unwrap();
+        rooms
+            .write()
+            .await
+            .insert("empty-room".to_string(), Room::new("empty-room".to_string(), db));
+        assert!(rooms.read().await.contains_key("empty-room"));
+
+        let sweep_interval = Duration::from_millis(20);
+        tokio::spawn(evict_idle_rooms(rooms.clone(), sweep_interval));
+
+        tokio::time::sleep(sweep_interval * 4).await;
+        assert!(
+            !rooms.read().await.contains_key("empty-room"),
+            "idle empty room should have been evicted"
+        );
+    }
+
+    #[tokio::test]
+    async fn rooms_with_content_are_not_evicted() {
+        let rooms: Arc<RwLock<HashMap<String, Arc<Room>>>> = Arc::new(RwLock::new(HashMap::new()));
+        let db = Db::open(":memory:").unwrap();
+        let room = Room::new("has-a-client".to_string(), db);
+        room.clients
+            .write()
+            .await
+            .insert(1, tokio::sync::mpsc::unbounded_channel().0);
+        rooms.write().await.insert("has-a-client".to_string(), room);
+
+        let sweep_interval = Duration::from_millis(20);
+        tokio::spawn(evict_idle_rooms(rooms.clone(), sweep_interval));
+
+        tokio::time::sleep(sweep_interval * 4).await;
+        assert!(
+            rooms.read().await.contains_key("has-a-client"),
+            "a room with a connected client should not be evicted"
+        );
+    }
 }

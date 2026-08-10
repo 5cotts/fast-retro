@@ -7,7 +7,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:unit": "vitest run"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -21,7 +22,8 @@
     "svelte-check": "^4.7.5",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vite": "^5.4.21"
+    "vite": "^5.4.21",
+    "vitest": "^4.1.10"
   },
   "dependencies": {
     "@fontsource/space-grotesk": "^5.3.0",
