@@ -5,8 +5,8 @@ End-to-end smoke tests for fast-retro, run with Playwright (Chromium).
 ## Run
 
 Tests only run against a **locally-running instance** — never a public
-deployment. Hitting a public `*.zocomputer.io` URL from a sandboxed browser
-adds enough proxy/CDN latency to make even basic UI interactions flaky.
+deployment. Hitting a public deployment through a proxy/CDN from a sandboxed
+browser adds enough latency to make even basic UI interactions flaky.
 
 From the project root, start a local instance first:
 
@@ -75,7 +75,7 @@ name returns.
 `custom-emoji.spec.ts` — custom emoji reactions (skipped unless
 `RETRO_LEAD_TOKEN` is set): one lead, one participant. The lead
 opens the reaction picker on their own card, searches for "rocket"
-(not in the legacy six-emoji default set), reacts with 🚀, and
+(not among the default quick-reaction emojis), reacts with 🚀, and
 confirms the participant sees the same reaction. Then switches to
 the Hearts category tab and reacts with 🧡 to verify category
 browsing also works end-to-end.
