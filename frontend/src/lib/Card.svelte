@@ -70,7 +70,7 @@
 
   let editing = $state(false);
   let editText = $state('');
-  let showComments = $state(false);
+  let showComments = $state(card.comments.length > 0);
   let commentDraft = $state('');
   let showReactionPicker = $state(false);
   let pickerCategory = $state(EMOJI_CATEGORIES[0].id);

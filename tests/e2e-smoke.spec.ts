@@ -141,6 +141,37 @@ test.describe('fast-retro smoke', () => {
     await context.close();
   });
 
+  test('card with existing comments shows the thread on load without a click', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const slug = `pw-comments-${Date.now()}`;
+
+    await joinBoardAs(page, NAME_PRIMARY, slug);
+    const cardText = `comments-default ${Date.now()}`;
+    const card = await addCard(page, 'What went well', cardText);
+
+    // A fresh, comment-less card starts collapsed.
+    await expect(card.getByPlaceholder('Add a comment…')).toBeHidden();
+
+    await card.getByRole('button', { name: /Comments/ }).click();
+    const commentText = `persisted ${Math.random().toString(36).slice(2, 6)}`;
+    await card.getByPlaceholder('Add a comment…').fill(commentText);
+    await card.getByRole('button', { name: 'Post' }).click();
+    await expect(card.getByText(commentText)).toBeVisible();
+
+    // Reload re-mounts the Card component with fresh local state — since
+    // the card now has a comment, the thread should render open with no
+    // click required.
+    await page.reload();
+    const reloadedCard = page
+      .getByRole('list', { name: 'What went well' })
+      .getByRole('group', { name: `Card: ${cardText}` });
+    await expect(reloadedCard).toBeVisible();
+    await expect(reloadedCard.getByText(commentText)).toBeVisible();
+
+    await context.close();
+  });
+
   test('second browser context sees presence broadcast', async ({ browser }) => {
     const sharedSlug = `pw-presence-${Date.now()}`;
     const ctxA: BrowserContext = await browser.newContext();
