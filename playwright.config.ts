@@ -7,7 +7,15 @@ import { defineConfig, devices } from '@playwright/test';
 // E2E_BASE_URL exists only to point at a different local port (e.g. the
 // two-terminal dev loop's Vite server on 5173), not to opt back into testing
 // a remote deployment.
-const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5102';
+//
+// Default port is 5199, NOT the app's default PORT (5102) from .env.example.
+// On environments that also run a deployed fast-retro instance locally
+// (e.g. a supervised production service bound to the app's default port),
+// 5102 may not be "local dev" at all — it can be a live, shared deployment.
+// Running the suite against it would mutate real board data. Start your
+// local test instance on 5199 explicitly (see tests/README.md) so this
+// default can never collide with a deployment.
+const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:5199';
 
 export default defineConfig({
   testDir: './tests',

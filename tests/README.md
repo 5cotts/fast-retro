@@ -8,11 +8,24 @@ Tests only run against a **locally-running instance** — never a public
 deployment. Hitting a public deployment through a proxy/CDN from a sandboxed
 browser adds enough latency to make even basic UI interactions flaky.
 
-From the project root, start a local instance first:
+**⚠️ Use a disposable instance, port, and database — never `target/release/fast-retro`
+or the app's default port/DB.** The app's default `PORT` (5102, from
+`.env.example`) and default `FASTRETRO_DB` (`data/fastretro.db`) are exactly
+what a production deployment uses too, if one happens to be running out of
+this same checkout/`workdir` on the same host — a real possibility for any
+process-supervised deployment (systemd, a container orchestrator, etc.)
+pointed at this repo's default config. Building `target/release/fast-retro`
+via `./build.sh` also overwrites the exact binary path such a deployment's
+supervisor would restart from. Running the "obvious" commands below without
+the isolation flags can kill a live deployment via port/binary collision and
+write test data into its real database.
+
+From the project root, start a **disposable** local instance — `cargo run`
+(not `./build.sh` / `target/release/fast-retro`), a non-default port, and a
+scratch DB file that isn't checked in (`data/` is gitignored):
 
 ```bash
-./build.sh
-RETRO_LEAD_TOKEN=dev-token ./target/release/fast-retro   # serves on :5102
+RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COOKIE_SECURE=false cargo run
 ```
 
 Then, in another terminal:
@@ -23,7 +36,8 @@ bunx playwright install chromium   # one-time browser download
 RETRO_LEAD_TOKEN=dev-token bun run test:e2e
 ```
 
-Tests default to `http://localhost:5102`. `E2E_BASE_URL` only exists to
+Tests default to `http://localhost:5199` (see `playwright.config.ts`) — a
+dedicated test port, not the app's default. `E2E_BASE_URL` only exists to
 point at a different *local* port — e.g. the two-terminal dev loop's Vite
 server:
 

@@ -94,7 +94,11 @@ bunx playwright install
 bun run test:e2e
 ```
 
-The e2e suite hits the live deployment by default; see `playwright.config.ts` to point it at `http://localhost:5173` or `http://localhost:5102`.
+The e2e suite hits a dedicated local test port (`http://localhost:5199`) by
+default — **not** the app's default dev port (5102) or any deployment. See
+[`tests/README.md`](./tests/README.md) for how to start an isolated instance
+(separate port, database, and binary from anything that might already be
+running/deployed) before running the suite.
 
 ### Environment variables
 
