@@ -20,6 +20,23 @@ supervisor would restart from. Running the "obvious" commands below without
 the isolation flags can kill a live deployment via port/binary collision and
 write test data into its real database.
 
+### One command (recommended)
+
+```bash
+bun install            # installs @playwright/test, first time only
+bunx playwright install chromium   # one-time browser download
+./test-local.sh
+```
+
+`test-local.sh` starts a `cargo run` backend on a scratch port (`5199` by
+default, override with `TEST_PORT`) and a temp-file database, waits for it
+to come up, runs the full suite against it, then kills the backend and
+deletes the scratch database on exit (success, failure, or Ctrl-C) — no
+env vars to remember, and no way to end up pointed at `target/release/fast-retro`
+or the app's default port/DB by omission.
+
+### Manual (for iterating on a test — keeps the server up between runs)
+
 From the project root, start a **disposable** local instance — `cargo run`
 (not `./build.sh` / `target/release/fast-retro`), a non-default port, and a
 scratch DB file that isn't checked in (`data/` is gitignored):
@@ -31,8 +48,6 @@ RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COO
 Then, in another terminal:
 
 ```bash
-bun install            # installs @playwright/test
-bunx playwright install chromium   # one-time browser download
 RETRO_LEAD_TOKEN=dev-token bun run test:e2e
 ```
 
