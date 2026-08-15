@@ -6,6 +6,7 @@
     readRecentBoards,
     recordRecentBoard,
     setPendingLabel,
+    setPendingAnonymous,
     setHostKey,
     type RecentBoard
   } from '$lib/boards';
@@ -68,6 +69,7 @@
       // Extremely rare slug collision — retry once with a fresh random slug.
       if (!result) result = await createBoard(newSlug(), label);
       setHostKey(result.slug, result.hostKey);
+      setPendingAnonymous(result.slug);
       if (label) {
         recordRecentBoard(result.slug, { label });
         setPendingLabel(result.slug, label);
