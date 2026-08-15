@@ -26,7 +26,7 @@ There's no CI yet, so please run these locally and make sure they pass:
 cargo test
 cargo clippy --all-targets
 ( cd frontend && bun run check )
-bun run test:e2e   # requires a running local instance; see tests/README.md
+./test-local.sh    # runs an isolated local instance + the full suite; see tests/README.md
 ```
 
 ## Making changes

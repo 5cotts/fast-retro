@@ -91,12 +91,14 @@ cargo test
 
 # Playwright end-to-end (first run only: install browsers)
 bunx playwright install
-bun run test:e2e
+./test-local.sh
 ```
 
-The e2e suite hits a dedicated local test port (`http://localhost:5199`) by
-default — **not** the app's default dev port (5102) or any deployment. See
-[`tests/README.md`](./tests/README.md) for how to start an isolated instance
+`test-local.sh` runs the whole suite against a disposable, self-cleaning
+local instance on a dedicated test port (`5199` by default) — **not** the
+app's default dev port (5102) or any deployment. See
+[`tests/README.md`](./tests/README.md) for how it works and for the manual
+alternative
 (separate port, database, and binary from anything that might already be
 running/deployed) before running the suite.
 
