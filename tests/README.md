@@ -11,13 +11,14 @@ browser adds enough latency to make even basic UI interactions flaky.
 **⚠️ Use a disposable instance, port, and database — never `target/release/fast-retro`
 or the app's default port/DB.** The app's default `PORT` (5102, from
 `.env.example`) and default `FASTRETRO_DB` (`data/fastretro.db`) are exactly
-what a deployed production instance uses too if one happens to be running on
-the same host (e.g. a Zo Computer user service bound to port 5102 out of
-this same `workdir`). Building `target/release/fast-retro` via `./build.sh`
-also overwrites the exact binary path such a service's supervisor would
-restart from. Running the "obvious" commands below without the isolation
-flags can kill a live deployment via port/binary collision and write test
-data into its real database.
+what a production deployment uses too, if one happens to be running out of
+this same checkout/`workdir` on the same host — a real possibility for any
+process-supervised deployment (systemd, a container orchestrator, etc.)
+pointed at this repo's default config. Building `target/release/fast-retro`
+via `./build.sh` also overwrites the exact binary path such a deployment's
+supervisor would restart from. Running the "obvious" commands below without
+the isolation flags can kill a live deployment via port/binary collision and
+write test data into its real database.
 
 From the project root, start a **disposable** local instance — `cargo run`
 (not `./build.sh` / `target/release/fast-retro`), a non-default port, and a
