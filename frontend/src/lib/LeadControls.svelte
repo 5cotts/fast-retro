@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Timer, Play, Pause, RotateCcw, Download, X, EyeOff, Eye } from 'lucide-svelte';
+  import { Timer, Play, Pause, RotateCcw, Download, X, EyeOff, Eye, ArrowDownUp } from 'lucide-svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
 
@@ -10,6 +10,7 @@
     timerRunning,
     timerExpired,
     anonymous,
+    autoSort,
     onSet,
     onStart,
     onPause,
@@ -17,6 +18,7 @@
     onExportCSV,
     onEnd,
     onToggleAnonymous,
+    onToggleAutoSort,
     mobile = false
   } = $props<{
     timerInputMin: string;
@@ -25,6 +27,7 @@
     timerRunning: boolean;
     timerExpired: boolean;
     anonymous: boolean;
+    autoSort: boolean;
     onSet: () => void;
     onStart: () => void;
     onPause: () => void;
@@ -32,6 +35,7 @@
     onExportCSV: () => void;
     onEnd: () => void;
     onToggleAnonymous: () => void;
+    onToggleAutoSort: () => void;
     mobile?: boolean;
   }>();
 
@@ -123,6 +127,18 @@
           <Eye size={14} aria-hidden="true" /> Anonymous: Off
         {/if}
       </button>
+      <button
+        class="btn text-sm px-3 py-2 min-h-[44px] {autoSort
+          ? 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30'
+          : 'opacity-60'}"
+        onclick={onToggleAutoSort}
+        aria-pressed={autoSort}
+        aria-label={autoSort ? 'Turn off auto-sort by votes' : 'Turn on auto-sort by votes'}
+        title={autoSort ? 'Auto-sort is ON — cards reorder by vote count from Discuss onward' : 'Auto-sort is OFF — cards keep their manual order in Discuss and Actions'}
+      >
+        <ArrowDownUp size={14} aria-hidden="true" />
+        {autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}
+      </button>
       <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onExportCSV}>
         <Download size={14} aria-hidden="true" /> Download CSV
       </button>
@@ -213,6 +229,19 @@
       <Eye size={14} aria-hidden="true" />
       <span class="hidden lg:inline">Anonymous</span>
     {/if}
+  </button>
+
+  <button
+    class="btn text-xs px-2 py-1 min-h-[32px] {autoSort
+      ? 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30'
+      : 'opacity-60'}"
+    onclick={onToggleAutoSort}
+    aria-pressed={autoSort}
+    aria-label={autoSort ? 'Turn off auto-sort by votes' : 'Turn on auto-sort by votes'}
+    title={autoSort ? 'Auto-sort is ON — cards reorder by vote count from Discuss onward' : 'Auto-sort is OFF — cards keep their manual order in Discuss and Actions'}
+  >
+    <ArrowDownUp size={14} aria-hidden="true" />
+    <span class="hidden lg:inline">{autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}</span>
   </button>
 
   <button class="btn text-xs px-2 py-1" onclick={onExportCSV} title="Download as CSV">

@@ -61,3 +61,13 @@ export function canAddCardInColumn(column: string, phase: Phase): boolean {
 export function canVoteInPhase(phase: Phase): boolean {
   return phase === 'vote';
 }
+
+// Auto-sort-by-votes only kicks in once the lead moves into Discuss: voting
+// itself stays in whatever order the cards were left in after Group, so the
+// vote count in front of someone isn't shifting under their cursor while
+// they're still casting votes. The sort is display-only (never rewrites the
+// underlying Y.Array) and this gate is combined with the board's autoSort
+// meta flag by the caller — see Board.svelte's `sortActive`.
+export function canSortByVotes(phase: Phase): boolean {
+  return phase === 'discuss' || phase === 'actions';
+}
