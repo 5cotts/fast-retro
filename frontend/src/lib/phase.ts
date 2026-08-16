@@ -62,11 +62,12 @@ export function canVoteInPhase(phase: Phase): boolean {
   return phase === 'vote';
 }
 
-// Once vote counts start driving display order (vote phase onward), manual
-// drag-to-reorder would just get overridden by the next sort on re-render.
-// Disable the reposition affordance for those phases rather than let drags
-// silently no-op. Group-phase merge-by-drag is a different gesture and stays
-// available.
-export function canReorderCards(phase: Phase): boolean {
-  return phase === 'brainstorm' || phase === 'group';
+// Auto-sort-by-votes only kicks in once the lead moves into Discuss: voting
+// itself stays in whatever order the cards were left in after Group, so the
+// vote count in front of someone isn't shifting under their cursor while
+// they're still casting votes. The sort is display-only (never rewrites the
+// underlying Y.Array) and this gate is combined with the board's autoSort
+// meta flag by the caller — see Board.svelte's `sortActive`.
+export function canSortByVotes(phase: Phase): boolean {
+  return phase === 'discuss' || phase === 'actions';
 }

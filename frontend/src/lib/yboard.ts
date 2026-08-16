@@ -93,6 +93,18 @@ export function setBoardAnonymous(meta: Y.Map<unknown>, on: boolean): void {
   else meta.delete('anonymous');
 }
 
+// Auto-sort-by-votes defaults to on, so the stored flag only ever records the
+// off state (inverse of readBoardAnonymous/setBoardAnonymous, which default
+// to off and record the on state).
+export function readBoardAutoSort(meta: Y.Map<unknown>): boolean {
+  return meta.get('autoSort') !== false;
+}
+
+export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
+  if (on) meta.delete('autoSort');
+  else meta.set('autoSort', false);
+}
+
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
   const card = new Y.Map<unknown>();
   card.set('id', newId());

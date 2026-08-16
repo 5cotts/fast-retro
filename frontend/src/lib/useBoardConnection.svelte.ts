@@ -1,4 +1,11 @@
-import { createBoard, readCards, readBoardLabel, readBoardAnonymous, type BoardState } from './yboard';
+import {
+  createBoard,
+  readCards,
+  readBoardLabel,
+  readBoardAnonymous,
+  readBoardAutoSort,
+  type BoardState
+} from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
@@ -24,6 +31,7 @@ export interface UseBoardConnectionState {
   phase: Phase;
   label: string;
   anonymous: boolean;
+  autoSort: boolean;
 }
 
 /**
@@ -48,7 +56,8 @@ export function useBoardConnection() {
     presence: [],
     phase: 'brainstorm',
     label: '',
-    anonymous: false
+    anonymous: false,
+    autoSort: true
   });
 
   function start(init: UseBoardConnectionInit) {
@@ -78,6 +87,7 @@ export function useBoardConnection() {
     const recomputeMeta = () => {
       state.label = readBoardLabel(meta);
       state.anonymous = readBoardAnonymous(meta);
+      state.autoSort = readBoardAutoSort(meta);
     };
 
     board.observeDeep(recomputeCards);

@@ -26,6 +26,7 @@
     currentClientId,
     userName,
     anonymous,
+    autoSort,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -35,7 +36,8 @@
     onCycleTheme,
     onChangeName,
     onChangeLabel,
-    onToggleAnonymous
+    onToggleAnonymous,
+    onToggleAutoSort
   } = $props<{
     isLead: boolean;
     connected: boolean;
@@ -53,6 +55,7 @@
     currentClientId: number;
     userName: string;
     anonymous: boolean;
+    autoSort: boolean;
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -63,6 +66,7 @@
     onChangeName: (newName: string) => void;
     onChangeLabel: (next: string) => void;
     onToggleAnonymous: () => void;
+    onToggleAutoSort: () => void;
   }>();
 
   let showMobileMenu = $state(false);
@@ -201,6 +205,7 @@
             {timerRunning}
             {timerExpired}
             {anonymous}
+            {autoSort}
             onSet={onSetTimer}
             onStart={onStartTimer}
             onPause={onPauseTimer}
@@ -208,6 +213,7 @@
             {onExportCSV}
             onEnd={onEndBoard}
             {onToggleAnonymous}
+            {onToggleAutoSort}
           />
         {/if}
 
@@ -244,6 +250,7 @@
           {timerRunning}
           {timerExpired}
           {anonymous}
+          {autoSort}
           onSet={onSetTimer}
           onStart={onStartTimer}
           onPause={onPauseTimer}
@@ -251,6 +258,7 @@
           {onExportCSV}
           onEnd={onEndBoard}
           {onToggleAnonymous}
+          {onToggleAutoSort}
           mobile
         />
       {/if}

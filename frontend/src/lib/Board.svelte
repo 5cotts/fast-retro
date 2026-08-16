@@ -15,7 +15,8 @@
     moveCard,
     mergeCards,
     setBoardLabel,
-    setBoardAnonymous
+    setBoardAnonymous,
+    setBoardAutoSort
   } from './yboard';
   import {
     recordRecentBoard,
@@ -44,6 +45,7 @@
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { COLUMNS, COLUMN_EMPTY_HINT, COLUMN_PLACEHOLDER, type CardData, type ColumnKey } from './types';
   import { fly } from 'svelte/transition';
+  import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight } from 'lucide-svelte';
@@ -56,7 +58,7 @@
     setPhase,
     canAddCardInColumn,
     canVoteInPhase,
-    canReorderCards
+    canSortByVotes
   } from './phase';
 
   let {
@@ -302,6 +304,11 @@
   function toggleAnonymous() {
     if (!conn.state.board || !isLead) return;
     setBoardAnonymous(conn.state.board.meta, !conn.state.anonymous);
+  }
+
+  function toggleAutoSort() {
+    if (!conn.state.board || !isLead) return;
+    setBoardAutoSort(conn.state.board.meta, !conn.state.autoSort);
   }
 
   // Mirror the board label into this browser's recent-boards list so the
@@ -611,10 +618,15 @@
   const mergeMode = $derived(effectiveLead && conn.state.phase === 'group');
 
   // Display-only: never rewrites the underlying Y.Array, so this adds no new
-  // CRDT conflict surface. Active from the vote phase onward (before that,
-  // every card has 0 votes, so a stable sort is a no-op and brainstorm/group
-  // order is untouched). Ties keep original array position via stable sort.
-  const canReorder = $derived(canReorderCards(conn.state.phase));
+  // CRDT conflict surface. Active once the lead moves into Discuss (and
+  // stays active through Actions) — not during Vote itself, so the card
+  // someone's about to vote on doesn't jump position mid-cast. Lead can also
+  // turn it off entirely via the autoSort meta flag (on by default). Ties
+  // keep original array position via stable sort. Manual drag-to-reorder is
+  // disabled whenever the sort is actually active, since a drag would just
+  // get overridden by the next sort on re-render.
+  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.autoSort);
+  const canReorder = $derived(!sortActive);
   function sortedByVotes(cards: CardData[]): CardData[] {
     return cards
       .map((card, index) => ({ card, index }))
@@ -739,6 +751,7 @@
       currentClientId={conn.state.currentClientId}
       {userName}
       anonymous={conn.state.anonymous}
+      autoSort={conn.state.autoSort}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -749,6 +762,7 @@
       onChangeName={changeName}
       onChangeLabel={changeLabel}
       onToggleAnonymous={toggleAnonymous}
+      onToggleAutoSort={toggleAutoSort}
     />
 
     <div
@@ -904,7 +918,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {#each COLUMNS as col (col.key)}
           {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
-          {@const colCards = canReorder ? conn.state.cards[col.key] : sortedByVotes(conn.state.cards[col.key])}
+          {@const colCards = sortActive ? sortedByVotes(conn.state.cards[col.key]) : conn.state.cards[col.key]}
           {@const canAdd = canAddCardInColumn(col.key, conn.state.phase) && !ended}
           <section
             class="border rounded-xl shadow-sm flex flex-col {col.accent}"
@@ -933,6 +947,7 @@
                   role="listitem"
                   ondragover={(e) => onCardSlotDragOver(e, col.key, i)}
                   in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
+                  animate:flip={{ duration: reducedMotion ? 0 : 500, easing: cubicOut }}
                 >
                   {#if dragOverCol === col.key && dragOverIndex === i && dragCardId !== card.id}
                     <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>

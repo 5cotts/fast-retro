@@ -1,10 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Vote-phase sort: from the Vote phase onward, cards in a column are
- * displayed highest-votes-first (display-only — the underlying card
- * order is untouched). Brainstorm/Group phases render in insertion
- * order regardless of vote count (votes can only be 0 before Vote).
+ * Discuss-phase auto-sort: once the lead advances into Discuss (and through
+ * Actions), cards in a column are displayed highest-votes-first
+ * (display-only — the underlying card order is untouched). Brainstorm,
+ * Group, and Vote all render in insertion order regardless of vote count —
+ * sorting doesn't kick in until Discuss, so a card's position doesn't shift
+ * on someone mid-vote. The lead can also disable auto-sort entirely via a
+ * toggle (on by default).
  *
  * Skipped unless RETRO_LEAD_TOKEN is set.
  */
@@ -36,10 +39,10 @@ async function columnCardOrder(page: Page): Promise<string[]> {
   return labels;
 }
 
-test.describe('fast-retro vote-phase card sort', () => {
+test.describe('fast-retro discuss-phase auto-sort', () => {
   test.skip(!LEAD_TOKEN, 'RETRO_LEAD_TOKEN env var must be set');
 
-  test('cards sort by vote count from the Vote phase onward, not before', async ({ browser }) => {
+  test('cards sort by vote count from the Discuss phase onward, not before', async ({ browser }) => {
     test.setTimeout(90_000);
 
     const slug = `pw-vote-sort-${Date.now()}`;
@@ -97,7 +100,17 @@ test.describe('fast-retro vote-phase card sort', () => {
       await expect(leadCardC.getByRole('button', { name: /^Remove vote \(2\)/ })).toBeVisible({ timeout: 10_000 });
       await expect(leadCardB.getByRole('button', { name: /^Remove vote \(1\)/ })).toBeVisible({ timeout: 10_000 });
 
-      // Sorted highest-votes-first on both the lead's and Alice's pages.
+      // Still Vote phase: order untouched by votes, and cards remain draggable.
+      order = await columnCardOrder(leadPage);
+      expect(order).toEqual([`Card: ${cardA}`, `Card: ${cardB}`, `Card: ${cardC}`]);
+      const leadCardA = leadColumn.getByRole('group', { name: `Card: ${cardA}` });
+      await expect(leadCardA).toHaveAttribute('draggable', 'true');
+
+      // Advance Vote → Discuss: sort kicks in now, on both the lead's and
+      // Alice's pages.
+      await leadPage.getByRole('button', { name: 'Advance to Discuss phase' }).click();
+      await expect(leadPage.getByRole('button', { name: 'Advance to Actions phase' })).toBeVisible();
+
       order = await columnCardOrder(leadPage);
       expect(order).toEqual([`Card: ${cardC}`, `Card: ${cardB}`, `Card: ${cardA}`]);
       order = await columnCardOrder(alicePage);
@@ -105,10 +118,59 @@ test.describe('fast-retro vote-phase card sort', () => {
 
       // Manual drag-reposition is disabled once sorting is active: the
       // card is no longer draggable.
-      const leadCardA = leadColumn.getByRole('group', { name: `Card: ${cardA}` });
       await expect(leadCardA).toHaveAttribute('draggable', 'false');
     } finally {
       await aliceCtx.close();
+      await leadCtx.close();
+    }
+  });
+
+  test('lead can disable auto-sort to keep manual order in Discuss', async ({ browser }) => {
+    test.setTimeout(90_000);
+
+    const slug = `pw-vote-sort-toggle-${Date.now()}`;
+    const stamp = Date.now();
+    const leadName = `lead-${Math.random().toString(36).slice(2, 6)}`;
+    const cardA = `alpha card ${stamp}`;
+    const cardB = `bravo card ${stamp}`;
+
+    const leadCtx = await browser.newContext();
+    const leadPage = await leadCtx.newPage();
+
+    try {
+      await joinAs(leadPage, `/lead/${LEAD_TOKEN}/${slug}`, leadName);
+
+      const draft = leadPage.getByLabel('Add a card to What went well');
+      const leadColumn = leadPage.getByRole('list', { name: 'What went well' });
+      for (const text of [cardA, cardB]) {
+        await draft.fill(text);
+        await leadColumn.getByRole('button', { name: 'Add card', exact: true }).click();
+        await expect(leadColumn.getByRole('group', { name: `Card: ${text}` })).toBeVisible();
+      }
+
+      // Turn auto-sort off up front (default is on).
+      const toggle = leadPage.getByRole('button', { name: 'Turn off auto-sort by votes' });
+      await expect(toggle).toBeVisible();
+      await toggle.click();
+      await expect(leadPage.getByRole('button', { name: 'Turn on auto-sort by votes' })).toBeVisible();
+
+      // Vote B up so it would sort above A if auto-sort were on.
+      await leadPage.getByRole('button', { name: 'Advance to Group phase' }).click();
+      await leadPage.getByRole('button', { name: 'Advance to Vote phase' }).click();
+      const leadCardB = leadColumn.getByRole('group', { name: `Card: ${cardB}` });
+      await leadCardB.getByRole('button', { name: /^Upvote/ }).click();
+      await expect(leadCardB.getByRole('button', { name: /^Remove vote \(1\)/ })).toBeVisible({ timeout: 10_000 });
+
+      await leadPage.getByRole('button', { name: 'Advance to Discuss phase' }).click();
+      await expect(leadPage.getByRole('button', { name: 'Advance to Actions phase' })).toBeVisible();
+
+      // With auto-sort off, insertion order is preserved even in Discuss,
+      // and cards stay draggable.
+      const order = await columnCardOrder(leadPage);
+      expect(order).toEqual([`Card: ${cardA}`, `Card: ${cardB}`]);
+      const leadCardA = leadColumn.getByRole('group', { name: `Card: ${cardA}` });
+      await expect(leadCardA).toHaveAttribute('draggable', 'true');
+    } finally {
       await leadCtx.close();
     }
   });
