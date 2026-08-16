@@ -20,8 +20,10 @@
   import {
     recordRecentBoard,
     consumePendingLabel,
+    consumePendingAnonymous,
     setHostKey,
     setPendingLabel,
+    setPendingAnonymous,
     newSlug,
     slugifyLabel
   } from './boards';
@@ -325,6 +327,25 @@
       setBoardLabel(conn.state.board.meta, pending);
     }
     pendingApplied = true;
+  });
+
+  // Newly created boards default to anonymous (the lead can still opt into
+  // names via the existing toggle). Applied the same way as the pending
+  // label above — once, host-only — so boards that were already open when
+  // this shipped keep their current behavior untouched.
+  let pendingAnonymousApplied = false;
+  $effect(() => {
+    if (pendingAnonymousApplied) return;
+    if (!isLead || !conn.state.board) return;
+    if (conn.state.anonymous) {
+      pendingAnonymousApplied = true;
+      return;
+    }
+    const pending = consumePendingAnonymous(slug);
+    if (pending) {
+      setBoardAnonymous(conn.state.board.meta, true);
+    }
+    pendingAnonymousApplied = true;
   });
 
   function setTyping(target: string | null) {
@@ -662,6 +683,7 @@
       let res = await createBoard(wanted, base).catch(() => null);
       if (!res) res = await createBoard(newSlug(), base);
       setHostKey(res.slug, res.hostKey);
+      setPendingAnonymous(res.slug);
       if (base) {
         recordRecentBoard(res.slug, { label: base });
         setPendingLabel(res.slug, base);

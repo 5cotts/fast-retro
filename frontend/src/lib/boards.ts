@@ -145,6 +145,33 @@ export function consumePendingLabel(slug: string): string {
   }
 }
 
+// Marks a slug as "anonymous by default" at board-creation time, mirroring
+// the pending-label mechanism above: newly created boards start anonymous,
+// but this must not touch the fallback used by every already-open board, so
+// the flag is applied once by the board page rather than baked into the CRDT
+// default itself.
+const PENDING_ANONYMOUS_PREFIX = 'retro-pending-anonymous:';
+
+export function setPendingAnonymous(slug: string): void {
+  if (!isValidSlug(slug)) return;
+  try {
+    sessionStorage.setItem(PENDING_ANONYMOUS_PREFIX + slug, '1');
+  } catch {
+    // ignore
+  }
+}
+
+export function consumePendingAnonymous(slug: string): boolean {
+  if (!isValidSlug(slug)) return false;
+  try {
+    const v = sessionStorage.getItem(PENDING_ANONYMOUS_PREFIX + slug);
+    if (v) sessionStorage.removeItem(PENDING_ANONYMOUS_PREFIX + slug);
+    return v === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function forgetRecentBoard(slug: string): void {
   try {
     const list = readRecentBoards().filter((b) => b.slug !== slug);

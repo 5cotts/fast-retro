@@ -96,3 +96,79 @@ test.describe('fast-retro anonymous mode', () => {
     }
   });
 });
+
+test.describe('fast-retro anonymous-by-default for new boards', () => {
+  // Uses the homepage "Start a new retro" flow, not the /lead/:token route,
+  // so host status comes from the hostKey the create flow stores in
+  // localStorage — no RETRO_LEAD_TOKEN needed.
+
+  test('freshly created board starts anonymous; lead can still opt into names', async ({ browser }) => {
+    test.setTimeout(60_000);
+
+    const leadCtx = await browser.newContext();
+    const aliceCtx = await browser.newContext();
+    const leadPage = await leadCtx.newPage();
+    const alicePage = await aliceCtx.newPage();
+    const leadName = `lead-${Math.random().toString(36).slice(2, 6)}`;
+    const aliceName = `alice-${Math.random().toString(36).slice(2, 6)}`;
+    const cardText = `fresh board observation ${Date.now()}`;
+
+    try {
+      // Seed a recent so the homepage renders the CTA list instead of
+      // auto-redirecting to a fresh board for empty-state visitors.
+      await leadPage.addInitScript(() => {
+        localStorage.setItem(
+          'retro-recent-boards',
+          JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])
+        );
+      });
+
+      await leadPage.goto('/');
+      await leadPage.getByRole('button', { name: 'Start a new retro' }).click();
+      const dialog = leadPage.getByRole('dialog', { name: 'Start a new retro' });
+      await expect(dialog).toBeVisible();
+      const label = `Anon Default ${Math.random().toString(36).slice(2, 5)}`;
+      await dialog.getByLabel('Retro name').fill(label);
+      await dialog.getByRole('button', { name: 'Create retro' }).click();
+
+      await leadPage.waitForURL(/\/board\//);
+      const nameInput = leadPage.getByLabel('Your display name');
+      await expect(nameInput).toBeVisible();
+      await nameInput.fill(leadName);
+      await leadPage.getByRole('button', { name: 'Join the retro' }).click();
+      await dismissOnboardingIfPresent(leadPage);
+      await expect(leadPage.getByRole('list', { name: 'What went well' })).toBeVisible();
+
+      const slug = new URL(leadPage.url()).pathname.replace('/board/', '');
+      await joinAs(alicePage, `/board/${slug}`, aliceName);
+
+      // Anonymous mode should already be on — no toggle click needed — and
+      // the lead's toggle button should reflect that starting state.
+      await expect(leadPage.getByLabel('Anonymous mode on')).toBeVisible({ timeout: 10_000 });
+      await expect(alicePage.getByLabel('Anonymous mode on')).toBeVisible({ timeout: 10_000 });
+      await expect(leadPage.getByRole('button', { name: 'Turn off anonymous mode' })).toBeVisible();
+
+      const leadDraft = leadPage.getByLabel('Add a card to What went well');
+      await leadDraft.click();
+      await leadDraft.fill(cardText);
+      const leadColumn = leadPage.getByRole('list', { name: 'What went well' });
+      await leadColumn.getByRole('button', { name: 'Add card', exact: true }).click();
+
+      const aliceCard = alicePage
+        .getByRole('list', { name: 'What went well' })
+        .getByRole('group', { name: `Card: ${cardText}` });
+      await expect(aliceCard).toBeVisible({ timeout: 10_000 });
+      // Alice never sees the lead's name — the card started anonymous.
+      await expect(aliceCard).toContainText('Anonymous');
+      await expect(aliceCard).not.toContainText(leadName);
+
+      // The lead-toggle-to-named path still works from this starting state.
+      await leadPage.getByRole('button', { name: 'Turn off anonymous mode' }).click();
+      await expect(alicePage.getByLabel('Anonymous mode on')).toBeHidden({ timeout: 10_000 });
+      await expect(aliceCard).toContainText(leadName);
+    } finally {
+      await aliceCtx.close();
+      await leadCtx.close();
+    }
+  });
+});
