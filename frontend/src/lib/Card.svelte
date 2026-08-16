@@ -20,6 +20,7 @@
     namesMap,
     mergeMode = false,
     isMergeTarget = false,
+    canReorder = true,
     onEdit,
     onDelete,
     onToggleVote,
@@ -46,6 +47,7 @@
     namesMap: Record<string, string>;
     mergeMode?: boolean;
     isMergeTarget?: boolean;
+    canReorder?: boolean;
     onEdit: (cardId: string, text: string) => void;
     onDelete: (cardId: string) => void;
     onToggleVote: (cardId: string) => void;
@@ -178,7 +180,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  draggable={!editing && !readOnly}
+  draggable={!editing && !readOnly && canReorder}
   tabindex="0"
   role="group"
   aria-label={`Card: ${card.text.slice(0, 80)}`}

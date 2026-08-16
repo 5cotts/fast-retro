@@ -55,7 +55,8 @@
     prevPhase,
     setPhase,
     canAddCardInColumn,
-    canVoteInPhase
+    canVoteInPhase,
+    canReorderCards
   } from './phase';
 
   let {
@@ -451,7 +452,7 @@
   }
 
   function onCardSlotDragOver(e: DragEvent, col: ColumnKey, index: number) {
-    if (!dragCardId) return;
+    if (!dragCardId || !canReorder) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     dragOverCol = col;
@@ -459,7 +460,7 @@
   }
 
   function onColumnDragOver(e: DragEvent, col: ColumnKey) {
-    if (!dragCardId) return;
+    if (!dragCardId || !canReorder) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     if (dragOverCol !== col) {
@@ -470,7 +471,7 @@
 
   function onColumnDrop(e: DragEvent, col: ColumnKey) {
     e.preventDefault();
-    if (!conn.state.board || !dragCardId || !dragFromCol) {
+    if (!conn.state.board || !dragCardId || !dragFromCol || !canReorder) {
       onDragEnd();
       return;
     }
@@ -504,7 +505,7 @@
   }
 
   function moveFocused(direction: 'up' | 'down' | 'left' | 'right') {
-    if (!focusedCardId || !conn.state.board) return;
+    if (!focusedCardId || !conn.state.board || !canReorder) return;
     const loc = findCard(focusedCardId);
     if (!loc) return;
     const { col, index } = loc;
@@ -608,6 +609,18 @@
   const isFirstPhase = $derived(phaseIndex === 0);
   const canVote = $derived(canVoteInPhase(conn.state.phase));
   const mergeMode = $derived(effectiveLead && conn.state.phase === 'group');
+
+  // Display-only: never rewrites the underlying Y.Array, so this adds no new
+  // CRDT conflict surface. Active from the vote phase onward (before that,
+  // every card has 0 votes, so a stable sort is a no-op and brainstorm/group
+  // order is untouched). Ties keep original array position via stable sort.
+  const canReorder = $derived(canReorderCards(conn.state.phase));
+  function sortedByVotes(cards: CardData[]): CardData[] {
+    return cards
+      .map((card, index) => ({ card, index }))
+      .sort((a, b) => b.card.votes.length - a.card.votes.length || a.index - b.index)
+      .map((entry) => entry.card);
+  }
 
   function downloadCSV() {
     const csv = exportCSV(conn.state.cards);
@@ -891,7 +904,7 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
         {#each COLUMNS as col (col.key)}
           {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
-          {@const colCards = conn.state.cards[col.key]}
+          {@const colCards = canReorder ? conn.state.cards[col.key] : sortedByVotes(conn.state.cards[col.key])}
           {@const canAdd = canAddCardInColumn(col.key, conn.state.phase) && !ended}
           <section
             class="border rounded-xl shadow-sm flex flex-col {col.accent}"
@@ -936,6 +949,7 @@
                     namesMap={namesMapDisambiguated}
                     mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
                     isMergeTarget={dragMergeTargetId === card.id}
+                    {canReorder}
                     onEdit={(id, text) => handleEdit(col.key, id, text)}
                     onDelete={(id) => handleDelete(col.key, id)}
                     onToggleVote={(id) => handleVote(col.key, id)}

@@ -61,3 +61,12 @@ export function canAddCardInColumn(column: string, phase: Phase): boolean {
 export function canVoteInPhase(phase: Phase): boolean {
   return phase === 'vote';
 }
+
+// Once vote counts start driving display order (vote phase onward), manual
+// drag-to-reorder would just get overridden by the next sort on re-render.
+// Disable the reposition affordance for those phases rather than let drags
+// silently no-op. Group-phase merge-by-drag is a different gesture and stays
+// available.
+export function canReorderCards(phase: Phase): boolean {
+  return phase === 'brainstorm' || phase === 'group';
+}
