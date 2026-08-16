@@ -16,8 +16,11 @@
     mergeCards,
     setBoardLabel,
     setBoardAnonymous,
-    setBoardAutoSort
+    setBoardAutoSort,
+    setBoardEnded
   } from './yboard';
+  import { pickMotivationalMessage } from './motivation';
+  import confetti from 'canvas-confetti';
   import {
     recordRecentBoard,
     consumePendingLabel,
@@ -48,7 +51,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowLeft, ArrowRight } from 'lucide-svelte';
+  import { Download, ArrowLeft, ArrowRight, PartyPopper, X } from 'lucide-svelte';
   import {
     PHASES,
     PHASE_LABEL,
@@ -111,6 +114,13 @@
   let prevTimerExpired = $state<boolean>(false);
   let timerJustExpired = $state<boolean>(false);
   let timerExpiredHandle: ReturnType<typeof setTimeout> | null = null;
+
+  // Celebration toast shown to every connected client the moment the retro
+  // ends (see the effect below watching conn.state.endedAt). Auto-dismisses,
+  // but can also be closed early.
+  let prevEndedAt = $state<number | null>(null);
+  let showEndCelebration = $state<boolean>(false);
+  let endCelebrationHandle: ReturnType<typeof setTimeout> | null = null;
 
   // Disconnect banner: only surface after the connection has been down for
   // long enough that a transient hiccup wouldn't trigger it. The header pill
@@ -214,6 +224,100 @@
     prevTimerExpired = expired;
   });
 
+  let confettiIntervalHandle: ReturnType<typeof setInterval> | null = null;
+  let confettiFire: ReturnType<typeof confetti.create> | null = null;
+
+  // The default `confetti(...)` export's lazy singleton hardcodes
+  // useWorker: true, which renders via a Worker built from a `blob:` URL.
+  // This app's CSP has no worker-src/blob: allowance, so that worker is
+  // silently blocked and nothing ever draws — the canvas still gets created
+  // and correctly sized, it just stays empty. A custom instance defaults
+  // useWorker to false and renders on the main thread instead, which
+  // respects the CSP and actually shows up.
+  function getConfettiFire() {
+    if (!confettiFire) {
+      confettiFire = confetti.create(undefined, { resize: true, useWorker: false });
+    }
+    return confettiFire;
+  }
+
+  function stopConfettiShow() {
+    if (confettiIntervalHandle !== null) {
+      clearInterval(confettiIntervalHandle);
+      confettiIntervalHandle = null;
+    }
+  }
+
+  // Big, full-screen, multi-second shower (think iMessage "Congratulations")
+  // rather than a quick corner-burst: an immediate large center pop for
+  // instant impact, then ~3s of randomized bursts raining across the whole
+  // width so it reads as covering the screen, not one small corner of it.
+  function fireConfettiShow() {
+    stopConfettiShow();
+    const fire = getConfettiFire();
+    const duration = 3000;
+    const animationEnd = Date.now() + duration;
+    const defaults = { startVelocity: 40, spread: 360, ticks: 100, zIndex: 1000, scalar: 1.1 };
+
+    fire({
+      ...defaults,
+      particleCount: 180,
+      spread: 130,
+      startVelocity: 55,
+      origin: { x: 0.5, y: 0.5 }
+    });
+
+    confettiIntervalHandle = setInterval(() => {
+      const timeLeft = animationEnd - Date.now();
+      if (timeLeft <= 0) {
+        stopConfettiShow();
+        return;
+      }
+      const particleCount = 70 * (timeLeft / duration);
+      fire({
+        ...defaults,
+        particleCount,
+        origin: { x: Math.random() * 0.3, y: Math.random() * 0.5 - 0.1 }
+      });
+      fire({
+        ...defaults,
+        particleCount,
+        origin: { x: 0.7 + Math.random() * 0.3, y: Math.random() * 0.5 - 0.1 }
+      });
+      fire({
+        ...defaults,
+        particleCount: particleCount * 0.7,
+        origin: { x: 0.3 + Math.random() * 0.4, y: Math.random() * 0.3 - 0.1 }
+      });
+    }, 250);
+  }
+
+  function dismissEndCelebration() {
+    showEndCelebration = false;
+    if (endCelebrationHandle !== null) {
+      clearTimeout(endCelebrationHandle);
+      endCelebrationHandle = null;
+    }
+  }
+
+  // Fires for every connected client — not just the lead who clicked End —
+  // the moment endedAt shows up on the meta map (see setBoardEnded in
+  // confirmEndBoard). Also flips the local `ended` flag so participants see
+  // the read-only banner live instead of only after a reload.
+  $effect(() => {
+    const endedAt = conn.state.endedAt;
+    if (endedAt !== null && endedAt !== prevEndedAt) {
+      ended = true;
+      showEndCelebration = true;
+      if (!reducedMotion) fireConfettiShow();
+      if (endCelebrationHandle !== null) clearTimeout(endCelebrationHandle);
+      endCelebrationHandle = setTimeout(() => {
+        showEndCelebration = false;
+      }, 9000);
+    }
+    prevEndedAt = endedAt;
+  });
+
   // Announce timer state transitions for screen readers (without spamming
   // the per-second count).
   $effect(() => {
@@ -258,6 +362,8 @@
     if (tickHandle !== null) clearInterval(tickHandle);
     if (timerExpiredHandle !== null) clearTimeout(timerExpiredHandle);
     if (disconnectHandle !== null) clearTimeout(disconnectHandle);
+    if (endCelebrationHandle !== null) clearTimeout(endCelebrationHandle);
+    stopConfettiShow();
     if (mediaQuery && mediaListener) {
       if (mediaQuery.removeEventListener) mediaQuery.removeEventListener('change', mediaListener);
       else mediaQuery.removeListener(mediaListener);
@@ -674,6 +780,14 @@
     if (opts.exportFirst) downloadCSV();
     archiveError = '';
     archiving = true;
+    // Broadcast the end + a motivational message to every connected client
+    // before the archive REST call flips the room read-only server-side —
+    // once that happens the server silently drops further doc writes (see
+    // main.rs `room.is_ended()`), so this has to land first.
+    const { doc, meta } = conn.state.board;
+    doc.transact(() => {
+      setBoardEnded(meta, pickMotivationalMessage());
+    });
     try {
       await endBoard(
         slug,
@@ -685,6 +799,13 @@
         { hostKey, leadToken }
       );
     } catch (e) {
+      // Archive failed — the retro is still open. Revert the broadcast so a
+      // future joiner (or a still-connected client) doesn't see a stale
+      // "ended" signal for a board that's actually still live.
+      doc.transact(() => {
+        meta.delete('endedAt');
+        meta.delete('endedMessage');
+      });
       archiveError = 'Ending failed. The retro is still open — try again.';
       archiving = false;
       return;
@@ -1059,5 +1180,30 @@
 
   {#if showOnboarding}
     <Onboarding onDismiss={dismissOnboarding} />
+  {/if}
+
+  {#if showEndCelebration}
+    <div
+      class="fixed inset-x-0 bottom-4 sm:bottom-6 z-30 flex justify-center px-3 pointer-events-none"
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        class="pointer-events-auto flex items-center gap-2.5 max-w-sm w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-4 py-3 motion-safe:animate-in motion-safe:slide-in-from-bottom-2 motion-safe:fade-in motion-safe:duration-300"
+        data-testid="end-celebration-toast"
+      >
+        <PartyPopper size={18} class="text-amber-500 shrink-0" aria-hidden="true" />
+        <span class="text-sm font-medium text-slate-800 dark:text-slate-100 flex-1">
+          {conn.state.endedMessage || 'Great retro! See you next sprint.'}
+        </span>
+        <button
+          class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+          onclick={dismissEndCelebration}
+          aria-label="Dismiss"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   {/if}
 {/if}

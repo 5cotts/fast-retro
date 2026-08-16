@@ -4,6 +4,8 @@ import {
   readBoardLabel,
   readBoardAnonymous,
   readBoardAutoSort,
+  readBoardEndedAt,
+  readBoardEndedMessage,
   type BoardState
 } from './yboard';
 import { readTimer } from './timer';
@@ -32,6 +34,8 @@ export interface UseBoardConnectionState {
   label: string;
   anonymous: boolean;
   autoSort: boolean;
+  endedAt: number | null;
+  endedMessage: string;
 }
 
 /**
@@ -57,7 +61,9 @@ export function useBoardConnection() {
     phase: 'brainstorm',
     label: '',
     anonymous: false,
-    autoSort: true
+    autoSort: true,
+    endedAt: null,
+    endedMessage: ''
   });
 
   function start(init: UseBoardConnectionInit) {
@@ -88,6 +94,8 @@ export function useBoardConnection() {
       state.label = readBoardLabel(meta);
       state.anonymous = readBoardAnonymous(meta);
       state.autoSort = readBoardAutoSort(meta);
+      state.endedAt = readBoardEndedAt(meta);
+      state.endedMessage = readBoardEndedMessage(meta);
     };
 
     board.observeDeep(recomputeCards);

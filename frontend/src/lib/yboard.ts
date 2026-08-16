@@ -105,6 +105,27 @@ export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
   else meta.set('autoSort', false);
 }
 
+// Live "the retro just ended" signal, broadcast over the same meta channel so
+// every connected client (not just the lead who clicked End) can react —
+// confetti burst, motivational toast — without needing to reload. Set this
+// *before* the archive REST call that flips the room to read-only server
+// side; once that happens, the server silently drops further doc writes, so
+// writing after the call would race a channel that's about to go deaf.
+export function readBoardEndedAt(meta: Y.Map<unknown>): number | null {
+  const v = meta.get('endedAt');
+  return typeof v === 'number' ? v : null;
+}
+
+export function readBoardEndedMessage(meta: Y.Map<unknown>): string {
+  const v = meta.get('endedMessage');
+  return typeof v === 'string' ? v : '';
+}
+
+export function setBoardEnded(meta: Y.Map<unknown>, message: string): void {
+  meta.set('endedAt', Date.now());
+  meta.set('endedMessage', message);
+}
+
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
   const card = new Y.Map<unknown>();
   card.set('id', newId());
