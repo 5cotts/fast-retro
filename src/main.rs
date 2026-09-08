@@ -987,52 +987,102 @@ async fn delete_archive(
     }
 }
 
-/// Build the Content-Security-Policy header value. `script-src` is locked to
-/// `'self'` plus Google's GIS script and the GA4 loader, with each inline
-/// `<script>` in the embedded `index.html` (SvelteKit's static-adapter
-/// bootstrap, and the GA4 config snippet) allowed by hash rather than a
-/// blanket `'unsafe-inline'` — the app has no other inline scripts and never
-/// injects HTML (`{@html}`/`innerHTML` aren't used anywhere), so nothing else
-/// should ever need to execute.
-fn compute_csp() -> HeaderValue {
-    let script_src = StaticAssets::get("index.html")
-        .and_then(|f| String::from_utf8(f.data.into_owned()).ok())
-        .map(|html| {
-            let mut hashes = Vec::new();
-            let mut search_from = 0;
-            while let Some(rel_start) = html[search_from..].find("<script>") {
-                let start = search_from + rel_start + "<script>".len();
-                let Some(rel_end) = html[start..].find("</script>") else {
-                    break;
-                };
-                let end = start + rel_end;
-                let digest = Sha256::digest(html[start..end].as_bytes());
-                let hash = base64::engine::general_purpose::STANDARD.encode(digest);
-                hashes.push(format!("'sha256-{hash}'"));
-                search_from = end;
-            }
-            if hashes.is_empty() {
-                warn!("couldn't find any inline <script> tags to hash for CSP; falling back to 'unsafe-inline' for script-src");
-                "'self' 'unsafe-inline' https://accounts.google.com https://www.googletagmanager.com".to_string()
-            } else {
-                format!(
-                    "'self' {} https://accounts.google.com https://www.googletagmanager.com",
-                    hashes.join(" ")
-                )
-            }
-        })
-        .unwrap_or_else(|| {
-            warn!("couldn't read embedded index.html for CSP hashing; falling back to 'unsafe-inline' for script-src");
-            "'self' 'unsafe-inline' https://accounts.google.com https://www.googletagmanager.com".to_string()
-        });
+/// GA4 measurement ID, if analytics is enabled. Unset (or empty) means GA is
+/// disabled: the tag is stripped from the served HTML entirely and none of
+/// Google's analytics domains are allowed by the CSP, so a local dev instance
+/// or someone else's self-hosted fork never fires requests toward Google, let
+/// alone toward whatever GA property this deployment happens to be wired to.
+fn ga_measurement_id() -> Option<String> {
+    std::env::var("GA_MEASUREMENT_ID")
+        .ok()
+        .filter(|id| !id.is_empty())
+}
 
+const GA_BLOCK_START: &str = "<!-- GA4-BLOCK-START";
+const GA_BLOCK_END: &str = "<!-- GA4-BLOCK-END -->";
+const GA_PLACEHOLDER: &str = "__GA_MEASUREMENT_ID__";
+
+/// The embedded `index.html`, patched for the runtime `GA_MEASUREMENT_ID`
+/// env var: either the `__GA_MEASUREMENT_ID__` placeholder is swapped for the
+/// real ID, or (if unset) the whole GA4 block between the markers is removed.
+/// Computed once and cached — this is served on every request, so it can't
+/// re-derive the env var or re-scan the HTML each time.
+fn patched_index_html() -> &'static [u8] {
+    static PATCHED: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    PATCHED.get_or_init(|| {
+        let Some(html) = StaticAssets::get("index.html")
+            .and_then(|f| String::from_utf8(f.data.into_owned()).ok())
+        else {
+            warn!("couldn't read embedded index.html to patch in GA_MEASUREMENT_ID");
+            return Vec::new();
+        };
+        let patched = match ga_measurement_id() {
+            Some(id) => html.replace(GA_PLACEHOLDER, &id),
+            None => match (html.find(GA_BLOCK_START), html.find(GA_BLOCK_END)) {
+                (Some(start), Some(end_start)) => {
+                    let end = end_start + GA_BLOCK_END.len();
+                    format!("{}{}", &html[..start], &html[end..])
+                }
+                _ => {
+                    warn!("GA4 block markers not found in index.html; leaving it as-is");
+                    html
+                }
+            },
+        };
+        patched.into_bytes()
+    })
+}
+
+/// Build the Content-Security-Policy header value. `script-src` is locked to
+/// `'self'` plus (when GA is enabled) Google's GIS script and the GA4
+/// loader, with each inline `<script>` in the patched `index.html`
+/// (SvelteKit's static-adapter bootstrap, and the GA4 config snippet if
+/// present) allowed by hash rather than a blanket `'unsafe-inline'` — the app
+/// has no other inline scripts and never injects HTML (`{@html}`/`innerHTML`
+/// aren't used anywhere), so nothing else should ever need to execute.
+fn compute_csp() -> HeaderValue {
+    let ga_enabled = ga_measurement_id().is_some();
+    let google_script_hosts = if ga_enabled {
+        " https://accounts.google.com https://www.googletagmanager.com"
+    } else {
+        " https://accounts.google.com"
+    };
+    let html = std::str::from_utf8(patched_index_html()).unwrap_or_default();
+
+    let script_src = {
+        let mut hashes = Vec::new();
+        let mut search_from = 0;
+        while let Some(rel_start) = html[search_from..].find("<script>") {
+            let start = search_from + rel_start + "<script>".len();
+            let Some(rel_end) = html[start..].find("</script>") else {
+                break;
+            };
+            let end = start + rel_end;
+            let digest = Sha256::digest(html[start..end].as_bytes());
+            let hash = base64::engine::general_purpose::STANDARD.encode(digest);
+            hashes.push(format!("'sha256-{hash}'"));
+            search_from = end;
+        }
+        if hashes.is_empty() {
+            warn!("couldn't find any inline <script> tags to hash for CSP; falling back to 'unsafe-inline' for script-src");
+            format!("'self' 'unsafe-inline'{google_script_hosts}")
+        } else {
+            format!("'self' {}{google_script_hosts}", hashes.join(" "))
+        }
+    };
+
+    let analytics_connect_src = if ga_enabled {
+        " https://*.google-analytics.com https://*.analytics.google.com"
+    } else {
+        ""
+    };
     let csp = format!(
         "default-src 'self'; \
          script-src {script_src}; \
          style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: https://*.googleusercontent.com; \
          font-src 'self'; \
-         connect-src 'self' ws: wss: https://accounts.google.com https://*.google-analytics.com https://*.analytics.google.com; \
+         connect-src 'self' ws: wss: https://accounts.google.com{analytics_connect_src}; \
          frame-src https://accounts.google.com; \
          object-src 'none'; \
          base-uri 'self'; \
@@ -1052,6 +1102,14 @@ async fn static_handler(uri: Uri) -> Response {
         path.to_string()
     };
 
+    if try_path == "index.html" {
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(axum::body::Body::from(patched_index_html()))
+            .unwrap();
+    }
+
     if let Some(asset) = StaticAssets::get(&try_path) {
         let mime = mime_guess::from_path(&try_path).first_or_octet_stream();
         return Response::builder()
@@ -1063,13 +1121,11 @@ async fn static_handler(uri: Uri) -> Response {
 
     // SPA fallback to index.html for paths without a file extension
     if !try_path.contains('.') {
-        if let Some(asset) = StaticAssets::get("index.html") {
-            return Response::builder()
-                .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-                .header(header::CACHE_CONTROL, "no-cache")
-                .body(axum::body::Body::from(asset.data.into_owned()))
-                .unwrap();
-        }
+        return Response::builder()
+            .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+            .header(header::CACHE_CONTROL, "no-cache")
+            .body(axum::body::Body::from(patched_index_html()))
+            .unwrap();
     }
 
     (StatusCode::NOT_FOUND, "Not found").into_response()

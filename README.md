@@ -110,6 +110,7 @@ running/deployed) before running the suite.
 | `PORT`             | `5102`                                 | HTTP port to bind.                                                          |
 | `FASTRETRO_DB`     | `data/fastretro.db`                    | Path to the SQLite database file. Created automatically on first run.       |
 | `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
+| `GA_MEASUREMENT_ID` | unset (analytics disabled)            | Google Analytics 4 measurement ID. Optional — leave unset to disable GA4 tracking entirely. |
 | `COOKIE_SECURE`    | `true`                                 | Whether session cookies are marked `Secure`. Set to `0`/`false` for local HTTP testing. |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
 | `VITE_BACKEND_URL` | `http://localhost:5102`                | (dev only) Backend the Vite dev server proxies `/api` and `/ws` to.         |
