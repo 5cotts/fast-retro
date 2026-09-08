@@ -988,27 +988,42 @@ async fn delete_archive(
 }
 
 /// Build the Content-Security-Policy header value. `script-src` is locked to
-/// `'self'` plus Google's GIS script, with the embedded `index.html`'s one
-/// inline hydration `<script>` (SvelteKit's static-adapter bootstrap) allowed
-/// by hash rather than a blanket `'unsafe-inline'` — the app has no other
-/// inline scripts and never injects HTML (`{@html}`/`innerHTML` aren't used
-/// anywhere), so nothing else should ever need to execute.
+/// `'self'` plus Google's GIS script and the GA4 loader, with each inline
+/// `<script>` in the embedded `index.html` (SvelteKit's static-adapter
+/// bootstrap, and the GA4 config snippet) allowed by hash rather than a
+/// blanket `'unsafe-inline'` — the app has no other inline scripts and never
+/// injects HTML (`{@html}`/`innerHTML` aren't used anywhere), so nothing else
+/// should ever need to execute.
 fn compute_csp() -> HeaderValue {
     let script_src = StaticAssets::get("index.html")
         .and_then(|f| String::from_utf8(f.data.into_owned()).ok())
-        .and_then(|html| {
-            let start = html.find("<script>")? + "<script>".len();
-            let end = start + html[start..].find("</script>")?;
-            Some(html[start..end].to_string())
-        })
-        .map(|script_body| {
-            let digest = Sha256::digest(script_body.as_bytes());
-            let hash = base64::engine::general_purpose::STANDARD.encode(digest);
-            format!("'self' 'sha256-{hash}' https://accounts.google.com")
+        .map(|html| {
+            let mut hashes = Vec::new();
+            let mut search_from = 0;
+            while let Some(rel_start) = html[search_from..].find("<script>") {
+                let start = search_from + rel_start + "<script>".len();
+                let Some(rel_end) = html[start..].find("</script>") else {
+                    break;
+                };
+                let end = start + rel_end;
+                let digest = Sha256::digest(html[start..end].as_bytes());
+                let hash = base64::engine::general_purpose::STANDARD.encode(digest);
+                hashes.push(format!("'sha256-{hash}'"));
+                search_from = end;
+            }
+            if hashes.is_empty() {
+                warn!("couldn't find any inline <script> tags to hash for CSP; falling back to 'unsafe-inline' for script-src");
+                "'self' 'unsafe-inline' https://accounts.google.com https://www.googletagmanager.com".to_string()
+            } else {
+                format!(
+                    "'self' {} https://accounts.google.com https://www.googletagmanager.com",
+                    hashes.join(" ")
+                )
+            }
         })
         .unwrap_or_else(|| {
-            warn!("couldn't extract inline hydration script for CSP hash; falling back to 'unsafe-inline' for script-src");
-            "'self' 'unsafe-inline' https://accounts.google.com".to_string()
+            warn!("couldn't read embedded index.html for CSP hashing; falling back to 'unsafe-inline' for script-src");
+            "'self' 'unsafe-inline' https://accounts.google.com https://www.googletagmanager.com".to_string()
         });
 
     let csp = format!(
@@ -1017,7 +1032,7 @@ fn compute_csp() -> HeaderValue {
          style-src 'self' 'unsafe-inline'; \
          img-src 'self' data: https://*.googleusercontent.com; \
          font-src 'self'; \
-         connect-src 'self' ws: wss: https://accounts.google.com; \
+         connect-src 'self' ws: wss: https://accounts.google.com https://*.google-analytics.com https://*.analytics.google.com; \
          frame-src https://accounts.google.com; \
          object-src 'none'; \
          base-uri 'self'; \
