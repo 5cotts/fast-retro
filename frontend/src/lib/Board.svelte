@@ -156,12 +156,17 @@
   const presenceDisambiguated = $derived(disambiguateNames(conn.state.presence));
   const namesMapDisambiguated = $derived(disambiguateNamesMap(conn.state.namesMap));
 
+  // In anonymous mode, who's typing is just as identifying as the card's
+  // eventual author name — so real names are swapped for a generic label,
+  // deduped so N simultaneous anonymous typers on one card/composer still
+  // read as a single "Someone", not a repeated-string headcount leak.
   const typingByCard = $derived.by(() => {
     const map = new Map<string, string[]>();
     for (const p of presenceDisambiguated) {
       if (p.typing && p.clientId !== conn.state.currentClientId) {
+        const label = conn.state.anonymous ? 'Someone' : p.name;
         const list = map.get(p.typing) ?? [];
-        list.push(p.name);
+        if (!list.includes(label)) list.push(label);
         map.set(p.typing, list);
       }
     }

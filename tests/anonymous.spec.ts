@@ -172,3 +172,79 @@ test.describe('fast-retro anonymous-by-default for new boards', () => {
     }
   });
 });
+
+test.describe('fast-retro anonymous mode: typing indicator', () => {
+  // Freshly created boards start anonymous — same homepage flow as the
+  // "anonymous-by-default" suite above — so this needs no RETRO_LEAD_TOKEN.
+
+  test('typing indicator shows a generic label while anonymous, real name once toggled off', async ({
+    browser
+  }) => {
+    test.setTimeout(60_000);
+
+    const leadCtx = await browser.newContext();
+    const aliceCtx = await browser.newContext();
+    const leadPage = await leadCtx.newPage();
+    const alicePage = await aliceCtx.newPage();
+    const leadName = `lead-${Math.random().toString(36).slice(2, 6)}`;
+    const aliceName = `alice-${Math.random().toString(36).slice(2, 6)}`;
+
+    try {
+      // Seed a recent so the homepage renders the CTA list instead of
+      // auto-redirecting to a fresh board for empty-state visitors.
+      await leadPage.addInitScript(() => {
+        localStorage.setItem(
+          'retro-recent-boards',
+          JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])
+        );
+      });
+
+      await leadPage.goto('/');
+      await leadPage.getByRole('button', { name: 'Start a new retro' }).click();
+      const dialog = leadPage.getByRole('dialog', { name: 'Start a new retro' });
+      await expect(dialog).toBeVisible();
+      const label = `Typing Indicator ${Math.random().toString(36).slice(2, 5)}`;
+      await dialog.getByLabel('Retro name').fill(label);
+      await dialog.getByRole('button', { name: 'Create retro' }).click();
+
+      await leadPage.waitForURL(/\/board\//);
+      await leadPage.getByLabel('Your display name').fill(leadName);
+      await leadPage.getByRole('button', { name: 'Join the retro' }).click();
+      await dismissOnboardingIfPresent(leadPage);
+      await expect(leadPage.getByRole('list', { name: 'What went well' })).toBeVisible();
+
+      const slug = new URL(leadPage.url()).pathname.replace('/board/', '');
+      await joinAs(alicePage, `/board/${slug}`, aliceName);
+
+      // Freshly created boards start anonymous.
+      await expect(leadPage.getByLabel('Anonymous mode on')).toBeVisible({ timeout: 10_000 });
+
+      const leadColumn = leadPage.getByRole('list', { name: 'What went well' });
+      const aliceColumn = alicePage.getByRole('list', { name: 'What went well' });
+      const aliceDraft = aliceColumn.getByLabel('Add a card to What went well');
+
+      // Alice focuses the new-card composer, which broadcasts a typing
+      // presence update tagged with her clientId.
+      await aliceDraft.click();
+
+      // Lead — a different participant — sees a generic label, never
+      // Alice's real name, while the board is anonymous.
+      await expect(leadColumn.getByText('Someone typing…')).toBeVisible({ timeout: 10_000 });
+      await expect(leadColumn).not.toContainText(aliceName);
+
+      // Lead turns anonymous mode off; the flag propagates via the CRDT.
+      await leadPage.getByRole('button', { name: 'Turn off anonymous mode' }).click();
+      await expect(alicePage.getByLabel('Anonymous mode on')).toBeHidden({ timeout: 10_000 });
+
+      // Blur and refocus to force a fresh typing broadcast under the new mode.
+      await aliceDraft.blur();
+      await aliceDraft.click();
+
+      // Now the lead sees Alice's real name instead of the generic label.
+      await expect(leadColumn.getByText(`${aliceName} typing…`)).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await aliceCtx.close();
+      await leadCtx.close();
+    }
+  });
+});
