@@ -42,7 +42,7 @@ From the project root, start a **disposable** local instance — `cargo run`
 scratch DB file that isn't checked in (`data/` is gitignored):
 
 ```bash
-RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COOKIE_SECURE=false cargo run
+RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COOKIE_SECURE=false FASTRETRO_RATE_LIMIT=10000 cargo run
 ```
 
 Then, in another terminal:

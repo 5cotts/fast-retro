@@ -112,6 +112,7 @@ running/deployed) before running the suite.
 | `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
 | `GA_MEASUREMENT_ID` | unset (analytics disabled)            | Google Analytics 4 measurement ID. Optional — leave unset to disable GA4 tracking entirely. |
 | `COOKIE_SECURE`    | `true`                                 | Whether session cookies are marked `Secure`. Set to `0`/`false` for local HTTP testing. |
+| `FASTRETRO_RATE_LIMIT` | `60`                               | Per-IP requests per minute for WebSocket joins, board creation, sign-in and the lead-token check. `test-local.sh` raises it because the whole e2e suite shares one IP. |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
 | `VITE_BACKEND_URL` | `http://localhost:5102`                | (dev only) Backend the Vite dev server proxies `/api` and `/ws` to.         |
 
