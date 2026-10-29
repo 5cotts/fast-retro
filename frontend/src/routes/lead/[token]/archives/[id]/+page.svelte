@@ -3,6 +3,8 @@
   import { page } from '$app/state';
   import Wordmark from '$lib/Wordmark.svelte';
   import { COLUMNS, type CardData, type ColumnKey } from '$lib/types';
+  import { boardFileFromArchive, downloadBoardFile } from '$lib/boardfile';
+  import { FileJson } from 'lucide-svelte';
 
   interface Archive {
     id: string;
@@ -11,6 +13,9 @@
     endedAt: number;
     cards: Record<ColumnKey, CardData[]>;
     names: Record<string, string>;
+    anonymous?: boolean;
+    phase?: string;
+    autoSort?: boolean;
   }
 
   let ok = $state<boolean | null>(null);
@@ -55,6 +60,10 @@
       hour: 'numeric',
       minute: '2-digit'
     });
+  }
+
+  function downloadJSON() {
+    if (archive) downloadBoardFile(boardFileFromArchive(archive));
   }
 
   function authorLabel(authorId: string): string {
@@ -110,17 +119,22 @@
           {loadError}
         </div>
       {:else if archive}
-        <div class="mb-4">
-          <h1 class="text-lg sm:text-xl font-semibold tracking-tight">
-            {archive.label || archive.slug}
-          </h1>
-          <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Ended {formatDate(archive.endedAt)}
-            {#if archive.label}
-              <span class="font-mono">· {archive.slug}</span>
-            {/if}
-            · read-only snapshot
+        <div class="mb-4 flex items-start gap-3">
+          <div class="flex-1 min-w-0">
+            <h1 class="text-lg sm:text-xl font-semibold tracking-tight">
+              {archive.label || archive.slug}
+            </h1>
+            <div class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Ended {formatDate(archive.endedAt)}
+              {#if archive.label}
+                <span class="font-mono">· {archive.slug}</span>
+              {/if}
+              · read-only snapshot
+            </div>
           </div>
+          <button class="btn text-xs px-3 py-1.5" onclick={downloadJSON} title="Full copy you can import later">
+            <FileJson size={14} aria-hidden="true" /> Download JSON
+          </button>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">

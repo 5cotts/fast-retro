@@ -42,6 +42,7 @@
     computeTimerRemaining
   } from './timer';
   import { exportCSV } from './csv';
+  import { exportBoardFile, downloadBoardFile, downloadBlob, exportFileStem } from './boardfile';
   import { getOrCreateUserId, setDisplayName } from './identity';
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
@@ -746,17 +747,23 @@
   }
 
   function downloadCSV() {
-    const csv = exportCSV(conn.state.cards);
+    // The BOM makes Excel read the file as UTF-8 so emoji reactions survive.
+    const csv = '\uFEFF' + exportCSV(conn.state.cards);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    a.download = `retro-${stamp}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, `${exportFileStem(conn.state.label)}.csv`);
+  }
+
+  function downloadJSON() {
+    downloadBoardFile(
+      exportBoardFile({
+        label: conn.state.label,
+        anonymous: conn.state.anonymous,
+        phase: conn.state.phase,
+        autoSort: conn.state.autoSort,
+        cards: conn.state.cards,
+        namesMap: conn.state.namesMap
+      })
+    );
   }
 
   const cardCount = $derived(
@@ -782,7 +789,7 @@
       endConfirm = false;
       return;
     }
-    if (opts.exportFirst) downloadCSV();
+    if (opts.exportFirst) downloadJSON();
     archiveError = '';
     archiving = true;
     // Broadcast the end + a motivational message to every connected client
@@ -799,7 +806,10 @@
         {
           label: conn.state.label,
           cards: conn.state.cards,
-          names: conn.state.namesMap
+          names: conn.state.anonymous ? {} : conn.state.namesMap,
+          anonymous: conn.state.anonymous,
+          phase: conn.state.phase,
+          autoSort: conn.state.autoSort
         },
         { hostKey, leadToken }
       );
@@ -883,6 +893,7 @@
       onPauseTimer={leadPause}
       onResetTimer={leadReset}
       onExportCSV={downloadCSV}
+      onExportJSON={downloadJSON}
       onEndBoard={startEndBoard}
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
@@ -1025,7 +1036,7 @@
               onclick={() => confirmEndBoard({ exportFirst: true })}
             >
               <Download size={14} aria-hidden="true" />
-              Export CSV &amp; end
+              Download JSON &amp; end
             </button>
           {/if}
           <button

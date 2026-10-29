@@ -101,7 +101,14 @@ export async function fetchBoardStatus(slug: string): Promise<BoardStatus | null
 // token (admin), or the session cookie (owner).
 export async function endBoard(
   slug: string,
-  body: { label: string; cards: unknown; names: unknown },
+  body: {
+    label: string;
+    cards: unknown;
+    names: unknown;
+    anonymous: boolean;
+    phase: string;
+    autoSort: boolean;
+  },
   auth: { hostKey?: string; leadToken?: string }
 ): Promise<{ archiveId: string }> {
   const headers: Record<string, string> = { 'content-type': 'application/json' };
