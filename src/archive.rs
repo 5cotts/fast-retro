@@ -46,13 +46,23 @@ pub struct BoardCardsSnapshot {
     pub actions: Vec<CardSnapshot>,
 }
 
+// `anonymous`, `phase` and `auto_sort` are optional so archives stored before
+// they existed still load. A missing `anonymous` is treated as anonymous when
+// exporting (see `boardfile.ts`), since older archives can't say otherwise.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ArchiveRequest {
     #[serde(default)]
     pub label: String,
     pub cards: BoardCardsSnapshot,
     #[serde(default)]
     pub names: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub anonymous: Option<bool>,
+    #[serde(default)]
+    pub phase: Option<String>,
+    #[serde(default)]
+    pub auto_sort: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,6 +75,12 @@ pub struct Archive {
     pub cards: BoardCardsSnapshot,
     #[serde(default)]
     pub names: serde_json::Map<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anonymous: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_sort: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -137,7 +153,16 @@ pub fn save(
         label: req.label,
         ended_at: now_ms(),
         cards: req.cards,
-        names: req.names,
+        // Never persist real names for an anonymous board, even if a client
+        // sends them.
+        names: if req.anonymous == Some(true) {
+            serde_json::Map::new()
+        } else {
+            req.names
+        },
+        anonymous: req.anonymous,
+        phase: req.phase,
+        auto_sort: req.auto_sort,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
@@ -202,4 +227,71 @@ pub fn migrate_from_json(db: &Db) -> std::io::Result<usize> {
 #[allow(dead_code)]
 pub fn archives_root() -> &'static Path {
     Path::new(ARCHIVES_DIR)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> Db {
+        Db::open(":memory:").expect("open in-memory db")
+    }
+
+    #[test]
+    fn archive_without_new_fields_still_loads() {
+        let json = r#"{
+            "id": "old1",
+            "slug": "old-board",
+            "label": "Old",
+            "endedAt": 1,
+            "cards": { "wentWell": [{ "id": "c1", "text": "hi" }] },
+            "names": { "u1": "Alice" }
+        }"#;
+        let a: Archive = serde_json::from_str(json).expect("old archive parses");
+        assert_eq!(a.anonymous, None);
+        assert_eq!(a.phase, None);
+        assert_eq!(a.auto_sort, None);
+        let out = serde_json::to_value(&a).unwrap();
+        assert!(out.get("anonymous").is_none());
+        assert!(out.get("autoSort").is_none());
+    }
+
+    #[test]
+    fn new_fields_round_trip_through_the_db() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_str(
+            r#"{
+                "label": "Sprint",
+                "cards": { "wentWell": [], "toImprove": [], "actions": [] },
+                "names": { "u1": "Alice" },
+                "anonymous": false,
+                "phase": "discuss",
+                "autoSort": false
+            }"#,
+        )
+        .unwrap();
+        let saved = save(&db, "sprint", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().expect("archive stored");
+        assert_eq!(loaded.anonymous, Some(false));
+        assert_eq!(loaded.phase.as_deref(), Some("discuss"));
+        assert_eq!(loaded.auto_sort, Some(false));
+        assert_eq!(loaded.names.get("u1").and_then(|v| v.as_str()), Some("Alice"));
+    }
+
+    #[test]
+    fn anonymous_archive_drops_names() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_str(
+            r#"{
+                "cards": { "wentWell": [] },
+                "names": { "u1": "Alice" },
+                "anonymous": true
+            }"#,
+        )
+        .unwrap();
+        let saved = save(&db, "anon", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().unwrap();
+        assert_eq!(loaded.anonymous, Some(true));
+        assert!(loaded.names.is_empty());
+    }
 }
