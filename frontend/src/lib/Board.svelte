@@ -17,7 +17,9 @@
     setBoardLabel,
     setBoardAnonymous,
     setBoardAutoSort,
-    setBoardEnded
+    setBoardEnded,
+    importBoard,
+    isBoardEmpty
   } from './yboard';
   import { pickMotivationalMessage } from './motivation';
   import confetti from 'canvas-confetti';
@@ -25,6 +27,8 @@
     recordRecentBoard,
     consumePendingLabel,
     consumePendingAnonymous,
+    hasPendingImport,
+    consumePendingImport,
     setHostKey,
     setPendingLabel,
     setPendingAnonymous,
@@ -466,6 +470,27 @@
       setBoardAnonymous(conn.state.board.meta, true);
     }
     pendingAnonymousApplied = true;
+  });
+
+  // A board created via "Import from file…" fills itself from the stashed
+  // file once the first sync lands, when the columns exist and we can tell the
+  // board is still empty. Host-only and run-once; the stash is cleared on use
+  // and a non-empty board is never imported into, so a refresh can't import
+  // twice. The file's anonymous flag wins over the new-board default above,
+  // because the import flow doesn't set a pending anonymous flag.
+  let pendingImportHandled = false;
+  $effect(() => {
+    if (pendingImportHandled) return;
+    if (!isLead || !conn.state.board) return;
+    pendingImportHandled = true;
+    if (!hasPendingImport(slug)) return;
+    const state = conn.state.board;
+    const apply = () => {
+      const file = consumePendingImport(slug);
+      if (file && isBoardEmpty(state.board)) importBoard(state, file);
+    };
+    if (state.provider.synced) apply();
+    else state.provider.once('sync', apply);
   });
 
   function setTyping(target: string | null) {

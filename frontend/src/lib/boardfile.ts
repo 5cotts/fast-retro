@@ -1,4 +1,4 @@
-import type { CardData, ColumnKey } from './types';
+import type { CardData, ColumnKey, CommentData } from './types';
 import { COLUMNS } from './types';
 import { PHASES, type Phase } from './phase';
 
@@ -158,4 +158,179 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
     },
     now
   );
+}
+
+// Import caps. They keep the single import transaction well under the 2 MiB
+// WebSocket frame limit (MAX_WS_FRAME_BYTES in src/main.rs) and the pending
+// file small enough for sessionStorage.
+export const MAX_IMPORT_BYTES = 1024 * 1024;
+export const MAX_IMPORT_CARDS = 300;
+export const MAX_IMPORT_COMMENTS_PER_CARD = 50;
+const MAX_LABEL_LEN = 60;
+const MAX_NAME_LEN = 40;
+const MAX_ID_LEN = 64;
+
+export interface BoardFileStats {
+  cards: number;
+  comments: number;
+  votes: number;
+  reactions: number;
+  namesRestored: boolean;
+}
+
+export type ParseResult =
+  | { ok: true; file: BoardFile; warnings: string[]; stats: BoardFileStats }
+  | { ok: false; error: string };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function isUserId(v: unknown): v is string {
+  return typeof v === 'string' && v.length > 0 && v.length <= MAX_ID_LEN;
+}
+
+function userIds(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter(isUserId))];
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+export function boardFileStats(file: BoardFile): BoardFileStats {
+  const stats = { cards: 0, comments: 0, votes: 0, reactions: 0, namesRestored: !!file.names };
+  for (const col of COLUMNS) {
+    for (const card of file.cards[col.key]) {
+      stats.cards++;
+      stats.comments += card.comments.length;
+      stats.votes += card.votes.length;
+      for (const users of Object.values(card.reactions)) stats.reactions += users.length;
+    }
+  }
+  return stats;
+}
+
+// Validates an untrusted file and normalizes it to exactly the shape
+// exportBoardFile produces: unknown keys dropped, missing collections empty,
+// malformed cards and comments skipped with a warning.
+export function parseBoardFile(text: string): ParseResult {
+  if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) {
+    return { ok: false, error: 'This file is too large to import (over 1 MB).' };
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "This file isn't valid JSON." };
+  }
+  if (!isRecord(raw) || raw.format !== BOARD_FILE_FORMAT) {
+    return { ok: false, error: "This isn't a fast-retro export. Use a .fastretro.json file from Download JSON." };
+  }
+  const version = raw.version;
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+    return { ok: false, error: "This file's version is missing or invalid." };
+  }
+  if (version > BOARD_FILE_VERSION) {
+    return { ok: false, error: 'This file was exported by a newer version of fast-retro.' };
+  }
+
+  const warnings: string[] = [];
+  const exportedAt = typeof raw.exportedAt === 'number' ? raw.exportedAt : 0;
+  const rawBoard = isRecord(raw.board) ? raw.board : {};
+  const label = typeof rawBoard.label === 'string' ? rawBoard.label.trim().slice(0, MAX_LABEL_LEN) : '';
+  const anonymous = rawBoard.anonymous === true;
+  let phase: Phase = 'brainstorm';
+  if (isPhase(rawBoard.phase)) phase = rawBoard.phase;
+  else if (rawBoard.phase !== undefined) warnings.push('Unknown phase; the board will start in Brainstorm.');
+  const autoSort = rawBoard.autoSort !== false;
+
+  const rawCards = isRecord(raw.cards) ? raw.cards : {};
+  const cards = { wentWell: [], toImprove: [], actions: [] } as Record<ColumnKey, CardData[]>;
+  let skippedCards = 0;
+  let skippedComments = 0;
+  let total = 0;
+  for (const col of COLUMNS) {
+    const list = rawCards[col.key];
+    if (!Array.isArray(list)) continue;
+    for (const rc of list) {
+      if (!isRecord(rc) || typeof rc.text !== 'string') {
+        skippedCards++;
+        continue;
+      }
+      if (++total > MAX_IMPORT_CARDS) {
+        return { ok: false, error: `This board has more than ${MAX_IMPORT_CARDS} cards, which is more than import supports.` };
+      }
+      const reactions: Record<string, string[]> = {};
+      if (isRecord(rc.reactions)) {
+        for (const [emoji, users] of Object.entries(rc.reactions)) {
+          const ids = userIds(users);
+          if (emoji && emoji.length <= MAX_ID_LEN && ids.length) reactions[emoji] = ids;
+        }
+      }
+      const comments: CommentData[] = [];
+      if (Array.isArray(rc.comments)) {
+        if (rc.comments.length > MAX_IMPORT_COMMENTS_PER_CARD) {
+          return {
+            ok: false,
+            error: `A card has more than ${MAX_IMPORT_COMMENTS_PER_CARD} comments, which is more than import supports.`
+          };
+        }
+        for (const cm of rc.comments) {
+          if (!isRecord(cm) || typeof cm.text !== 'string') {
+            skippedComments++;
+            continue;
+          }
+          comments.push({
+            id: typeof cm.id === 'string' ? cm.id : '',
+            text: cm.text,
+            authorId: isUserId(cm.authorId) ? cm.authorId : '',
+            createdAt: typeof cm.createdAt === 'number' ? cm.createdAt : exportedAt
+          });
+        }
+      }
+      cards[col.key].push({
+        id: typeof rc.id === 'string' ? rc.id : '',
+        text: rc.text,
+        authorId: isUserId(rc.authorId) ? rc.authorId : '',
+        votes: userIds(rc.votes),
+        reactions,
+        comments
+      });
+    }
+  }
+  if (skippedCards) warnings.push(`Skipped ${plural(skippedCards, 'card')} with no text.`);
+  if (skippedComments) warnings.push(`Skipped ${plural(skippedComments, 'comment')} with no text.`);
+
+  const file: BoardFile = {
+    format: BOARD_FILE_FORMAT,
+    version: BOARD_FILE_VERSION,
+    exportedAt,
+    board: { label, anonymous, phase, autoSort },
+    cards
+  };
+  // A hand-edited anonymous file can't smuggle names in.
+  if (!anonymous && isRecord(raw.names)) {
+    const referenced = referencedUserIds(cards);
+    const names: Record<string, string> = {};
+    for (const [id, name] of Object.entries(raw.names)) {
+      if (!referenced.has(id) || typeof name !== 'string') continue;
+      const t = name.trim().slice(0, MAX_NAME_LEN);
+      if (t) names[id] = t;
+    }
+    file.names = names;
+  }
+  return { ok: true, file, warnings, stats: boardFileStats(file) };
+}
+
+export function describeStats(stats: BoardFileStats, anonymous: boolean): string {
+  const parts = [
+    plural(stats.cards, 'card'),
+    plural(stats.comments, 'comment'),
+    plural(stats.votes, 'vote'),
+    plural(stats.reactions, 'reaction')
+  ];
+  parts.push(anonymous ? 'anonymous' : stats.namesRestored ? 'names restored' : 'no names');
+  return parts.join(' · ');
 }

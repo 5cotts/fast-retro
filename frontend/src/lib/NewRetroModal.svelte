@@ -1,17 +1,55 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Sparkles, X } from 'lucide-svelte';
+  import { FileUp, Sparkles, X } from 'lucide-svelte';
   import { newSlug, slugifyLabel } from './boards';
+  import {
+    BOARD_FILE_EXTENSION,
+    MAX_IMPORT_BYTES,
+    describeStats,
+    parseBoardFile,
+    type BoardFile,
+    type ParseResult
+  } from './boardfile';
 
   let { onClose, onConfirm, hostMode = false } = $props<{
     onClose: () => void;
-    onConfirm: (result: { slug: string; label: string }) => void;
+    onConfirm: (result: { slug: string; label: string; importFile?: BoardFile }) => void;
     hostMode?: boolean;
   }>();
 
   let labelInput = $state('');
   let inputEl = $state<HTMLInputElement | null>(null);
   let dialogEl = $state<HTMLDivElement | null>(null);
+  let fileInputEl = $state<HTMLInputElement | null>(null);
+  let importName = $state('');
+  let importResult = $state<ParseResult | null>(null);
+  const importing = $derived(importResult?.ok === true);
+
+  async function onFilePicked(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    importName = file.name;
+    if (file.size > MAX_IMPORT_BYTES) {
+      importResult = { ok: false, error: 'This file is too large to import (over 1 MB).' };
+      return;
+    }
+    let text: string;
+    try {
+      text = await file.text();
+    } catch {
+      importResult = { ok: false, error: "Couldn't read that file." };
+      return;
+    }
+    importResult = parseBoardFile(text);
+    if (importResult.ok) labelInput = importResult.file.board.label;
+  }
+
+  function clearImport() {
+    importResult = null;
+    importName = '';
+  }
 
   onMount(() => {
     inputEl?.focus();
@@ -27,6 +65,11 @@
     const label = labelInput.trim().slice(0, 60);
     const base = slugifyLabel(label);
     const slug = base ? `${base}-${newSlug(3)}` : newSlug();
+    if (importResult?.ok) {
+      const importFile = { ...importResult.file, board: { ...importResult.file.board, label } };
+      onConfirm({ slug, label, importFile });
+      return;
+    }
     onConfirm({ slug, label });
   }
 
@@ -109,19 +152,69 @@
         </code>
       </div>
 
+      {#if importResult}
+        <div
+          class="mt-4 rounded-md border p-3 text-xs {importResult.ok
+            ? 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 text-sky-900 dark:text-sky-100'
+            : 'border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100'}"
+          role="status"
+          aria-label="Import preview"
+        >
+          <div class="flex items-start gap-2">
+            <div class="flex-1 min-w-0">
+              <div class="font-medium truncate">{importName}</div>
+              {#if importResult.ok}
+                <div class="mt-0.5">{describeStats(importResult.stats, importResult.file.board.anonymous)}</div>
+                {#each importResult.warnings as w (w)}
+                  <div class="mt-1 text-amber-800 dark:text-amber-200">{w}</div>
+                {/each}
+              {:else}
+                <div class="mt-0.5">{importResult.error}</div>
+              {/if}
+            </div>
+            <button type="button" class="btn-ghost text-xs px-1.5 py-0.5" onclick={clearImport}>
+              Remove
+            </button>
+          </div>
+        </div>
+      {/if}
+
       <div class="mt-5 flex items-center gap-2">
         <button
           type="submit"
-          class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2.5 min-h-[44px] font-medium hover:opacity-90 transition-opacity"
+          disabled={importResult !== null && !importResult.ok}
+          class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2.5 min-h-[44px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
-          Create retro
+          {importing ? 'Import retro' : 'Create retro'}
         </button>
+        {#if !importResult}
+          <button
+            type="button"
+            class="btn text-sm px-4 py-2 min-h-[44px]"
+            onclick={skip}
+          >
+            Skip naming
+          </button>
+        {/if}
+      </div>
+
+      <div class="mt-3 text-center">
+        <input
+          bind:this={fileInputEl}
+          type="file"
+          accept={`${BOARD_FILE_EXTENSION},.json,application/json`}
+          class="sr-only"
+          tabindex="-1"
+          aria-label="Board file to import"
+          onchange={onFilePicked}
+        />
         <button
           type="button"
-          class="btn text-sm px-4 py-2 min-h-[44px]"
-          onclick={skip}
+          class="btn-ghost text-xs px-2 py-1 text-slate-600 dark:text-slate-300"
+          onclick={() => fileInputEl?.click()}
         >
-          Skip naming
+          <FileUp size={14} aria-hidden="true" />
+          Import from file…
         </button>
       </div>
     </form>

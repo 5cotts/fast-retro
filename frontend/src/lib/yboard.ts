@@ -2,6 +2,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData, CommentData, ColumnKey } from './types';
 import { newId } from './identity';
+import { setPhase } from './phase';
+import type { BoardFile } from './boardfile';
 
 export function buildWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -515,4 +517,49 @@ export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: ColumnK
     out.push({ id, text, authorId, votes, reactions, comments });
   });
   return out;
+}
+
+export function isBoardEmpty(board: Y.Map<Y.Array<Y.Map<unknown>>>): boolean {
+  for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+    if ((board.get(col)?.length ?? 0) > 0) return false;
+  }
+  return true;
+}
+
+// Writes an imported board file into a (normally empty, already-synced) board
+// in one transaction, so peers and the server get it as a single update.
+// Card and comment IDs are regenerated: importing the same file twice must not
+// produce duplicate IDs, which mergeCards/moveCard lookups assume are unique.
+// User IDs are kept so a returning participant still owns their cards and votes.
+export function importBoard(
+  state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'names' | 'phase'>,
+  file: BoardFile
+): void {
+  const { doc, board, meta, names, phase } = state;
+  doc.transact(() => {
+    for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+      let arr = board.get(col);
+      if (!arr) {
+        arr = new Y.Array<Y.Map<unknown>>();
+        board.set(col, arr);
+      }
+      const cards = file.cards[col].map((card) =>
+        rehydrateCard({
+          ...card,
+          id: newId(),
+          comments: card.comments.map((c) => ({ ...c, id: newId() }))
+        })
+      );
+      if (cards.length) arr.push(cards);
+    }
+    setBoardLabel(meta, file.board.label);
+    setBoardAnonymous(meta, file.board.anonymous);
+    setBoardAutoSort(meta, file.board.autoSort);
+    setPhase(phase, file.board.phase);
+    if (!file.board.anonymous && file.names) {
+      for (const [id, name] of Object.entries(file.names)) {
+        if (!names.has(id)) names.set(id, name);
+      }
+    }
+  });
 }

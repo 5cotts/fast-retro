@@ -6,6 +6,7 @@
     readRecentBoards,
     recordRecentBoard,
     setPendingLabel,
+    setPendingImport,
     setPendingAnonymous,
     setHostKey,
     type RecentBoard
@@ -22,6 +23,7 @@
   } from '$lib/api';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
+  import type { BoardFile } from '$lib/boardfile';
   import GoogleSignIn from '$lib/GoogleSignIn.svelte';
   import { getTheme } from '$lib/storage';
   import { LogOut, Loader2 } from 'lucide-svelte';
@@ -60,7 +62,15 @@
     showNewModal = true;
   }
 
-  async function onNewConfirm({ slug, label }: { slug: string; label: string }) {
+  async function onNewConfirm({
+    slug,
+    label,
+    importFile
+  }: {
+    slug: string;
+    label: string;
+    importFile?: BoardFile;
+  }) {
     showNewModal = false;
     creating = true;
     createError = '';
@@ -69,10 +79,17 @@
       // Extremely rare slug collision — retry once with a fresh random slug.
       if (!result) result = await createBoard(newSlug(), label);
       setHostKey(result.slug, result.hostKey);
-      setPendingAnonymous(result.slug);
-      if (label) {
-        recordRecentBoard(result.slug, { label });
-        setPendingLabel(result.slug, label);
+      if (label) recordRecentBoard(result.slug, { label });
+      if (importFile) {
+        // The file carries its own label and anonymous flag.
+        if (!setPendingImport(result.slug, importFile)) {
+          creating = false;
+          createError = "Couldn't prepare the import in this browser. Try again.";
+          return;
+        }
+      } else {
+        setPendingAnonymous(result.slug);
+        if (label) setPendingLabel(result.slug, label);
       }
       goto(`/board/${result.slug}`);
     } catch {

@@ -1,3 +1,5 @@
+import { parseBoardFile, serializeBoardFile, type BoardFile } from './boardfile';
+
 const KEY_RECENT_BOARDS = 'retro-recent-boards';
 const KEY_HOST_KEYS = 'retro-host-keys';
 const SLUG_ALPHABET = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -169,6 +171,44 @@ export function consumePendingAnonymous(slug: string): boolean {
     return v === '1';
   } catch {
     return false;
+  }
+}
+
+// Board file chosen in "Start a new retro → Import from file…", applied once
+// by the new board's host after the first sync (see Board.svelte). Same
+// transient, tab-local handoff as the pending label above. Re-validated on
+// read since sessionStorage is just a string store.
+const PENDING_IMPORT_PREFIX = 'retro-pending-import:';
+
+export function setPendingImport(slug: string, file: BoardFile): boolean {
+  if (!isValidSlug(slug)) return false;
+  try {
+    sessionStorage.setItem(PENDING_IMPORT_PREFIX + slug, serializeBoardFile(file));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function hasPendingImport(slug: string): boolean {
+  if (!isValidSlug(slug)) return false;
+  try {
+    return sessionStorage.getItem(PENDING_IMPORT_PREFIX + slug) !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function consumePendingImport(slug: string): BoardFile | null {
+  if (!isValidSlug(slug)) return null;
+  try {
+    const v = sessionStorage.getItem(PENDING_IMPORT_PREFIX + slug);
+    if (v === null) return null;
+    sessionStorage.removeItem(PENDING_IMPORT_PREFIX + slug);
+    const parsed = parseBoardFile(v);
+    return parsed.ok ? parsed.file : null;
+  } catch {
+    return null;
   }
 }
 
