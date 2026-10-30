@@ -1,5 +1,5 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 
 /**
  * Export → import round trip (frontend/src/lib/boardfile.ts, importBoard in
@@ -65,24 +65,35 @@ async function downloadJSON(page: Page): Promise<string> {
   return (await download.path()) as string;
 }
 
-// Imports `path` through the homepage modal in a brand-new browser context,
-// so nothing (identity, host keys, names) carries over from the source board.
-async function importInFreshBrowser(browser: Browser, path: string, opts: { label: string; preview: RegExp }) {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  // Seed a recent board so the homepage renders the CTA instead of
-  // auto-redirecting an empty-state visitor straight to a fresh board.
+// Opens Start a new retro on the homepage. Seeds a recent board so the
+// homepage renders the CTA instead of auto-redirecting an empty-state visitor
+// straight to a fresh board.
+async function openNewRetroDialog(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }]));
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a new retro' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+  return page.getByRole('dialog', { name: 'Start a new retro' });
+}
+
+type FileInput = string | { name: string; mimeType: string; buffer: Buffer };
+
+async function pickImportFile(page: Page, dialog: Locator, file: FileInput) {
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
     dialog.getByRole('button', { name: 'Import from file…' }).click()
   ]);
-  await chooser.setFiles(path);
+  await chooser.setFiles(file);
+}
+
+// Imports `file` through the homepage modal in a brand-new browser context,
+// so nothing (identity, host keys, names) carries over from the source board.
+async function importInFreshBrowser(browser: Browser, file: FileInput, opts: { label: string; preview: RegExp }) {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const dialog = await openNewRetroDialog(page);
+  await pickImportFile(page, dialog, file);
   await expect(dialog.getByRole('status', { name: 'Import preview' })).toContainText(opts.preview);
   await dialog.getByLabel('Retro name').fill(opts.label);
   await dialog.getByRole('button', { name: 'Import retro' }).click();
@@ -199,6 +210,22 @@ test.describe('fast-retro JSON import', () => {
         await page.reload();
         await dismissOnboardingIfPresent(page);
         await check();
+
+        // An original participant opening the imported board still owns
+        // their cards and votes: user IDs carry over, only card IDs change.
+        await alice.goto(page.url());
+        await dismissOnboardingIfPresent(alice);
+        const aliceHigh = cardLocator(alice, 'What went well', highVotes);
+        await expect(aliceHigh.getByRole('button', { name: 'Remove vote (2)' })).toBeVisible({ timeout: 10_000 });
+        await expect(aliceHigh.getByText('you', { exact: true })).toBeVisible();
+        await expect(aliceHigh.getByRole('button', { name: 'Edit card' })).toHaveCount(1);
+        const aliceLow = cardLocator(alice, 'What went well', lowVotes);
+        await expect(aliceLow.getByRole('button', { name: 'Voting closed (1 votes)' })).toBeVisible();
+        await expect(aliceLow.getByText(leadName, { exact: true })).toBeVisible();
+        await expect(aliceLow.getByRole('button', { name: 'Edit card' })).toHaveCount(0);
+        await expect(
+          cardLocator(alice, 'What to improve', improve).getByText('you', { exact: true })
+        ).toBeVisible();
       } finally {
         await imported.ctx.close();
       }
@@ -246,21 +273,201 @@ test.describe('fast-retro JSON import', () => {
     }
   });
 
-  test('a file that is not a fast-retro export is rejected in the preview', async ({ page }, testInfo) => {
-    const bad = testInfo.outputPath('not-a-board.json');
-    writeFileSync(bad, JSON.stringify({ hello: 'world' }));
-    await page.addInitScript(() => {
-      localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }]));
+  test('a retro exported from its archive imports', async ({ browser }) => {
+    test.setTimeout(90_000);
+
+    const slug = `pw-import-archive-${Date.now()}`;
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const leadName = `Archived Lead ${suffix}`;
+    const cardText = `archived card ${suffix}`;
+
+    const leadCtx = await browser.newContext();
+    const lead = await leadCtx.newPage();
+    try {
+      await lead.goto(`/lead/${LEAD_TOKEN}/${slug}`);
+      await join(lead, leadName);
+      await addCard(lead, 'What went well', cardText);
+      await advance(lead, 'Group');
+      await advance(lead, 'Vote');
+      const card = cardLocator(lead, 'What went well', cardText);
+      await card.getByRole('button', { name: /^Upvote/ }).click();
+      await expect(card.getByRole('button', { name: 'Remove vote (1)' })).toBeVisible();
+
+      await lead.getByRole('button', { name: 'End retro' }).click();
+      const endDialog = lead.getByRole('alertdialog');
+      await endDialog.getByRole('button', { name: 'Archive & end' }).click();
+      await expect(lead.getByText('This retro has ended')).toBeVisible({ timeout: 15_000 });
+
+      await lead.goto(`/lead/${LEAD_TOKEN}/archives`);
+      const item = lead.getByTestId('archive-item').filter({ hasText: slug }).first();
+      await expect(item).toBeVisible({ timeout: 10_000 });
+      await item.getByRole('link').first().click();
+      await expect(lead.getByTestId('archive-card').filter({ hasText: cardText })).toBeVisible();
+      const path = await downloadJSON(lead);
+
+      const { ctx, page } = await importInFreshBrowser(browser, path, {
+        label: `From archive ${suffix}`,
+        preview: /1 card · 0 comments · 1 vote · 0 reactions · names restored/
+      });
+      try {
+        await expect(
+          page.locator('[role="listitem"][aria-current="step"]').filter({ hasText: 'Vote' })
+        ).toBeVisible({ timeout: 10_000 });
+        const imported = cardLocator(page, 'What went well', cardText);
+        await expect(imported.getByRole('button', { name: 'Upvote (1)' })).toBeVisible();
+        await expect(imported.getByText(leadName, { exact: true })).toBeVisible();
+        await expect(page.getByText('This retro has ended')).toHaveCount(0);
+      } finally {
+        await ctx.close();
+      }
+    } finally {
+      await leadCtx.close();
+    }
+  });
+});
+
+// Bad files must be rejected in the preview with a readable reason, never
+// create a board, and never throw in the page. No lead token needed.
+test.describe('fast-retro JSON import errors', () => {
+  let pageErrors: Error[] = [];
+  test.beforeEach(({ page }) => {
+    pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(err));
+  });
+  test.afterEach(() => {
+    expect(pageErrors, 'uncaught errors in the page').toEqual([]);
+  });
+
+  const goodFile = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      format: 'fast-retro',
+      version: 1,
+      exportedAt: Date.now(),
+      board: { label: 'Good file', anonymous: false, phase: 'discuss', autoSort: true },
+      cards: {
+        wentWell: [{ id: 'c1', text: 'good card', authorId: '', votes: [], reactions: {}, comments: [] }],
+        toImprove: [],
+        actions: []
+      },
+      ...overrides
     });
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Start a new retro' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
-    const [chooser] = await Promise.all([
-      page.waitForEvent('filechooser'),
-      dialog.getByRole('button', { name: 'Import from file…' }).click()
-    ]);
-    await chooser.setFiles(bad);
-    await expect(dialog.getByRole('status', { name: 'Import preview' })).toContainText("isn't a fast-retro export");
-    await expect(dialog.getByRole('button', { name: 'Create retro' })).toBeDisabled();
+
+  const asFile = (name: string, contents: string | Buffer, mimeType = 'application/json') => ({
+    name,
+    mimeType,
+    buffer: Buffer.isBuffer(contents) ? contents : Buffer.from(contents, 'utf-8')
+  });
+
+  async function expectRejected(page: Page, dialog: Locator, message: string | RegExp) {
+    await expect(dialog.getByRole('status', { name: 'Import preview' })).toContainText(message);
+    const submit = dialog.getByRole('button', { name: 'Create retro' });
+    await expect(submit).toBeDisabled();
+    await expect(dialog.getByRole('button', { name: 'Import retro' })).toHaveCount(0);
+    // Enter in the name field must not sneak past the disabled button.
+    await dialog.getByLabel('Retro name').press('Enter');
+    await expect(dialog).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe('/');
+  }
+
+  const rejections: { name: string; file: () => ReturnType<typeof asFile>; error: string | RegExp }[] = [
+    {
+      name: 'a truncated export',
+      file: () => {
+        const text = goodFile();
+        return asFile('cut-off.fastretro.json', text.slice(0, Math.floor(text.length / 2)));
+      },
+      error: "This file isn't valid JSON."
+    },
+    {
+      name: 'an old CSV export',
+      file: () =>
+        asFile(
+          'retro-123.csv',
+          'column,card_text,votes,reactions,comments\r\nWhat went well,good card,1,,\r\n',
+          'text/csv'
+        ),
+      error: "This file isn't valid JSON."
+    },
+    {
+      name: 'JSON that is not a fast-retro export',
+      file: () => asFile('not-a-board.json', JSON.stringify({ hello: 'world' })),
+      error: "This isn't a fast-retro export. Use a .fastretro.json file from Download JSON."
+    },
+    {
+      name: 'a file from a newer version',
+      file: () => asFile('future.fastretro.json', goodFile({ version: 99 })),
+      error: 'This file was exported by a newer version of fast-retro.'
+    },
+    {
+      name: 'a file over 1 MB',
+      file: () =>
+        asFile(
+          'huge.fastretro.json',
+          goodFile({ padding: 'x'.repeat(1024 * 1024) })
+        ),
+      error: 'This file is too large to import (over 1 MB).'
+    }
+  ];
+
+  for (const r of rejections) {
+    test(`rejects ${r.name}`, async ({ page }) => {
+      const dialog = await openNewRetroDialog(page);
+      await pickImportFile(page, dialog, r.file());
+      await expectRejected(page, dialog, r.error);
+    });
+  }
+
+  test('imports the good parts of a partly broken file, with warnings', async ({ page }) => {
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const goodText = `survivor ${suffix}`;
+    const file = goodFile({
+      board: { label: `Partly broken ${suffix}`, anonymous: false, phase: 'celebrate', autoSort: true },
+      cards: {
+        wentWell: [
+          { id: 'c1', text: goodText, authorId: '', votes: [], reactions: {}, comments: [] },
+          { id: 'c2', votes: [] },
+          'not even a card'
+        ],
+        toImprove: [],
+        actions: []
+      }
+    });
+    const dialog = await openNewRetroDialog(page);
+    await pickImportFile(page, dialog, asFile('partly-broken.fastretro.json', file));
+    const preview = dialog.getByRole('status', { name: 'Import preview' });
+    await expect(preview).toContainText('1 card');
+    await expect(preview).toContainText('Unknown phase; the board will start in Brainstorm.');
+    await expect(preview).toContainText('Skipped 2 cards with no text.');
+    await expect(dialog.getByLabel('Retro name')).toHaveValue(`Partly broken ${suffix}`);
+
+    await dialog.getByRole('button', { name: 'Import retro' }).click();
+    await page.waitForURL(/\/board\//);
+    await join(page, `importer-${suffix}`);
+    await expect(cardLocator(page, 'What went well', goodText)).toBeVisible({ timeout: 10_000 });
+    expect(await cardOrder(page, 'What went well')).toEqual([goodText]);
+    await expect(
+      page.locator('[role="listitem"][aria-current="step"]').filter({ hasText: 'Brainstorm' })
+    ).toBeVisible();
+  });
+
+  test('recovers after a bad file: Remove clears it, and a good file replaces it', async ({ page }) => {
+    const dialog = await openNewRetroDialog(page);
+    const preview = dialog.getByRole('status', { name: 'Import preview' });
+
+    await pickImportFile(page, dialog, asFile('bad.json', '{ nope'));
+    await expectRejected(page, dialog, "This file isn't valid JSON.");
+    await preview.getByRole('button', { name: 'Remove' }).click();
+    await expect(preview).toHaveCount(0);
+    await expect(dialog.getByRole('button', { name: 'Create retro' })).toBeEnabled();
+    await expect(dialog.getByRole('button', { name: 'Skip naming' })).toBeVisible();
+
+    await pickImportFile(page, dialog, asFile('bad-again.json', JSON.stringify([1, 2, 3])));
+    await expectRejected(page, dialog, "This isn't a fast-retro export.");
+    await pickImportFile(page, dialog, asFile('good.fastretro.json', goodFile()));
+    await expect(preview).toContainText('good.fastretro.json');
+    await expect(preview).toContainText('1 card');
+    await expect(preview).not.toContainText("isn't a fast-retro export");
+    await expect(dialog.getByRole('button', { name: 'Import retro' })).toBeEnabled();
+    await expect(dialog.getByLabel('Retro name')).toHaveValue('Good file');
   });
 });

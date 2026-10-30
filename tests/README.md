@@ -135,6 +135,27 @@ bug above) — regardless of which slugs they pointed at. Two separate
 Playwright *contexts* would NOT catch this (BroadcastChannel is
 scoped per browser profile); it has to be two pages in one context.
 
+`json-export.spec.ts` — Download JSON (skipped unless `RETRO_LEAD_TOKEN`
+is set): checks the `.fastretro.json` contents, that anonymous boards
+leave names out, the End retro "Download JSON & end" path, and the
+archive viewer's export.
+
+`import.spec.ts` — Import from file… on the homepage:
+
+- **Round trip** (needs `RETRO_LEAD_TOKEN`): a two-user board is
+  exported and imported in a fresh browser; cards, order, votes,
+  reactions, comments, names, phase and settings match, before and
+  after a reload. An original participant opening the imported board
+  still owns their cards and votes. Also covers an anonymous board
+  (no names) and a file downloaded from the archive viewer.
+- **Bad files** (always run): a truncated export, an old CSV export,
+  JSON that isn't an export, a newer version and a file over 1 MB are
+  each rejected in the preview with a readable message, the submit
+  button stays disabled (Enter included) and no board is created. A
+  partly broken file imports its good cards with warnings, and the
+  modal recovers after an error (Remove, or picking a good file).
+  Every test fails on an uncaught page error.
+
 ### Lead token
 
 The full-session test joins the lead role and therefore needs the
