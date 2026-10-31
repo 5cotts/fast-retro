@@ -100,7 +100,7 @@
       aria-label="Export"
       tabindex="-1"
       onkeydown={onMenuKeydown}
-      class="absolute z-30 top-full mt-1.5 w-64 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {compact
+      class="absolute z-30 top-full mt-1.5 w-72 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {compact
         ? 'right-0'
         : 'left-0'}"
     >
