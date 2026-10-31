@@ -4,7 +4,7 @@ import { test, expect, type Browser, type Locator, type Page } from '@playwright
 /**
  * Export → import round trip (frontend/src/lib/boardfile.ts, importBoard in
  * yboard.ts, "Import from file…" in NewRetroModal.svelte). A board exported
- * with Download JSON and imported in a fresh browser must look the same:
+ * with Export → Save board file and imported in a fresh browser must look the same:
  * cards and order per column, votes, reactions, comments, author names,
  * phase and settings, and stay that way after a reload.
  *
@@ -60,7 +60,10 @@ async function advance(page: Page, label: string) {
 async function downloadJSON(page: Page): Promise<string> {
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download JSON' }).click()
+    (async () => {
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      await page.getByRole('menuitem', { name: /^Save board file/ }).click();
+    })()
   ]);
   return (await download.path()) as string;
 }
@@ -75,6 +78,22 @@ async function openNewRetroDialog(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a new retro' }).click();
   return page.getByRole('dialog', { name: 'Start a new retro' });
+}
+
+// Records gtag calls. The real tag is stripped when GA_MEASUREMENT_ID is
+// unset (as in the e2e server), so this stands in for it.
+async function stubAnalytics(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __gaEvents: unknown[][]; gtag: (...a: unknown[]) => void };
+    w.__gaEvents = [];
+    w.gtag = (...args: unknown[]) => {
+      w.__gaEvents.push(args);
+    };
+  });
+}
+
+async function gaEvents(page: Page): Promise<unknown[][]> {
+  return page.evaluate(() => (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event'));
 }
 
 type FileInput = string | { name: string; mimeType: string; buffer: Buffer };
@@ -205,6 +224,7 @@ test.describe('fast-retro JSON import', () => {
           await expect(low.getByText(comment)).toBeVisible();
 
           await expect(page.getByRole('button', { name: 'Turn on anonymous mode' })).toBeVisible();
+          await expect(page.getByTestId('imported-note')).toContainText('Imported from a file');
         };
         await check();
         await page.reload();
@@ -303,7 +323,11 @@ test.describe('fast-retro JSON import', () => {
       await expect(item).toBeVisible({ timeout: 10_000 });
       await item.getByRole('link').first().click();
       await expect(lead.getByTestId('archive-card').filter({ hasText: cardText })).toBeVisible();
-      const path = await downloadJSON(lead);
+      const [fromArchive] = await Promise.all([
+        lead.waitForEvent('download'),
+        lead.getByRole('button', { name: 'Save board file' }).click()
+      ]);
+      const path = (await fromArchive.path()) as string;
 
       const { ctx, page } = await importInFreshBrowser(browser, path, {
         label: `From archive ${suffix}`,
@@ -330,9 +354,10 @@ test.describe('fast-retro JSON import', () => {
 // create a board, and never throw in the page. No lead token needed.
 test.describe('fast-retro JSON import errors', () => {
   let pageErrors: Error[] = [];
-  test.beforeEach(({ page }) => {
+  test.beforeEach(async ({ page }) => {
     pageErrors = [];
     page.on('pageerror', (err) => pageErrors.push(err));
+    await stubAnalytics(page);
   });
   test.afterEach(() => {
     expect(pageErrors, 'uncaught errors in the page').toEqual([]);
@@ -369,14 +394,20 @@ test.describe('fast-retro JSON import errors', () => {
     expect(new URL(page.url()).pathname).toBe('/');
   }
 
-  const rejections: { name: string; file: () => ReturnType<typeof asFile>; error: string | RegExp }[] = [
+  const rejections: {
+    name: string;
+    file: () => ReturnType<typeof asFile>;
+    error: string | RegExp;
+    reason: string;
+  }[] = [
     {
       name: 'a truncated export',
       file: () => {
         const text = goodFile();
         return asFile('cut-off.fastretro.json', text.slice(0, Math.floor(text.length / 2)));
       },
-      error: "This file isn't valid JSON."
+      error: "This file isn't valid JSON.",
+      reason: 'invalid_json'
     },
     {
       name: 'an old CSV export',
@@ -386,17 +417,20 @@ test.describe('fast-retro JSON import errors', () => {
           'column,card_text,votes,reactions,comments\r\nWhat went well,good card,1,,\r\n',
           'text/csv'
         ),
-      error: "This file isn't valid JSON."
+      error: "This file isn't valid JSON.",
+      reason: 'invalid_json'
     },
     {
       name: 'JSON that is not a fast-retro export',
       file: () => asFile('not-a-board.json', JSON.stringify({ hello: 'world' })),
-      error: "This isn't a fast-retro export. Use a .fastretro.json file from Download JSON."
+      error: "This isn't a fast-retro export. Use a .fastretro.json file from Export → Save board file.",
+      reason: 'not_export'
     },
     {
       name: 'a file from a newer version',
       file: () => asFile('future.fastretro.json', goodFile({ version: 99 })),
-      error: 'This file was exported by a newer version of fast-retro.'
+      error: 'This file was exported by a newer version of fast-retro.',
+      reason: 'newer_version'
     },
     {
       name: 'a file over 1 MB',
@@ -405,7 +439,8 @@ test.describe('fast-retro JSON import errors', () => {
           'huge.fastretro.json',
           goodFile({ padding: 'x'.repeat(1024 * 1024) })
         ),
-      error: 'This file is too large to import (over 1 MB).'
+      error: 'This file is too large to import (over 1 MB).',
+      reason: 'too_large'
     }
   ];
 
@@ -414,6 +449,7 @@ test.describe('fast-retro JSON import errors', () => {
       const dialog = await openNewRetroDialog(page);
       await pickImportFile(page, dialog, r.file());
       await expectRejected(page, dialog, r.error);
+      expect(await gaEvents(page)).toContainEqual(['event', 'board_import', { result: 'error', reason: r.reason }]);
     });
   }
 

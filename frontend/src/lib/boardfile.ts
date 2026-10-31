@@ -1,6 +1,7 @@
 import type { CardData, ColumnKey, CommentData } from './types';
 import { COLUMNS } from './types';
 import { PHASES, type Phase } from './phase';
+import type { ImportErrorCode } from './analytics';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -180,7 +181,7 @@ export interface BoardFileStats {
 
 export type ParseResult =
   | { ok: true; file: BoardFile; warnings: string[]; stats: BoardFileStats }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code: ImportErrorCode };
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -217,23 +218,27 @@ export function boardFileStats(file: BoardFile): BoardFileStats {
 // malformed cards and comments skipped with a warning.
 export function parseBoardFile(text: string): ParseResult {
   if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) {
-    return { ok: false, error: 'This file is too large to import (over 1 MB).' };
+    return { ok: false, error: 'This file is too large to import (over 1 MB).', code: 'too_large' };
   }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "This file isn't valid JSON." };
+    return { ok: false, error: "This file isn't valid JSON.", code: 'invalid_json' };
   }
   if (!isRecord(raw) || raw.format !== BOARD_FILE_FORMAT) {
-    return { ok: false, error: "This isn't a fast-retro export. Use a .fastretro.json file from Download JSON." };
+    return {
+      ok: false,
+      error: "This isn't a fast-retro export. Use a .fastretro.json file from Export → Save board file.",
+      code: 'not_export'
+    };
   }
   const version = raw.version;
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    return { ok: false, error: "This file's version is missing or invalid." };
+    return { ok: false, error: "This file's version is missing or invalid.", code: 'bad_version' };
   }
   if (version > BOARD_FILE_VERSION) {
-    return { ok: false, error: 'This file was exported by a newer version of fast-retro.' };
+    return { ok: false, error: 'This file was exported by a newer version of fast-retro.', code: 'newer_version' };
   }
 
   const warnings: string[] = [];
@@ -260,7 +265,11 @@ export function parseBoardFile(text: string): ParseResult {
         continue;
       }
       if (++total > MAX_IMPORT_CARDS) {
-        return { ok: false, error: `This board has more than ${MAX_IMPORT_CARDS} cards, which is more than import supports.` };
+        return {
+          ok: false,
+          error: `This board has more than ${MAX_IMPORT_CARDS} cards, which is more than import supports.`,
+          code: 'too_many_cards'
+        };
       }
       const reactions: Record<string, string[]> = {};
       if (isRecord(rc.reactions)) {
@@ -274,7 +283,8 @@ export function parseBoardFile(text: string): ParseResult {
         if (rc.comments.length > MAX_IMPORT_COMMENTS_PER_CARD) {
           return {
             ok: false,
-            error: `A card has more than ${MAX_IMPORT_COMMENTS_PER_CARD} comments, which is more than import supports.`
+            error: `A card has more than ${MAX_IMPORT_COMMENTS_PER_CARD} comments, which is more than import supports.`,
+            code: 'too_many_comments'
           };
         }
         for (const cm of rc.comments) {

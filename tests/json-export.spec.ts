@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Download, type Page } from '@playwright/test';
 
 /**
- * Download JSON (frontend/src/lib/boardfile.ts): the live board export, the
- * End retro "Download JSON & end" path, and the archive viewer's export.
+ * Export → Save board file (frontend/src/lib/boardfile.ts, ExportMenu.svelte):
+ * the live board export, the End retro "Save board file & end" path, and the
+ * archive viewer's export.
  * Covers the privacy rule that anonymous boards never put names in the file.
  *
  * Skipped unless RETRO_LEAD_TOKEN is set (uses the lead route and archives).
@@ -16,6 +17,17 @@ async function dismissOnboardingIfPresent(page: Page) {
     await gotIt.click();
     await expect(gotIt).toBeHidden();
   }
+}
+
+async function saveBoardFile(page: Page): Promise<Download> {
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    (async () => {
+      await page.getByRole('button', { name: 'Export', exact: true }).click();
+      await page.getByRole('menuitem', { name: /^Save board file/ }).click();
+    })()
+  ]);
+  return download;
 }
 
 async function readJSON(download: Download) {
@@ -58,10 +70,7 @@ test.describe('fast-retro JSON export', () => {
       await expect(cardEl.getByRole('button', { name: /^Remove vote \(1\)/ })).toBeVisible();
 
       // Named board: names are included, but only for people on the board.
-      const [named] = await Promise.all([
-        page.waitForEvent('download'),
-        page.getByRole('button', { name: 'Download JSON' }).click()
-      ]);
+      const named = await saveBoardFile(page);
       const namedFile = await readJSON(named);
       expect(namedFile.format).toBe('fast-retro');
       expect(namedFile.version).toBe(1);
@@ -75,10 +84,7 @@ test.describe('fast-retro JSON export', () => {
       // Anonymous board: no names anywhere in the file.
       await page.getByRole('button', { name: 'Turn on anonymous mode' }).click();
       await expect(page.getByRole('button', { name: 'Turn off anonymous mode' })).toBeVisible();
-      const [anon] = await Promise.all([
-        page.waitForEvent('download'),
-        page.getByRole('button', { name: 'Download JSON' }).click()
-      ]);
+      const anon = await saveBoardFile(page);
       const anonPath = await anon.path();
       const anonText = readFileSync(anonPath as string, 'utf-8');
       expect(anonText).not.toContain(leadName);
@@ -90,7 +96,7 @@ test.describe('fast-retro JSON export', () => {
       const dialog = page.getByRole('alertdialog');
       const [onEnd] = await Promise.all([
         page.waitForEvent('download'),
-        dialog.getByRole('button', { name: 'Download JSON & end' }).click()
+        dialog.getByRole('button', { name: 'Save board file & end' }).click()
       ]);
       expect((await readJSON(onEnd)).cards.wentWell[0].text).toBe(cardText);
       await expect(page.getByText('This retro has ended')).toBeVisible({ timeout: 15_000 });
@@ -103,7 +109,7 @@ test.describe('fast-retro JSON export', () => {
       await expect(page.getByTestId('archive-card').filter({ hasText: 'exported' })).toBeVisible();
       const [fromArchive] = await Promise.all([
         page.waitForEvent('download'),
-        page.getByRole('button', { name: 'Download JSON' }).click()
+        page.getByRole('button', { name: 'Save board file' }).click()
       ]);
       const archived = await readJSON(fromArchive);
       expect(archived.board).toMatchObject({ anonymous: true, phase: 'vote', autoSort: true });

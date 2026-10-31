@@ -5,6 +5,7 @@
   import { COLUMNS, type CardData, type ColumnKey } from '$lib/types';
   import { boardFileFromArchive, downloadBoardFile } from '$lib/boardfile';
   import { FileJson } from 'lucide-svelte';
+  import { track } from '$lib/analytics';
 
   interface Archive {
     id: string;
@@ -63,7 +64,9 @@
   }
 
   function downloadJSON() {
-    if (archive) downloadBoardFile(boardFileFromArchive(archive));
+    if (!archive) return;
+    track({ name: 'board_export', params: { format: 'board_file', source: 'archive' } });
+    downloadBoardFile(boardFileFromArchive(archive));
   }
 
   function authorLabel(authorId: string): string {
@@ -133,7 +136,7 @@
             </div>
           </div>
           <button class="btn text-xs px-3 py-1.5" onclick={downloadJSON} title="Full copy you can import later">
-            <FileJson size={14} aria-hidden="true" /> Download JSON
+            <FileJson size={14} aria-hidden="true" /> Save board file
           </button>
         </div>
 

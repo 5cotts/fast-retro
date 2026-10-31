@@ -107,6 +107,34 @@ export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
   else meta.set('autoSort', false);
 }
 
+// Where an imported board came from, shown as a small note in the header.
+// The file is untrusted (it chooses which user IDs own cards and votes), so
+// imported boards say so. Set once by importBoard; never exported.
+export type ImportOrigin = { kind: 'file' } | { kind: 'carryover'; from: string };
+
+export interface ImportedInfo {
+  origin: ImportOrigin;
+  at: number;
+}
+
+export function readBoardImported(meta: Y.Map<unknown>): ImportedInfo | null {
+  const at = meta.get('importedAt');
+  const kind = meta.get('importedKind');
+  if (typeof at !== 'number') return null;
+  if (kind === 'carryover') {
+    const from = meta.get('importedFrom');
+    return { origin: { kind, from: typeof from === 'string' ? from : '' }, at };
+  }
+  return { origin: { kind: 'file' }, at };
+}
+
+function setBoardImported(meta: Y.Map<unknown>, origin: ImportOrigin, at: number): void {
+  meta.set('importedAt', at);
+  meta.set('importedKind', origin.kind);
+  if (origin.kind === 'carryover' && origin.from) meta.set('importedFrom', origin.from.slice(0, 60));
+  else meta.delete('importedFrom');
+}
+
 // Live "the retro just ended" signal, broadcast over the same meta channel so
 // every connected client (not just the lead who clicked End) can react —
 // confetti burst, motivational toast — without needing to reload. Set this
@@ -533,7 +561,9 @@ export function isBoardEmpty(board: Y.Map<Y.Array<Y.Map<unknown>>>): boolean {
 // User IDs are kept so a returning participant still owns their cards and votes.
 export function importBoard(
   state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'names' | 'phase'>,
-  file: BoardFile
+  file: BoardFile,
+  origin: ImportOrigin = { kind: 'file' },
+  now = Date.now()
 ): void {
   const { doc, board, meta, names, phase } = state;
   doc.transact(() => {
@@ -556,6 +586,7 @@ export function importBoard(
     setBoardAnonymous(meta, file.board.anonymous);
     setBoardAutoSort(meta, file.board.autoSort);
     setPhase(phase, file.board.phase);
+    setBoardImported(meta, origin, now);
     if (!file.board.anonymous && file.names) {
       for (const [id, name] of Object.entries(file.names)) {
         if (!names.has(id)) names.set(id, name);

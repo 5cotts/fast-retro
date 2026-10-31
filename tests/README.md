@@ -135,10 +135,10 @@ bug above) — regardless of which slugs they pointed at. Two separate
 Playwright *contexts* would NOT catch this (BroadcastChannel is
 scoped per browser profile); it has to be two pages in one context.
 
-`json-export.spec.ts` — Download JSON (skipped unless `RETRO_LEAD_TOKEN`
-is set): checks the `.fastretro.json` contents, that anonymous boards
-leave names out, the End retro "Download JSON & end" path, and the
-archive viewer's export.
+`json-export.spec.ts` — Export → Save board file (skipped unless
+`RETRO_LEAD_TOKEN` is set): checks the `.fastretro.json` contents, that
+anonymous boards leave names out, the End retro "Save board file & end"
+path, and the archive viewer's export.
 
 `import.spec.ts` — Import from file… on the homepage:
 
@@ -154,7 +154,20 @@ archive viewer's export.
   button stays disabled (Enter included) and no board is created. A
   partly broken file imports its good cards with warnings, and the
   modal recovers after an error (Remove, or picking a good file).
-  Every test fails on an uncaught page error.
+  Each rejection also checks the `board_import` analytics event and its
+  reason code. Every test fails on an uncaught page error.
+
+`board-file-ux.spec.ts` — always runs (boards are created from the
+homepage, so no lead token): the Export menu by keyboard and mouse
+(arrow keys, Escape, click outside, both downloads), dropping a board
+file anywhere on the homepage, the "Imported from a file" note, and
+Start next retro bringing action items along (without votes or
+reactions) by default. Analytics are checked with a stubbed `gtag`.
+
+The frozen v1 board file lives in
+`frontend/src/lib/fixtures/board-v1.fastretro.json` and is checked by
+the unit test `boardfile-v1.spec.ts` (`bun run test:unit`). Never edit
+it to make a test pass; see the README next to it.
 
 ### Lead token
 

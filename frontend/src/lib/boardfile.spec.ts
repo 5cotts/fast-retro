@@ -252,7 +252,7 @@ describe('parseBoardFile', () => {
   const valid = () => JSON.parse(serializeBoardFile(exportBoardFile(source())));
 
   it('rejects invalid JSON, wrong format, bad and newer versions', () => {
-    expect(parseBoardFile('{nope')).toEqual({ ok: false, error: "This file isn't valid JSON." });
+    expect(parseBoardFile('{nope')).toEqual({ ok: false, error: "This file isn't valid JSON.", code: 'invalid_json' });
     expect(parseBoardFile('')).toMatchObject({ ok: false });
     expect(parseBoardFile('[]')).toMatchObject({ ok: false, error: expect.stringContaining("isn't a fast-retro export") });
     expect(parseBoardFile(JSON.stringify({ ...valid(), format: 'other' }))).toMatchObject({ ok: false });
@@ -262,7 +262,8 @@ describe('parseBoardFile', () => {
     });
     expect(parseBoardFile(JSON.stringify({ ...valid(), version: 2 }))).toEqual({
       ok: false,
-      error: 'This file was exported by a newer version of fast-retro.'
+      error: 'This file was exported by a newer version of fast-retro.',
+      code: 'newer_version'
     });
   });
 

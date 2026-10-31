@@ -32,6 +32,7 @@
     setHostKey,
     setPendingLabel,
     setPendingAnonymous,
+    setPendingImport,
     newSlug,
     slugifyLabel
   } from './boards';
@@ -46,7 +47,15 @@
     computeTimerRemaining
   } from './timer';
   import { exportCSV } from './csv';
-  import { exportBoardFile, downloadBoardFile, downloadBlob, exportFileStem } from './boardfile';
+  import {
+    exportBoardFile,
+    downloadBoardFile,
+    downloadBlob,
+    exportFileStem,
+    MAX_IMPORT_CARDS,
+    MAX_IMPORT_COMMENTS_PER_CARD
+  } from './boardfile';
+  import { track } from './analytics';
   import { getOrCreateUserId, setDisplayName } from './identity';
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
@@ -56,7 +65,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowLeft, ArrowRight, PartyPopper, X } from 'lucide-svelte';
+  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History } from 'lucide-svelte';
   import {
     PHASES,
     PHASE_LABEL,
@@ -88,6 +97,7 @@
   // ends it.
   let ended = $state<boolean>(readOnly);
   let startingNext = $state<boolean>(false);
+  let carryActions = $state<boolean>(true);
   // Lead controls only apply to a live board — an ended retro is frozen.
   const effectiveLead = $derived(isLead && !ended);
 
@@ -486,12 +496,24 @@
     if (!hasPendingImport(slug)) return;
     const state = conn.state.board;
     const apply = () => {
-      const file = consumePendingImport(slug);
-      if (file && isBoardEmpty(state.board)) importBoard(state, file);
+      const pending = consumePendingImport(slug);
+      if (!pending || !isBoardEmpty(state.board)) return;
+      importBoard(state, pending.file, pending.origin);
+      if (pending.origin.kind === 'file') {
+        const f = pending.file.cards;
+        track({
+          name: 'board_import',
+          params: { result: 'success', origin: 'file', cards: f.wentWell.length + f.toImprove.length + f.actions.length }
+        });
+      }
     };
     if (state.provider.synced) apply();
     else state.provider.once('sync', apply);
   });
+
+  function formatImportDate(at: number): string {
+    return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
 
   function setTyping(target: string | null) {
     if (!conn.state.board) return;
@@ -772,13 +794,15 @@
   }
 
   function downloadCSV() {
+    track({ name: 'board_export', params: { format: 'csv', source: 'board' } });
     // The BOM makes Excel read the file as UTF-8 so emoji reactions survive.
     const csv = '\uFEFF' + exportCSV(conn.state.cards);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     downloadBlob(blob, `${exportFileStem(conn.state.label)}.csv`);
   }
 
-  function downloadJSON() {
+  function downloadJSON(source: 'board' | 'end' = 'board') {
+    track({ name: 'board_export', params: { format: 'board_file', source } });
     downloadBoardFile(
       exportBoardFile({
         label: conn.state.label,
@@ -814,7 +838,7 @@
       endConfirm = false;
       return;
     }
-    if (opts.exportFirst) downloadJSON();
+    if (opts.exportFirst) downloadJSON('end');
     archiveError = '';
     archiving = true;
     // Broadcast the end + a motivational message to every connected client
@@ -858,7 +882,29 @@
   }
 
   // Seamless "next retro": spin up a brand-new board (never reuse this slug),
-  // become its host, and navigate there. Carries the label forward.
+  // become its host, and navigate there. Carries the label forward and, unless
+  // the host unticks it, this retro's action items so the team can review
+  // them. They arrive through the import handoff as fresh cards (no votes or
+  // reactions; comments kept) on a new anonymous board, same as before.
+  const actionCount = $derived(conn.state.cards.actions.length);
+
+  function carryOverFile(label: string) {
+    const actions = conn.state.cards.actions.slice(0, MAX_IMPORT_CARDS).map((card) => ({
+      ...card,
+      votes: [],
+      reactions: {},
+      comments: card.comments.slice(0, MAX_IMPORT_COMMENTS_PER_CARD)
+    }));
+    return exportBoardFile({
+      label,
+      anonymous: true,
+      phase: 'brainstorm',
+      autoSort: conn.state.autoSort,
+      cards: { wentWell: [], toImprove: [], actions },
+      namesMap: {}
+    });
+  }
+
   async function startNextRetro() {
     if (startingNext) return;
     startingNext = true;
@@ -869,11 +915,15 @@
       let res = await createBoard(wanted, base).catch(() => null);
       if (!res) res = await createBoard(newSlug(), base);
       setHostKey(res.slug, res.hostKey);
-      setPendingAnonymous(res.slug);
-      if (base) {
-        recordRecentBoard(res.slug, { label: base });
-        setPendingLabel(res.slug, base);
+      if (base) recordRecentBoard(res.slug, { label: base });
+      const carried = carryActions ? actionCount : 0;
+      if (carried > 0 && setPendingImport(res.slug, carryOverFile(base), { kind: 'carryover', from: base })) {
+        // The import sets the label and anonymous flag itself.
+      } else {
+        setPendingAnonymous(res.slug);
+        if (base) setPendingLabel(res.slug, base);
       }
+      track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);
     } catch {
       startingNext = false;
@@ -918,7 +968,7 @@
       onPauseTimer={leadPause}
       onResetTimer={leadReset}
       onExportCSV={downloadCSV}
-      onExportJSON={downloadJSON}
+      onExportJSON={() => downloadJSON('board')}
       onEndBoard={startEndBoard}
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
@@ -952,6 +1002,24 @@
           {/each}
         </div>
         <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {PHASE_HINT[conn.state.phase]}</span>
+        {#if conn.state.imported}
+          {@const imp = conn.state.imported}
+          <span
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 whitespace-nowrap"
+            data-testid="imported-note"
+            title={imp.origin.kind === 'file'
+              ? 'Cards, votes, reactions and authors came from an uploaded file, not from people acting on this board.'
+              : 'Action items brought over from the previous retro.'}
+          >
+            {#if imp.origin.kind === 'file'}
+              <FileUp size={12} aria-hidden="true" />
+              Imported from a file · {formatImportDate(imp.at)}
+            {:else}
+              <History size={12} aria-hidden="true" />
+              {imp.origin.from ? `Action items from “${imp.origin.from}”` : 'Action items from last retro'}
+            {/if}
+          </span>
+        {/if}
         {#if effectiveLead}
           <div class="ml-auto flex items-center gap-1.5">
             {#if !isFirstPhase}
@@ -993,6 +1061,12 @@
             </div>
           </div>
           {#if isLead}
+            {#if actionCount > 0}
+              <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none">
+                <input type="checkbox" bind:checked={carryActions} class="rounded" disabled={startingNext} />
+                Bring {actionCount} action item{actionCount === 1 ? '' : 's'}
+              </label>
+            {/if}
             <button
               class="inline-flex items-center gap-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md text-xs px-3 py-2 min-h-[36px] font-medium hover:opacity-90 disabled:opacity-60 transition-opacity"
               disabled={startingNext}
@@ -1061,7 +1135,7 @@
               onclick={() => confirmEndBoard({ exportFirst: true })}
             >
               <Download size={14} aria-hidden="true" />
-              Download JSON &amp; end
+              Save board file &amp; end
             </button>
           {/if}
           <button

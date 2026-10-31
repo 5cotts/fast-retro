@@ -1,4 +1,5 @@
 import { parseBoardFile, serializeBoardFile, type BoardFile } from './boardfile';
+import type { ImportOrigin } from './yboard';
 
 const KEY_RECENT_BOARDS = 'retro-recent-boards';
 const KEY_HOST_KEYS = 'retro-host-keys';
@@ -179,15 +180,29 @@ export function consumePendingAnonymous(slug: string): boolean {
 // transient, tab-local handoff as the pending label above. Re-validated on
 // read since sessionStorage is just a string store.
 const PENDING_IMPORT_PREFIX = 'retro-pending-import:';
+const PENDING_IMPORT_ORIGIN_PREFIX = 'retro-pending-import-origin:';
 
-export function setPendingImport(slug: string, file: BoardFile): boolean {
+export function setPendingImport(slug: string, file: BoardFile, origin: ImportOrigin = { kind: 'file' }): boolean {
   if (!isValidSlug(slug)) return false;
   try {
     sessionStorage.setItem(PENDING_IMPORT_PREFIX + slug, serializeBoardFile(file));
+    sessionStorage.setItem(PENDING_IMPORT_ORIGIN_PREFIX + slug, JSON.stringify(origin));
     return true;
   } catch {
     return false;
   }
+}
+
+function readPendingOrigin(slug: string): ImportOrigin {
+  try {
+    const raw = sessionStorage.getItem(PENDING_IMPORT_ORIGIN_PREFIX + slug);
+    sessionStorage.removeItem(PENDING_IMPORT_ORIGIN_PREFIX + slug);
+    const v = raw ? JSON.parse(raw) : null;
+    if (v && v.kind === 'carryover') return { kind: 'carryover', from: typeof v.from === 'string' ? v.from : '' };
+  } catch {
+    // fall through
+  }
+  return { kind: 'file' };
 }
 
 export function hasPendingImport(slug: string): boolean {
@@ -199,14 +214,15 @@ export function hasPendingImport(slug: string): boolean {
   }
 }
 
-export function consumePendingImport(slug: string): BoardFile | null {
+export function consumePendingImport(slug: string): { file: BoardFile; origin: ImportOrigin } | null {
   if (!isValidSlug(slug)) return null;
   try {
     const v = sessionStorage.getItem(PENDING_IMPORT_PREFIX + slug);
     if (v === null) return null;
     sessionStorage.removeItem(PENDING_IMPORT_PREFIX + slug);
+    const origin = readPendingOrigin(slug);
     const parsed = parseBoardFile(v);
-    return parsed.ok ? parsed.file : null;
+    return parsed.ok ? { file: parsed.file, origin } : null;
   } catch {
     return null;
   }

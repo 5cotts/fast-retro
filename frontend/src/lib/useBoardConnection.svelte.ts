@@ -6,7 +6,9 @@ import {
   readBoardAutoSort,
   readBoardEndedAt,
   readBoardEndedMessage,
-  type BoardState
+  readBoardImported,
+  type BoardState,
+  type ImportedInfo
 } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
@@ -36,6 +38,7 @@ export interface UseBoardConnectionState {
   autoSort: boolean;
   endedAt: number | null;
   endedMessage: string;
+  imported: ImportedInfo | null;
 }
 
 /**
@@ -63,7 +66,8 @@ export function useBoardConnection() {
     anonymous: false,
     autoSort: true,
     endedAt: null,
-    endedMessage: ''
+    endedMessage: '',
+    imported: null
   });
 
   function start(init: UseBoardConnectionInit) {
@@ -96,6 +100,7 @@ export function useBoardConnection() {
       state.autoSort = readBoardAutoSort(meta);
       state.endedAt = readBoardEndedAt(meta);
       state.endedMessage = readBoardEndedMessage(meta);
+      state.imported = readBoardImported(meta);
     };
 
     board.observeDeep(recomputeCards);

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { track } from './analytics';
   import { FileUp, Sparkles, X } from 'lucide-svelte';
   import { newSlug, slugifyLabel } from './boards';
   import {
@@ -11,10 +12,12 @@
     type ParseResult
   } from './boardfile';
 
-  let { onClose, onConfirm, hostMode = false } = $props<{
+  let { onClose, onConfirm, hostMode = false, initialFile = null } = $props<{
     onClose: () => void;
     onConfirm: (result: { slug: string; label: string; importFile?: BoardFile }) => void;
     hostMode?: boolean;
+    // A file dropped on the page before the modal opened.
+    initialFile?: File | null;
   }>();
 
   let labelInput = $state('');
@@ -25,25 +28,59 @@
   let importResult = $state<ParseResult | null>(null);
   const importing = $derived(importResult?.ok === true);
 
-  async function onFilePicked(e: Event) {
-    const input = e.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
+  let dragging = $state(false);
+
+  function setResult(r: ParseResult) {
+    importResult = r;
+    if (r.ok) labelInput = r.file.board.label;
+    else track({ name: 'board_import', params: { result: 'error', reason: r.code } });
+  }
+
+  async function loadFile(file: File) {
     importName = file.name;
     if (file.size > MAX_IMPORT_BYTES) {
-      importResult = { ok: false, error: 'This file is too large to import (over 1 MB).' };
+      setResult({ ok: false, error: 'This file is too large to import (over 1 MB).', code: 'too_large' });
       return;
     }
     let text: string;
     try {
       text = await file.text();
     } catch {
-      importResult = { ok: false, error: "Couldn't read that file." };
+      setResult({ ok: false, error: "Couldn't read that file.", code: 'read_failed' });
       return;
     }
-    importResult = parseBoardFile(text);
-    if (importResult.ok) labelInput = importResult.file.board.label;
+    setResult(parseBoardFile(text));
+  }
+
+  function onFilePicked(e: Event) {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) loadFile(file);
+  }
+
+  function hasFiles(e: DragEvent): boolean {
+    return !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  }
+
+  function onDragOver(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    dragging = true;
+  }
+
+  function onDragLeave(e: DragEvent) {
+    if (e.currentTarget instanceof Node && e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    dragging = false;
+  }
+
+  function onDrop(e: DragEvent) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragging = false;
+    const file = e.dataTransfer?.files?.[0];
+    if (file) loadFile(file);
   }
 
   function clearImport() {
@@ -53,6 +90,7 @@
 
   onMount(() => {
     inputEl?.focus();
+    if (initialFile) loadFile(initialFile);
   });
 
   // Preview the slug derived from the typed name so the user understands the URL
@@ -103,8 +141,19 @@
     aria-modal="true"
     aria-labelledby="new-retro-heading"
     tabindex="-1"
-    class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-full max-w-md p-6 motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-150"
+    ondragover={onDragOver}
+    ondragleave={onDragLeave}
+    ondrop={onDrop}
+    class="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-full max-w-md p-6 motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-150"
   >
+    {#if dragging}
+      <div
+        class="absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-sky-400 bg-sky-50/90 dark:bg-sky-900/80 text-sm font-medium text-sky-800 dark:text-sky-100 pointer-events-none"
+        aria-hidden="true"
+      >
+        Drop a .fastretro.json file to import it
+      </div>
+    {/if}
     <div class="flex items-start gap-3">
       <span
         class="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-200 shrink-0"
@@ -216,6 +265,7 @@
           <FileUp size={14} aria-hidden="true" />
           Import from file…
         </button>
+        <span class="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">or drop it here</span>
       </div>
     </form>
   </div>
