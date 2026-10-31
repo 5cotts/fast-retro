@@ -1,0 +1,93 @@
+{
+  "format": "fast-retro",
+  "version": 1,
+  "exportedAt": 1793400000000,
+  "board": {
+    "label": "Sprint 42 — Café 🚀",
+    "anonymous": false,
+    "phase": "discuss",
+    "autoSort": false
+  },
+  "cards": {
+    "wentWell": [
+      {
+        "id": "c1",
+        "text": "Shipped import 🎉",
+        "authorId": "u_alice",
+        "votes": [
+          "u_bob",
+          "u_carol"
+        ],
+        "reactions": {
+          "🎉": [
+            "u_bob"
+          ],
+          "👍": [
+            "u_alice",
+            "u_carol"
+          ]
+        },
+        "comments": [
+          {
+            "id": "m1",
+            "text": "Nice work, \"quotes\" and, commas",
+            "authorId": "u_bob",
+            "createdAt": 1793399940000
+          }
+        ]
+      },
+      {
+        "id": "c2",
+        "text": "Line one\nline two",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "toImprove": [
+      {
+        "id": "c3",
+        "text": "=SUM(A1) should stay text",
+        "authorId": "u_carol",
+        "votes": [
+          "u_alice"
+        ],
+        "reactions": {},
+        "comments": [
+          {
+            "id": "m2",
+            "text": "Agreed",
+            "authorId": "u_alice",
+            "createdAt": 1793399970000
+          },
+          {
+            "id": "m3",
+            "text": "Me too",
+            "authorId": "u_bob",
+            "createdAt": 1793399980000
+          }
+        ]
+      }
+    ],
+    "actions": [
+      {
+        "id": "c4",
+        "text": "Alice to write the runbook",
+        "authorId": "u_alice",
+        "votes": [],
+        "reactions": {
+          "✅": [
+            "u_carol"
+          ]
+        },
+        "comments": []
+      }
+    ]
+  },
+  "names": {
+    "u_alice": "Alice",
+    "u_bob": "Bob",
+    "u_carol": "Carol"
+  }
+}
