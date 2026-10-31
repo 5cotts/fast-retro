@@ -7,6 +7,7 @@
     BOARD_FILE_EXTENSION,
     MAX_IMPORT_BYTES,
     describeStats,
+    importError,
     parseBoardFile,
     type BoardFile,
     type ParseResult
@@ -39,14 +40,14 @@
   async function loadFile(file: File) {
     importName = file.name;
     if (file.size > MAX_IMPORT_BYTES) {
-      setResult({ ok: false, error: 'This file is too large to import (over 1 MB).', code: 'too_large' });
+      setResult(importError('too_large'));
       return;
     }
     let text: string;
     try {
       text = await file.text();
     } catch {
-      setResult({ ok: false, error: "Couldn't read that file.", code: 'read_failed' });
+      setResult(importError('read_failed'));
       return;
     }
     setResult(parseBoardFile(text));

@@ -1,7 +1,6 @@
 import type { CardData, ColumnKey, CommentData } from './types';
 import { COLUMNS } from './types';
 import { PHASES, type Phase } from './phase';
-import type { ImportErrorCode } from './analytics';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -167,6 +166,32 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
 export const MAX_IMPORT_BYTES = 1024 * 1024;
 export const MAX_IMPORT_CARDS = 300;
 export const MAX_IMPORT_COMMENTS_PER_CARD = 50;
+
+// Every way an import can fail, with the message shown in the preview. The
+// keys are also sent to analytics as the failure reason, so treat them as
+// stable identifiers.
+export const IMPORT_ERRORS = {
+  too_large: 'This file is too large to import (over 1 MB).',
+  read_failed: "Couldn't read that file.",
+  invalid_json: "This file isn't valid JSON.",
+  not_export: "This isn't a fast-retro export. Use a .fastretro.json file from Export → Save board file.",
+  bad_version: "This file's version is missing or invalid.",
+  newer_version: 'This file was exported by a newer version of fast-retro.',
+  too_many_cards: `This board has more than ${MAX_IMPORT_CARDS} cards, which is more than import supports.`,
+  too_many_comments: `A card has more than ${MAX_IMPORT_COMMENTS_PER_CARD} comments, which is more than import supports.`
+} as const;
+
+export type ImportErrorCode = keyof typeof IMPORT_ERRORS;
+
+export interface ImportError {
+  ok: false;
+  code: ImportErrorCode;
+  error: string;
+}
+
+export function importError(code: ImportErrorCode): ImportError {
+  return { ok: false, code, error: IMPORT_ERRORS[code] };
+}
 const MAX_LABEL_LEN = 60;
 const MAX_NAME_LEN = 40;
 const MAX_ID_LEN = 64;
@@ -179,9 +204,14 @@ export interface BoardFileStats {
   namesRestored: boolean;
 }
 
-export type ParseResult =
-  | { ok: true; file: BoardFile; warnings: string[]; stats: BoardFileStats }
-  | { ok: false; error: string; code: ImportErrorCode };
+export interface ParseSuccess {
+  ok: true;
+  file: BoardFile;
+  warnings: string[];
+  stats: BoardFileStats;
+}
+
+export type ParseResult = ParseSuccess | ImportError;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -218,27 +248,23 @@ export function boardFileStats(file: BoardFile): BoardFileStats {
 // malformed cards and comments skipped with a warning.
 export function parseBoardFile(text: string): ParseResult {
   if (new TextEncoder().encode(text).length > MAX_IMPORT_BYTES) {
-    return { ok: false, error: 'This file is too large to import (over 1 MB).', code: 'too_large' };
+    return importError('too_large');
   }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "This file isn't valid JSON.", code: 'invalid_json' };
+    return importError('invalid_json');
   }
   if (!isRecord(raw) || raw.format !== BOARD_FILE_FORMAT) {
-    return {
-      ok: false,
-      error: "This isn't a fast-retro export. Use a .fastretro.json file from Export → Save board file.",
-      code: 'not_export'
-    };
+    return importError('not_export');
   }
   const version = raw.version;
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    return { ok: false, error: "This file's version is missing or invalid.", code: 'bad_version' };
+    return importError('bad_version');
   }
   if (version > BOARD_FILE_VERSION) {
-    return { ok: false, error: 'This file was exported by a newer version of fast-retro.', code: 'newer_version' };
+    return importError('newer_version');
   }
 
   const warnings: string[] = [];
@@ -265,11 +291,7 @@ export function parseBoardFile(text: string): ParseResult {
         continue;
       }
       if (++total > MAX_IMPORT_CARDS) {
-        return {
-          ok: false,
-          error: `This board has more than ${MAX_IMPORT_CARDS} cards, which is more than import supports.`,
-          code: 'too_many_cards'
-        };
+        return importError('too_many_cards');
       }
       const reactions: Record<string, string[]> = {};
       if (isRecord(rc.reactions)) {
@@ -281,11 +303,7 @@ export function parseBoardFile(text: string): ParseResult {
       const comments: CommentData[] = [];
       if (Array.isArray(rc.comments)) {
         if (rc.comments.length > MAX_IMPORT_COMMENTS_PER_CARD) {
-          return {
-            ok: false,
-            error: `A card has more than ${MAX_IMPORT_COMMENTS_PER_CARD} comments, which is more than import supports.`,
-            code: 'too_many_comments'
-          };
+          return importError('too_many_comments');
         }
         for (const cm of rc.comments) {
           if (!isRecord(cm) || typeof cm.text !== 'string') {
