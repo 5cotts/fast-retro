@@ -2,6 +2,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData, CommentData, ColumnKey } from './types';
 import { newId } from './identity';
+import { setPhase } from './phase';
+import type { BoardFile } from './boardfile';
 
 export function buildWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -103,6 +105,34 @@ export function readBoardAutoSort(meta: Y.Map<unknown>): boolean {
 export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
   if (on) meta.delete('autoSort');
   else meta.set('autoSort', false);
+}
+
+// Where an imported board came from, shown as a small note in the header.
+// The file is untrusted (it chooses which user IDs own cards and votes), so
+// imported boards say so. Set once by importBoard; never exported.
+export type ImportOrigin = { kind: 'file' } | { kind: 'carryover'; from: string };
+
+export interface ImportedInfo {
+  origin: ImportOrigin;
+  at: number;
+}
+
+export function readBoardImported(meta: Y.Map<unknown>): ImportedInfo | null {
+  const at = meta.get('importedAt');
+  const kind = meta.get('importedKind');
+  if (typeof at !== 'number') return null;
+  if (kind === 'carryover') {
+    const from = meta.get('importedFrom');
+    return { origin: { kind, from: typeof from === 'string' ? from : '' }, at };
+  }
+  return { origin: { kind: 'file' }, at };
+}
+
+function setBoardImported(meta: Y.Map<unknown>, origin: ImportOrigin, at: number): void {
+  meta.set('importedAt', at);
+  meta.set('importedKind', origin.kind);
+  if (origin.kind === 'carryover' && origin.from) meta.set('importedFrom', origin.from.slice(0, 60));
+  else meta.delete('importedFrom');
 }
 
 // Live "the retro just ended" signal, broadcast over the same meta channel so
@@ -515,4 +545,52 @@ export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: ColumnK
     out.push({ id, text, authorId, votes, reactions, comments });
   });
   return out;
+}
+
+export function isBoardEmpty(board: Y.Map<Y.Array<Y.Map<unknown>>>): boolean {
+  for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+    if ((board.get(col)?.length ?? 0) > 0) return false;
+  }
+  return true;
+}
+
+// Writes an imported board file into a (normally empty, already-synced) board
+// in one transaction, so peers and the server get it as a single update.
+// Card and comment IDs are regenerated: importing the same file twice must not
+// produce duplicate IDs, which mergeCards/moveCard lookups assume are unique.
+// User IDs are kept so a returning participant still owns their cards and votes.
+export function importBoard(
+  state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'names' | 'phase'>,
+  file: BoardFile,
+  origin: ImportOrigin = { kind: 'file' },
+  now = Date.now()
+): void {
+  const { doc, board, meta, names, phase } = state;
+  doc.transact(() => {
+    for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+      let arr = board.get(col);
+      if (!arr) {
+        arr = new Y.Array<Y.Map<unknown>>();
+        board.set(col, arr);
+      }
+      const cards = file.cards[col].map((card) =>
+        rehydrateCard({
+          ...card,
+          id: newId(),
+          comments: card.comments.map((c) => ({ ...c, id: newId() }))
+        })
+      );
+      if (cards.length) arr.push(cards);
+    }
+    setBoardLabel(meta, file.board.label);
+    setBoardAnonymous(meta, file.board.anonymous);
+    setBoardAutoSort(meta, file.board.autoSort);
+    setPhase(phase, file.board.phase);
+    setBoardImported(meta, origin, now);
+    if (!file.board.anonymous && file.names) {
+      for (const [id, name] of Object.entries(file.names)) {
+        if (!names.has(id)) names.set(id, name);
+      }
+    }
+  });
 }

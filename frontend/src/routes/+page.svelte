@@ -6,6 +6,7 @@
     readRecentBoards,
     recordRecentBoard,
     setPendingLabel,
+    setPendingImport,
     setPendingAnonymous,
     setHostKey,
     type RecentBoard
@@ -22,6 +23,7 @@
   } from '$lib/api';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
+  import type { BoardFile } from '$lib/boardfile';
   import GoogleSignIn from '$lib/GoogleSignIn.svelte';
   import { getTheme } from '$lib/storage';
   import { LogOut, Loader2 } from 'lucide-svelte';
@@ -29,6 +31,8 @@
   let recents = $state<RecentBoard[]>([]);
   let ready = $state(false);
   let showNewModal = $state(false);
+  let droppedFile = $state<File | null>(null);
+  let pageDragging = $state(false);
   let creating = $state(false);
   let createError = $state('');
 
@@ -57,11 +61,55 @@
 
   function createFresh() {
     createError = '';
+    droppedFile = null;
     showNewModal = true;
   }
 
-  async function onNewConfirm({ slug, label }: { slug: string; label: string }) {
+  function closeModal() {
     showNewModal = false;
+    droppedFile = null;
+  }
+
+  // Dropping a board file anywhere on the homepage opens "Start a new retro"
+  // with it loaded. While the modal is open it handles drops itself; a drop
+  // that misses the dialog must still not make the browser open the file.
+  function draggingFiles(e: DragEvent): boolean {
+    return !!e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  }
+
+  function onWindowDragOver(e: DragEvent) {
+    if (!draggingFiles(e)) return;
+    e.preventDefault();
+    if (!showNewModal && !creating) pageDragging = true;
+  }
+
+  function onWindowDragLeave(e: DragEvent) {
+    if (e.relatedTarget === null) pageDragging = false;
+  }
+
+  function onWindowDrop(e: DragEvent) {
+    if (!draggingFiles(e)) return;
+    e.preventDefault();
+    pageDragging = false;
+    if (showNewModal || creating) return;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    createError = '';
+    droppedFile = file;
+    showNewModal = true;
+  }
+
+  async function onNewConfirm({
+    slug,
+    label,
+    importFile
+  }: {
+    slug: string;
+    label: string;
+    importFile?: BoardFile;
+  }) {
+    showNewModal = false;
+    droppedFile = null;
     creating = true;
     createError = '';
     try {
@@ -69,10 +117,17 @@
       // Extremely rare slug collision — retry once with a fresh random slug.
       if (!result) result = await createBoard(newSlug(), label);
       setHostKey(result.slug, result.hostKey);
-      setPendingAnonymous(result.slug);
-      if (label) {
-        recordRecentBoard(result.slug, { label });
-        setPendingLabel(result.slug, label);
+      if (label) recordRecentBoard(result.slug, { label });
+      if (importFile) {
+        // The file carries its own label and anonymous flag.
+        if (!setPendingImport(result.slug, importFile)) {
+          creating = false;
+          createError = "Couldn't prepare the import in this browser. Try again.";
+          return;
+        }
+      } else {
+        setPendingAnonymous(result.slug);
+        if (label) setPendingLabel(result.slug, label);
       }
       goto(`/board/${result.slug}`);
     } catch {
@@ -130,6 +185,9 @@
       {#if createError}
         <p class="mt-2 text-xs text-rose-600 dark:text-rose-400 text-center">{createError}</p>
       {/if}
+      <p class="mt-2 text-center text-xs text-slate-500 dark:text-slate-400 hidden sm:block">
+        Have a saved board file? Drop it anywhere on this page to import it.
+      </p>
 
       <!-- Account -->
       <div class="mt-4">
@@ -224,6 +282,21 @@
   </div>
 {/if}
 
+<svelte:window ondragover={onWindowDragOver} ondragleave={onWindowDragLeave} ondrop={onWindowDrop} />
+
+{#if pageDragging}
+  <div
+    class="fixed inset-0 z-40 flex items-center justify-center p-6 bg-slate-900/40 pointer-events-none"
+    aria-hidden="true"
+  >
+    <div
+      class="w-full max-w-md rounded-xl border-2 border-dashed border-sky-400 bg-white dark:bg-slate-800 px-6 py-10 text-center text-sm font-medium text-sky-800 dark:text-sky-100"
+    >
+      Drop a .fastretro.json file to import it as a new retro
+    </div>
+  </div>
+{/if}
+
 {#if showNewModal}
-  <NewRetroModal onClose={() => (showNewModal = false)} onConfirm={onNewConfirm} hostMode={true} />
+  <NewRetroModal onClose={closeModal} onConfirm={onNewConfirm} hostMode={true} initialFile={droppedFile} />
 {/if}

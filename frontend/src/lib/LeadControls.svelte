@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { Timer, Play, Pause, RotateCcw, Download, X, EyeOff, Eye, ArrowDownUp } from 'lucide-svelte';
+  import { Timer, Play, Pause, RotateCcw, X, EyeOff, Eye, ArrowDownUp } from 'lucide-svelte';
+  import ExportMenu from './ExportMenu.svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
 
@@ -16,6 +17,7 @@
     onPause,
     onReset,
     onExportCSV,
+    onExportJSON,
     onEnd,
     onToggleAnonymous,
     onToggleAutoSort,
@@ -33,6 +35,7 @@
     onPause: () => void;
     onReset: () => void;
     onExportCSV: () => void;
+    onExportJSON: () => void;
     onEnd: () => void;
     onToggleAnonymous: () => void;
     onToggleAutoSort: () => void;
@@ -139,9 +142,7 @@
         <ArrowDownUp size={14} aria-hidden="true" />
         {autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}
       </button>
-      <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onExportCSV}>
-        <Download size={14} aria-hidden="true" /> Download CSV
-      </button>
+      <ExportMenu onSaveBoardFile={onExportJSON} {onExportCSV} />
       <button class="btn-danger text-sm px-3 py-2 min-h-[44px]" onclick={onEnd}>
         <X size={14} aria-hidden="true" /> End retro
       </button>
@@ -244,10 +245,7 @@
     <span class="hidden lg:inline">{autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}</span>
   </button>
 
-  <button class="btn text-xs px-2 py-1" onclick={onExportCSV} title="Download as CSV">
-    <Download size={14} aria-hidden="true" />
-    <span class="hidden lg:inline">Download CSV</span>
-  </button>
+  <ExportMenu onSaveBoardFile={onExportJSON} {onExportCSV} compact />
 
   <button class="btn-danger text-xs px-2 py-1" onclick={onEnd} title="End retro and clear board">
     End retro

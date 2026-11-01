@@ -378,13 +378,20 @@ async fn main() {
         .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
         .unwrap_or(true);
 
+    // The e2e suite runs every test from one IP, so test-local.sh raises this.
+    let rate_limit = std::env::var("FASTRETRO_RATE_LIMIT")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(RATE_LIMIT_MAX_REQUESTS);
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
         db,
         google,
         cookie_secure,
-        rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
+        rate_limiter: RateLimiter::new(rate_limit, RATE_LIMIT_WINDOW),
     };
 
     tokio::spawn(evict_idle_rooms(state.rooms.clone(), ROOM_EVICTION_INTERVAL));

@@ -42,7 +42,7 @@ From the project root, start a **disposable** local instance — `cargo run`
 scratch DB file that isn't checked in (`data/` is gitignored):
 
 ```bash
-RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COOKIE_SECURE=false cargo run
+RETRO_LEAD_TOKEN=dev-token PORT=5199 FASTRETRO_DB=data/fastretro-e2e-test.db COOKIE_SECURE=false FASTRETRO_RATE_LIMIT=10000 cargo run
 ```
 
 Then, in another terminal:
@@ -134,6 +134,40 @@ non-deterministically (same Y.Map last-write-wins race as the reload
 bug above) — regardless of which slugs they pointed at. Two separate
 Playwright *contexts* would NOT catch this (BroadcastChannel is
 scoped per browser profile); it has to be two pages in one context.
+
+`json-export.spec.ts` — Export → Save board file (skipped unless
+`RETRO_LEAD_TOKEN` is set): checks the `.fastretro.json` contents, that
+anonymous boards leave names out, the End retro "Save board file & end"
+path, and the archive viewer's export.
+
+`import.spec.ts` — Import from file… on the homepage:
+
+- **Round trip** (needs `RETRO_LEAD_TOKEN`): a two-user board is
+  exported and imported in a fresh browser; cards, order, votes,
+  reactions, comments, names, phase and settings match, before and
+  after a reload. An original participant opening the imported board
+  still owns their cards and votes. Also covers an anonymous board
+  (no names) and a file downloaded from the archive viewer.
+- **Bad files** (always run): a truncated export, an old CSV export,
+  JSON that isn't an export, a newer version and a file over 1 MB are
+  each rejected in the preview with a readable message, the submit
+  button stays disabled (Enter included) and no board is created. A
+  partly broken file imports its good cards with warnings, and the
+  modal recovers after an error (Remove, or picking a good file).
+  Each rejection also checks the `board_import` analytics event and its
+  reason code. Every test fails on an uncaught page error.
+
+`board-file-ux.spec.ts` — always runs (boards are created from the
+homepage, so no lead token): the Export menu by keyboard and mouse
+(arrow keys, Escape, click outside, both downloads), dropping a board
+file anywhere on the homepage, the "Imported from a file" note, and
+Start next retro bringing action items along (without votes or
+reactions) by default. Analytics are checked with a stubbed `gtag`.
+
+The frozen v1 board file lives in
+`frontend/src/lib/fixtures/board-v1.fastretro.json` and is checked by
+the unit test `boardfile-v1.spec.ts` (`bun run test:unit`). Never edit
+it to make a test pass; see the README next to it.
 
 ### Lead token
 

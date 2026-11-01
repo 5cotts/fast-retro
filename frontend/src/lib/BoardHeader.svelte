@@ -32,6 +32,7 @@
     onPauseTimer,
     onResetTimer,
     onExportCSV,
+    onExportJSON,
     onEndBoard,
     onCycleTheme,
     onChangeName,
@@ -61,6 +62,7 @@
     onPauseTimer: () => void;
     onResetTimer: () => void;
     onExportCSV: () => void;
+    onExportJSON: () => void;
     onEndBoard: () => void;
     onCycleTheme: () => void;
     onChangeName: (newName: string) => void;
@@ -211,6 +213,7 @@
             onPause={onPauseTimer}
             onReset={onResetTimer}
             {onExportCSV}
+            {onExportJSON}
             onEnd={onEndBoard}
             {onToggleAnonymous}
             {onToggleAutoSort}
@@ -256,6 +259,7 @@
           onPause={onPauseTimer}
           onReset={onResetTimer}
           {onExportCSV}
+          {onExportJSON}
           onEnd={onEndBoard}
           {onToggleAnonymous}
           {onToggleAutoSort}

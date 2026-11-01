@@ -57,7 +57,10 @@ test.describe('fast-retro CSV export', () => {
 
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('button', { name: /Download CSV/ }).click()
+      (async () => {
+        await page.getByRole('button', { name: 'Export', exact: true }).click();
+        await page.getByRole('menuitem', { name: /^Spreadsheet \(CSV\)/ }).click();
+      })()
     ]);
     const path = await download.path();
     expect(path).toBeTruthy();

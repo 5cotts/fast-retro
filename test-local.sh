@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Starting isolated backend on :$PORT (scratch db: $DB)"
-RETRO_LEAD_TOKEN="$LEAD_TOKEN" PORT="$PORT" FASTRETRO_DB="$DB" COOKIE_SECURE=false \
+RETRO_LEAD_TOKEN="$LEAD_TOKEN" PORT="$PORT" FASTRETRO_DB="$DB" COOKIE_SECURE=false FASTRETRO_RATE_LIMIT=10000 \
   cargo run > "$LOG" 2>&1 &
 SERVER_PID=$!
 

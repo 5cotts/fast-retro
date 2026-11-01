@@ -7,10 +7,12 @@
     readRecentBoards,
     recordRecentBoard,
     setPendingLabel,
+    setPendingImport,
     type RecentBoard
   } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
+  import type { BoardFile } from '$lib/boardfile';
 
   interface LiveBoard {
     slug: string;
@@ -111,12 +113,19 @@
     showNewModal = true;
   }
 
-  function onNewConfirm({ slug, label }: { slug: string; label: string }) {
+  function onNewConfirm({
+    slug,
+    label,
+    importFile
+  }: {
+    slug: string;
+    label: string;
+    importFile?: BoardFile;
+  }) {
     showNewModal = false;
-    if (label) {
-      recordRecentBoard(slug, { label });
-      setPendingLabel(slug, label);
-    }
+    if (label) recordRecentBoard(slug, { label });
+    if (importFile) setPendingImport(slug, importFile);
+    else if (label) setPendingLabel(slug, label);
     goto(`/lead/${token}/${slug}`);
   }
 
