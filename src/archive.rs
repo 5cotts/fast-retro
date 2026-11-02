@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
@@ -35,15 +36,33 @@ pub struct CardSnapshot {
     pub comments: Vec<CommentSnapshot>,
 }
 
+/// Cards keyed by column key. Classic boards use `wentWell`, `toImprove` and
+/// `actions`; custom boards use the keys in `columns`. Transparent, so the
+/// JSON is the same object archives have always stored.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(transparent)]
+pub struct BoardCardsSnapshot(pub BTreeMap<String, Vec<CardSnapshot>>);
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct BoardCardsSnapshot {
-    #[serde(default)]
-    pub went_well: Vec<CardSnapshot>,
-    #[serde(default)]
-    pub to_improve: Vec<CardSnapshot>,
-    #[serde(default)]
-    pub actions: Vec<CardSnapshot>,
+pub struct ColumnSnapshot {
+    pub key: String,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
+// Matches the frontend (columns.ts): 50 input columns plus Action items. Not a
+// product limit, just a bound on what a client can make the server store.
+const MAX_COLUMNS: usize = 51;
+const MAX_COLUMN_TITLE_CHARS: usize = 100;
+
+fn valid_column_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 32
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 // `anonymous`, `phase` and `auto_sort` are optional so archives stored before
@@ -63,6 +82,34 @@ pub struct ArchiveRequest {
     pub phase: Option<String>,
     #[serde(default)]
     pub auto_sort: Option<bool>,
+    // Absent for classic three-column boards.
+    #[serde(default)]
+    pub columns: Option<Vec<ColumnSnapshot>>,
+}
+
+impl ArchiveRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.cards.0.len() > MAX_COLUMNS {
+            return Err("too many columns".into());
+        }
+        if let Some(key) = self.cards.0.keys().find(|k| !valid_column_key(k)) {
+            return Err(format!("bad column key: {key:?}"));
+        }
+        if let Some(columns) = &self.columns {
+            if columns.len() > MAX_COLUMNS {
+                return Err("too many columns".into());
+            }
+            for c in columns {
+                if !valid_column_key(&c.key) {
+                    return Err(format!("bad column key: {:?}", c.key));
+                }
+                if c.title.chars().count() > MAX_COLUMN_TITLE_CHARS {
+                    return Err("column title too long".into());
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -81,6 +128,8 @@ pub struct Archive {
     pub phase: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_sort: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub columns: Option<Vec<ColumnSnapshot>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -96,17 +145,15 @@ pub struct ArchiveSummary {
 
 impl Archive {
     pub fn card_count(&self) -> usize {
-        self.cards.went_well.len() + self.cards.to_improve.len() + self.cards.actions.len()
+        self.cards.0.values().map(Vec::len).sum()
     }
 
     pub fn top_voted_text(&self) -> Option<String> {
-        let all = self
-            .cards
-            .went_well
-            .iter()
-            .chain(self.cards.to_improve.iter())
-            .chain(self.cards.actions.iter());
-        all.max_by_key(|c| c.votes.len())
+        self.cards
+            .0
+            .values()
+            .flatten()
+            .max_by_key(|c| c.votes.len())
             .filter(|c| !c.votes.is_empty())
             .map(|c| c.text.clone())
     }
@@ -147,6 +194,7 @@ pub fn save(
     req: ArchiveRequest,
     created_by: Option<&str>,
 ) -> Result<Archive, String> {
+    req.validate()?;
     let archive = Archive {
         id: generate_id(),
         slug: slug.to_string(),
@@ -163,6 +211,7 @@ pub fn save(
         anonymous: req.anonymous,
         phase: req.phase,
         auto_sort: req.auto_sort,
+        columns: req.columns,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
@@ -276,6 +325,83 @@ mod tests {
         assert_eq!(loaded.phase.as_deref(), Some("discuss"));
         assert_eq!(loaded.auto_sort, Some(false));
         assert_eq!(loaded.names.get("u1").and_then(|v| v.as_str()), Some("Alice"));
+    }
+
+    #[test]
+    fn custom_columns_round_trip_through_the_db() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_str(
+            r#"{
+                "label": "Brainstorm",
+                "cards": {
+                    "c-abc": [{ "id": "1", "text": "idea", "votes": ["u1", "u2"] }],
+                    "c-def": [{ "id": "2", "text": "other" }],
+                    "actions": []
+                },
+                "columns": [
+                    { "key": "c-abc", "title": "Problem one", "color": "emerald" },
+                    { "key": "c-def", "title": "Problem two" },
+                    { "key": "actions", "title": "Action items", "color": "sky" }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let saved = save(&db, "brainstorm", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().unwrap();
+        let cols = loaded.columns.as_ref().expect("columns stored");
+        assert_eq!(
+            cols.iter().map(|c| c.key.as_str()).collect::<Vec<_>>(),
+            ["c-abc", "c-def", "actions"]
+        );
+        assert_eq!(cols[1].color, None);
+        assert_eq!(loaded.card_count(), 2);
+        assert_eq!(loaded.top_voted_text().as_deref(), Some("idea"));
+        assert_eq!(loaded.cards.0["c-def"][0].text, "other");
+    }
+
+    #[test]
+    fn legacy_archive_keeps_its_shape_and_counts() {
+        let json = r#"{
+            "id": "old2",
+            "slug": "old",
+            "label": "Old",
+            "endedAt": 1,
+            "cards": {
+                "wentWell": [{ "id": "a", "text": "x" }],
+                "toImprove": [{ "id": "b", "text": "y", "votes": ["u1"] }],
+                "actions": []
+            }
+        }"#;
+        let a: Archive = serde_json::from_str(json).unwrap();
+        assert_eq!(a.card_count(), 2);
+        assert_eq!(a.top_voted_text().as_deref(), Some("y"));
+        assert!(a.columns.is_none());
+        let out = serde_json::to_value(&a).unwrap();
+        assert!(out.get("columns").is_none());
+        assert_eq!(out["cards"]["wentWell"][0]["text"], "x");
+        assert!(out["cards"]["actions"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn rejects_bad_columns() {
+        let db = test_db();
+        let bad_key: ArchiveRequest =
+            serde_json::from_str(r#"{ "cards": { "bad key!": [] } }"#).unwrap();
+        assert!(save(&db, "x", bad_key, None).is_err());
+
+        let long_title = format!(
+            r#"{{ "cards": {{}}, "columns": [{{ "key": "a", "title": "{}" }}] }}"#,
+            "x".repeat(101)
+        );
+        let req: ArchiveRequest = serde_json::from_str(&long_title).unwrap();
+        assert!(save(&db, "x", req, None).is_err());
+
+        let many: serde_json::Map<String, serde_json::Value> = (0..52)
+            .map(|i| (format!("k{i}"), serde_json::json!([])))
+            .collect();
+        let req: ArchiveRequest =
+            serde_json::from_value(serde_json::json!({ "cards": many })).unwrap();
+        assert!(save(&db, "x", req, None).is_err());
     }
 
     #[test]
