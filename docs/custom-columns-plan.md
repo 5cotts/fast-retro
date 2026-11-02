@@ -223,7 +223,7 @@ None of PRs 1–5 should add a card field or rely on a fixed card shape outside 
 | D4 | Does hide-cards hide from the host too? | **Yes, with no peek** | The point is to avoid anchoring, and hosts often write cards too. Matches Spreo. EasyRetro's peek can come later. |
 | D5 | Hide cards again if the lead goes back to Brainstorm? | **Yes** (visibility depends only on phase) | No reveal state to store or sync. Going back is usually done to add late ideas privately. |
 | D6 | Does "Start next retro" keep custom columns? | **Yes** | A team running Start/Stop/Continue wants the same layout next time. A one-off brainstorm host can just start a fresh board instead. |
-| D7 | Host-dashboard boards aren't anonymous by default (finding 3) | **Keep current behavior in the refactor; ask Scott whether to align** | A refactor shouldn't change behavior quietly. |
+| D7 | Host-dashboard boards aren't anonymous by default (finding 3) | **Decided: align. Every new board starts anonymous**, wherever it's created. Shipped as its own PR after PR 5. | The refactors kept the old behavior so they stayed behavior-neutral; the fix is a separate, reviewable change. |
 | D8 | Column title max length | **100 characters, wrapping** | Problem statements are longer than retro headings. |
 | D9 | Ship extra presets (Start/Stop/Continue, Mad/Sad/Glad, 4Ls)? | **Not in this rollout** | `BOARD_TEMPLATES` makes each one a single data entry. Add them when someone asks. |
 

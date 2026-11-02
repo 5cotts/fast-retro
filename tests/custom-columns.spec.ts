@@ -346,8 +346,8 @@ test.describe('fast-retro custom columns', () => {
         await joinIfAsked(page, 'Dashboard host');
         expect(await columnTitles(page)).toEqual(['Start', 'Stop', 'Action items']);
         await addCard(page, 'Stop', 'long meetings');
-        // Host-dashboard boards still don't start anonymous (unchanged).
-        await expect(page.getByRole('button', { name: 'Turn on anonymous mode' }).first()).toBeAttached();
+        // New boards start anonymous no matter where they're created.
+        await expect(page.getByRole('button', { name: 'Turn off anonymous mode' }).first()).toBeAttached();
       } finally {
         await ctx.close();
       }

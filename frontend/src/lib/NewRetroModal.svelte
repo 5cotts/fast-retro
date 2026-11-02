@@ -19,7 +19,6 @@
     onClose,
     onConfirm,
     hostMode = false,
-    anonymousByDefault = true,
     initialFile = null
   } = $props<{
     onClose: () => void;
@@ -27,8 +26,6 @@
     // setPendingSeed and create the board.
     onConfirm: (result: { slug: string; label: string; seed: PendingSeed }) => void;
     hostMode?: boolean;
-    // Whether a new (not imported) board starts anonymous.
-    anonymousByDefault?: boolean;
     // A file dropped on the page before the modal opened.
     initialFile?: File | null;
   }>();
@@ -139,7 +136,7 @@
       name: 'board_create',
       params: { template, columns: columns ? columns.length - 1 : 2 }
     });
-    return { file: newBoardSeed({ label, anonymous: anonymousByDefault, hideCards, columns }), origin: { kind: 'new' } };
+    return { file: newBoardSeed({ label, anonymous: true, hideCards, columns }), origin: { kind: 'new' } };
   }
 
   function submit(e?: SubmitEvent) {
