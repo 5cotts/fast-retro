@@ -1,6 +1,6 @@
 # Plan: export a retro after it has ended
 
-Status: investigation, no code changes · 2026-11-02
+Status: approved, not yet implemented · 2026-11-02
 
 ## Goal
 
@@ -50,11 +50,11 @@ New cases in `tests/json-export.spec.ts` (or a new `ended-export.spec.ts`):
 - **Anonymous:** an ended anonymous board's file has no names.
 - **Sync gate:** the menu is disabled until the board has synced. A unit test on the connection state is enough for this one.
 
-## Questions for you
+## Decisions (Scott, 2026-11-02)
 
-1. **Participants too, or host only?** I recommend everyone who can open the board (above). Host-only would mean also checking `amHost` on ended boards.
-2. **Skip the name prompt on ended boards?** Today a first-time visitor to an ended retro has to type a name before seeing anything, even though they can't edit. Skipping it makes "open the link and export" one step. I'd include it, but it changes more than export, so it's your call.
-3. **Export from the "My retros" list too?** Not needed for this, since clicking an ended board there opens it and the banner has the menu. A per-row export button would mean loading each board's doc in the background, so I'd leave it out.
+1. **Everyone who can open an ended board can export it**, not just the host.
+2. **Ended boards skip the name prompt.** Visitors can't edit, so a name isn't needed; opening the link goes straight to the read-only board and its Export menu. Implementation: in `Board.svelte`, when `readOnly` is true and no name is stored, start the connection without prompting (presence shows them as a guest). Test: a fresh browser context opens an ended board and sees cards with no name prompt.
+3. **No per-row export in "My retros."** Opening an ended board from that list already shows the menu.
 
 ## Out of scope
 
