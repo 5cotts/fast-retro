@@ -12,7 +12,7 @@ import {
   type BoardFile,
   type BoardFileSource
 } from './boardfile';
-import { importBoard, readBoardAnonymous, readBoardAutoSort, readBoardLabel, readCards } from './yboard';
+import { seedBoard, readBoardAnonymous, readBoardAutoSort, readBoardLabel, readCards } from './yboard';
 import { readPhase } from './phase';
 import { readNames } from './identity';
 import type { CardData } from './types';
@@ -176,7 +176,7 @@ describe('export → parse → import round trip', () => {
     it(`restores the board exactly (${anonymous ? 'anonymous' : 'named'})`, () => {
       const original = exportBoardFile(source({ anonymous, autoSort: false }));
       const state = freshDoc();
-      importBoard(state, parseOk(serializeBoardFile(original)));
+      seedBoard(state, parseOk(serializeBoardFile(original)));
       const restored = exportBoardFile(readBack(state), original.exportedAt);
       expect(restored.board).toEqual(original.board);
       expect(restored.names).toEqual(original.names);
@@ -190,15 +190,15 @@ describe('export → parse → import round trip', () => {
       source({ cards: { wentWell: [], toImprove: [], actions: [] }, phase: 'actions' })
     );
     const state = freshDoc();
-    importBoard(state, parseOk(serializeBoardFile(original)));
+    seedBoard(state, parseOk(serializeBoardFile(original)));
     expect(exportBoardFile(readBack(state), original.exportedAt)).toEqual(original);
   });
 
   it('regenerates card and comment IDs on every import', () => {
     const file = parseOk(serializeBoardFile(exportBoardFile(source())));
     const state = freshDoc();
-    importBoard(state, file);
-    importBoard(state, file);
+    seedBoard(state, file);
+    seedBoard(state, file);
     const cards = readCards(state.board, 'wentWell');
     expect(cards).toHaveLength(2);
     const ids = cards.flatMap((c) => [c.id, ...c.comments.map((m) => m.id)]);
@@ -210,7 +210,7 @@ describe('export → parse → import round trip', () => {
   it("doesn't overwrite a name already set on the board", () => {
     const state = freshDoc();
     state.names.set('u_alice', 'Alice (here now)');
-    importBoard(state, parseOk(serializeBoardFile(exportBoardFile(source()))));
+    seedBoard(state, parseOk(serializeBoardFile(exportBoardFile(source()))));
     expect(readNames(state.names).u_alice).toBe('Alice (here now)');
     expect(readNames(state.names).u_bob).toBe('Bob');
   });
@@ -242,7 +242,7 @@ describe('export → parse → import round trip', () => {
     state.doc.on('update', (u: Uint8Array) => {
       update = u;
     });
-    importBoard(state, parseOk(text));
+    seedBoard(state, parseOk(text));
     expect(update).not.toBeNull();
     expect(update!.length).toBeLessThan(2 * 1024 * 1024);
   });
@@ -283,7 +283,7 @@ describe('parseBoardFile', () => {
     const file = parseOk(JSON.stringify(raw));
     expect(file.names).toBeUndefined();
     const state = freshDoc();
-    importBoard(state, file);
+    seedBoard(state, file);
     expect(readNames(state.names)).toEqual({});
   });
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import v1Text from './fixtures/board-v1.fastretro.json?raw';
 import { BOARD_FILE_VERSION, exportBoardFile, parseBoardFile, serializeBoardFile, type BoardFile } from './boardfile';
-import { importBoard, readBoardAnonymous, readBoardAutoSort, readBoardImported, readBoardLabel, readCards } from './yboard';
+import { seedBoard, readBoardAnonymous, readBoardAutoSort, readBoardImported, readBoardLabel, readCards } from './yboard';
 import { readPhase } from './phase';
 import { readNames } from './identity';
 import type { CardData } from './types';
@@ -51,7 +51,7 @@ describe('frozen v1 board file', () => {
   it('imports into a board that exports back to the same file, apart from new IDs', () => {
     const file = parseV1();
     const state = freshDoc();
-    importBoard(state, file, { kind: 'file' }, 1);
+    seedBoard(state, file, { kind: 'file' }, 1);
     const cards = {} as Record<string, CardData[]>;
     for (const col of ['wentWell', 'toImprove', 'actions'] as const) cards[col] = readCards(state.board, col);
     const again = exportBoardFile(

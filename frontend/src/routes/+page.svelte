@@ -5,9 +5,7 @@
     newSlug,
     readRecentBoards,
     recordRecentBoard,
-    setPendingLabel,
-    setPendingImport,
-    setPendingAnonymous,
+    setPendingSeed,
     setHostKey,
     type RecentBoard
   } from '$lib/boards';
@@ -23,7 +21,7 @@
   } from '$lib/api';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
-  import type { BoardFile } from '$lib/boardfile';
+  import { newBoardSeed, type BoardFile } from '$lib/boardfile';
   import GoogleSignIn from '$lib/GoogleSignIn.svelte';
   import { getTheme } from '$lib/storage';
   import { LogOut, Loader2 } from 'lucide-svelte';
@@ -120,14 +118,14 @@
       if (label) recordRecentBoard(result.slug, { label });
       if (importFile) {
         // The file carries its own label and anonymous flag.
-        if (!setPendingImport(result.slug, importFile)) {
+        if (!setPendingSeed(result.slug, importFile, { kind: 'file' })) {
           creating = false;
           createError = "Couldn't prepare the import in this browser. Try again.";
           return;
         }
       } else {
-        setPendingAnonymous(result.slug);
-        if (label) setPendingLabel(result.slug, label);
+        // New boards from the home page start anonymous.
+        setPendingSeed(result.slug, newBoardSeed({ label, anonymous: true }), { kind: 'new' });
       }
       goto(`/board/${result.slug}`);
     } catch {

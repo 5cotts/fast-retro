@@ -8,6 +8,7 @@ import {
   readBoardEndedMessage,
   readBoardImported,
   type BoardState,
+  type SeedSource,
   type ImportedInfo
 } from './yboard';
 import { readTimer } from './timer';
@@ -22,6 +23,8 @@ export interface UseBoardConnectionInit {
   userName: string;
   isLead: boolean;
   slug: string;
+  // Host only: how to set up a brand-new board on its first sync.
+  seed?: SeedSource;
 }
 
 export interface UseBoardConnectionState {
@@ -87,7 +90,7 @@ export function useBoardConnection() {
   function start(init: UseBoardConnectionInit) {
     if (state.board) return; // already started
 
-    const conn = createBoard(init.slug);
+    const conn = createBoard(init.slug, init.seed);
     const { board, provider, doc, timer, names, phase, meta } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;

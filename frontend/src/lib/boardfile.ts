@@ -97,6 +97,14 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
   return file;
 }
 
+// The seed for a blank new board: no cards, Brainstorm, auto-sort on.
+export function newBoardSeed(opts: { label: string; anonymous: boolean }, now = Date.now()): BoardFile {
+  return exportBoardFile(
+    { label: opts.label, anonymous: opts.anonymous, phase: 'brainstorm', autoSort: true, cards: {}, namesMap: {} },
+    now
+  );
+}
+
 export function serializeBoardFile(file: BoardFile): string {
   return JSON.stringify(file, null, 2) + '\n';
 }

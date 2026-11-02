@@ -1,5 +1,5 @@
 import { parseBoardFile, serializeBoardFile, type BoardFile } from './boardfile';
-import type { ImportOrigin } from './yboard';
+import type { PendingSeed, SeedOrigin } from './yboard';
 
 const KEY_RECENT_BOARDS = 'retro-recent-boards';
 const KEY_HOST_KEYS = 'retro-host-keys';
@@ -122,107 +122,41 @@ export function readRecentBoards(): RecentBoard[] {
   }
 }
 
-// Stash a label chosen at board-creation time so the board page can apply it
-// to the CRDT once the host's connection mounts. Cleared as soon as it's
-// consumed so refreshing the board never re-applies a stale name. sessionStorage
-// keeps this transient and tab-local.
-const PENDING_LABEL_PREFIX = 'retro-pending-label:';
+// How a new board gets its first contents: the creator stashes a seed (a
+// board file plus its origin) in sessionStorage, then navigates to the board.
+// The host's connection takes it once, after the first sync (see createBoard
+// in yboard.ts). Transient and tab-local; cleared as soon as it's taken so a
+// refresh never applies it twice. Re-validated on read, since sessionStorage
+// is just a string store.
+const PENDING_SEED_PREFIX = 'retro-pending-seed:';
 
-export function setPendingLabel(slug: string, label: string): void {
-  if (!isValidSlug(slug) || !label) return;
-  try {
-    sessionStorage.setItem(PENDING_LABEL_PREFIX + slug, label.slice(0, 60));
-  } catch {
-    // ignore
-  }
-}
-
-export function consumePendingLabel(slug: string): string {
-  if (!isValidSlug(slug)) return '';
-  try {
-    const v = sessionStorage.getItem(PENDING_LABEL_PREFIX + slug) ?? '';
-    if (v) sessionStorage.removeItem(PENDING_LABEL_PREFIX + slug);
-    return v;
-  } catch {
-    return '';
-  }
-}
-
-// Marks a slug as "anonymous by default" at board-creation time, mirroring
-// the pending-label mechanism above: newly created boards start anonymous,
-// but this must not touch the fallback used by every already-open board, so
-// the flag is applied once by the board page rather than baked into the CRDT
-// default itself.
-const PENDING_ANONYMOUS_PREFIX = 'retro-pending-anonymous:';
-
-export function setPendingAnonymous(slug: string): void {
-  if (!isValidSlug(slug)) return;
-  try {
-    sessionStorage.setItem(PENDING_ANONYMOUS_PREFIX + slug, '1');
-  } catch {
-    // ignore
-  }
-}
-
-export function consumePendingAnonymous(slug: string): boolean {
+export function setPendingSeed(slug: string, file: BoardFile, origin: SeedOrigin): boolean {
   if (!isValidSlug(slug)) return false;
   try {
-    const v = sessionStorage.getItem(PENDING_ANONYMOUS_PREFIX + slug);
-    if (v) sessionStorage.removeItem(PENDING_ANONYMOUS_PREFIX + slug);
-    return v === '1';
-  } catch {
-    return false;
-  }
-}
-
-// Board file chosen in "Start a new retro → Import from file…", applied once
-// by the new board's host after the first sync (see Board.svelte). Same
-// transient, tab-local handoff as the pending label above. Re-validated on
-// read since sessionStorage is just a string store.
-const PENDING_IMPORT_PREFIX = 'retro-pending-import:';
-const PENDING_IMPORT_ORIGIN_PREFIX = 'retro-pending-import-origin:';
-
-export function setPendingImport(slug: string, file: BoardFile, origin: ImportOrigin = { kind: 'file' }): boolean {
-  if (!isValidSlug(slug)) return false;
-  try {
-    sessionStorage.setItem(PENDING_IMPORT_PREFIX + slug, serializeBoardFile(file));
-    sessionStorage.setItem(PENDING_IMPORT_ORIGIN_PREFIX + slug, JSON.stringify(origin));
+    sessionStorage.setItem(PENDING_SEED_PREFIX + slug, JSON.stringify({ origin, file: serializeBoardFile(file) }));
     return true;
   } catch {
     return false;
   }
 }
 
-function readPendingOrigin(slug: string): ImportOrigin {
-  try {
-    const raw = sessionStorage.getItem(PENDING_IMPORT_ORIGIN_PREFIX + slug);
-    sessionStorage.removeItem(PENDING_IMPORT_ORIGIN_PREFIX + slug);
-    const v = raw ? JSON.parse(raw) : null;
-    if (v && v.kind === 'carryover') return { kind: 'carryover', from: typeof v.from === 'string' ? v.from : '' };
-  } catch {
-    // fall through
-  }
+function parseOrigin(v: unknown): SeedOrigin {
+  const o = v as { kind?: unknown; from?: unknown } | null;
+  if (o?.kind === 'new') return { kind: 'new' };
+  if (o?.kind === 'carryover') return { kind: 'carryover', from: typeof o.from === 'string' ? o.from : '' };
   return { kind: 'file' };
 }
 
-export function hasPendingImport(slug: string): boolean {
-  if (!isValidSlug(slug)) return false;
-  try {
-    return sessionStorage.getItem(PENDING_IMPORT_PREFIX + slug) !== null;
-  } catch {
-    return false;
-  }
-}
-
-export function consumePendingImport(slug: string): { file: BoardFile; origin: ImportOrigin } | null {
+export function consumePendingSeed(slug: string): PendingSeed | null {
   if (!isValidSlug(slug)) return null;
   try {
-    const v = sessionStorage.getItem(PENDING_IMPORT_PREFIX + slug);
-    if (v === null) return null;
-    sessionStorage.removeItem(PENDING_IMPORT_PREFIX + slug);
-    const origin = readPendingOrigin(slug);
-    const parsed = parseBoardFile(v);
-    return parsed.ok ? { file: parsed.file, origin } : null;
+    const raw = sessionStorage.getItem(PENDING_SEED_PREFIX + slug);
+    if (raw === null) return null;
+    sessionStorage.removeItem(PENDING_SEED_PREFIX + slug);
+    const stored = JSON.parse(raw) as { origin?: unknown; file?: unknown };
+    if (typeof stored?.file !== 'string') return null;
+    const parsed = parseBoardFile(stored.file);
+    return parsed.ok ? { file: parsed.file, origin: parseOrigin(stored.origin) } : null;
   } catch {
     return null;
   }
