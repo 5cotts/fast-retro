@@ -56,10 +56,11 @@
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { setBoardSetting, type BoardSettingKey } from './settings';
+  import { isHidingCards } from './visibility';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, isWideBoard, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History } from 'lucide-svelte';
+  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     PHASES,
     PHASE_LABEL,
@@ -746,6 +747,7 @@
         anonymous: conn.state.settings.anonymous,
         phase: conn.state.phase,
         autoSort: conn.state.settings.autoSort,
+        hideCards: conn.state.settings.hideCards,
         columns: conn.state.columns,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
@@ -793,6 +795,7 @@
           anonymous: conn.state.settings.anonymous,
           phase: conn.state.phase,
           autoSort: conn.state.settings.autoSort,
+          hideCards: conn.state.settings.hideCards,
           // Classic boards send no list, so their archives look as they always have.
           columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns
         },
@@ -836,7 +839,8 @@
       anonymous: true,
       phase: 'brainstorm',
       autoSort: conn.state.settings.autoSort,
-      // The next retro keeps this board's columns.
+      hideCards: conn.state.settings.hideCards,
+      // The next retro keeps this board's columns and settings.
       columns: conn.state.columns,
       cards: { [ACTIONS_COLUMN_KEY]: actions },
       namesMap: {}
@@ -857,7 +861,7 @@
       const carried = carryActions ? actionCount : 0;
       const seeded = carried > 0 && setPendingSeed(res.slug, carryOverFile(base), { kind: 'carryover', from: base });
       if (!seeded) {
-        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, columns: conn.state.columns }), { kind: 'new' });
+        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, hideCards: conn.state.settings.hideCards, columns: conn.state.columns }), { kind: 'new' });
       }
       track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);
@@ -1020,6 +1024,19 @@
       </div>
     {/if}
 
+    {#if isHidingCards({ hideCards: conn.state.settings.hideCards, phase: conn.state.phase, ended })}
+      <div
+        class="border-b border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200"
+        role="status"
+        data-testid="hidden-cards-banner"
+      >
+        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 text-xs flex items-center gap-2">
+          <Blinds size={13} aria-hidden="true" />
+          <span>Cards are hidden until the Group phase. You only see your own.</span>
+        </div>
+      </div>
+    {/if}
+
     {#if timerJustExpired}
       <div
         class="border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
@@ -1114,6 +1131,7 @@
             namesMap={namesMapDisambiguated}
             {mergeMode}
             {canReorder}
+            hideCards={conn.state.settings.hideCards}
             {dragCardId}
             {dragMergeTargetId}
             dropIndex={dragOverCol === col.key ? dragOverIndex : -1}

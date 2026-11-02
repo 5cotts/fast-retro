@@ -42,6 +42,7 @@
   const importing = $derived(importResult?.ok === true);
 
   let template = $state<BoardTemplateId>('retro');
+  let hideCards = $state(false);
   // Each row has a stable id so removing one doesn't shift focus or values.
   let columnRows = $state<{ id: number; title: string }[]>([{ id: 0, title: '' }]);
   let nextRowId = 1;
@@ -138,7 +139,7 @@
       name: 'board_create',
       params: { template, columns: columns ? columns.length - 1 : 2 }
     });
-    return { file: newBoardSeed({ label, anonymous: anonymousByDefault, columns }), origin: { kind: 'new' } };
+    return { file: newBoardSeed({ label, anonymous: anonymousByDefault, hideCards, columns }), origin: { kind: 'new' } };
   }
 
   function submit(e?: SubmitEvent) {
@@ -304,6 +305,14 @@
             {/if}
           {/if}
         </fieldset>
+
+        <label class="mt-3 flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+          <input type="checkbox" bind:checked={hideCards} class="mt-0.5 rounded" />
+          <span>
+            Hide others' cards while brainstorming
+            <span class="block text-slate-500 dark:text-slate-400">Everyone sees only their own cards until the Group phase.</span>
+          </span>
+        </label>
       {/if}
 
       {#if importResult}

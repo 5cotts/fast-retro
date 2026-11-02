@@ -181,6 +181,13 @@ archive keeps them (archive viewer checked when `RETRO_LEAD_TOKEN` is
 set); Start next retro keeps them. A second test checks that a classic
 board still has the three retro columns and exports as v1.
 
+`hide-cards.spec.ts` — Hide others' cards while brainstorming (two
+browsers, no lead token). Set in Start a new retro; others' cards are
+placeholders with no text in the page; Group reveals them live; going back
+to Brainstorm hides them again; turning the setting off reveals at once;
+an ended board shows everything. A second test imports a file with the
+setting on and checks that action items are never hidden.
+
 The frozen board files live in `frontend/src/lib/fixtures/`
 (`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`
 for custom columns) and are checked by the unit tests

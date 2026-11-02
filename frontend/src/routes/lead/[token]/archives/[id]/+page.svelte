@@ -18,6 +18,7 @@
     anonymous?: boolean;
     phase?: string;
     autoSort?: boolean;
+    hideCards?: boolean;
     columns?: unknown;
   }
 

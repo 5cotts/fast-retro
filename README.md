@@ -6,6 +6,7 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 
 - **Cards** organized by column, with rich text and authorship
 - **Custom columns**: name as many as you like when creating a board (for a brainstorm, say), or use the classic retro columns
+- **Hidden cards**: optionally hide everyone else's cards during Brainstorm, then reveal them all when the board moves to Group
 - **Votes** to surface what matters most
 - **Emoji reactions** on cards
 - **Threaded comments** on cards

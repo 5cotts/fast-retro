@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Timer, Play, Pause, RotateCcw, X, EyeOff, Eye, ArrowDownUp } from 'lucide-svelte';
+  import { Timer, Play, Pause, RotateCcw, X, EyeOff, Eye, ArrowDownUp, Blinds } from 'lucide-svelte';
   import ExportMenu from './ExportMenu.svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
@@ -39,6 +39,20 @@
       compactText: (on) => (on ? 'Auto-sort: On' : 'Auto-sort: Off'),
       onClass: 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30',
       offClass: 'opacity-60'
+    },
+    {
+      key: 'hideCards',
+      icon: () => Blinds,
+      ariaLabel: (on) => (on ? "Stop hiding others' cards" : "Hide others' cards while brainstorming"),
+      title: (on) =>
+        (on
+          ? "Others' cards are hidden until the Group phase."
+          : "Hide others' cards until the Group phase.") +
+        " Stops people from being influenced by others' ideas. It isn't a security feature.",
+      text: (on) => (on ? 'Hide cards: On' : 'Hide cards: Off'),
+      compactText: () => 'Hide cards',
+      onClass: 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/30',
+      offClass: ''
     }
   ];
 

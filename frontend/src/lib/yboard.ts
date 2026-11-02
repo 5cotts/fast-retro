@@ -504,6 +504,7 @@ export function seedBoard(
     setBoardLabel(meta, file.board.label);
     setBoardSetting(meta, 'anonymous', file.board.anonymous);
     setBoardSetting(meta, 'autoSort', file.board.autoSort);
+    setBoardSetting(meta, 'hideCards', file.board.hideCards === true);
     setPhase(phase, file.board.phase);
     if (origin.kind !== 'new') setBoardImported(meta, origin, now);
     if (!file.board.anonymous && file.names) {
