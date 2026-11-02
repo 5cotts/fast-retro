@@ -509,7 +509,7 @@
               type="text"
               placeholder="Add a comment…"
               aria-label="Add a comment"
-              class="flex-1 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
+              class="flex-1 min-w-0 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
               onkeydown={onCommentKey}
               onfocus={() => onTypingComment(card.id)}
               onblur={() => onTypingComment(null)}

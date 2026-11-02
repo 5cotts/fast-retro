@@ -172,10 +172,20 @@ visitor gets no name prompt. Also covers the CSV, the `ended` analytics
 source, importing the ended export, anonymous boards (no names), and the
 menu staying disabled until the board has synced.
 
-The frozen v1 board file lives in
-`frontend/src/lib/fixtures/board-v1.fastretro.json` and is checked by
-the unit test `boardfile-v1.spec.ts` (`bun run test:unit`). Never edit
-it to make a test pass; see the README next to it.
+`custom-columns.spec.ts` — boards with custom columns. A five-column
+board file imports from the homepage; a second participant sees the same
+columns and adds a card to each one during Brainstorm; cards survive a
+reload; the wide board scrolls sideways; merging works across columns;
+the JSON export (v2) and CSV keep the columns and re-import the same; the
+archive keeps them (archive viewer checked when `RETRO_LEAD_TOKEN` is
+set); Start next retro keeps them. A second test checks that a classic
+board still has the three retro columns and exports as v1.
+
+The frozen board files live in `frontend/src/lib/fixtures/`
+(`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`
+for custom columns) and are checked by the unit tests
+`boardfile-v1.spec.ts` and `boardfile-v2.spec.ts` (`bun run test:unit`).
+Never edit them to make a test pass; see the README next to them.
 
 ### Lead token
 
