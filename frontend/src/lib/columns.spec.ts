@@ -9,7 +9,8 @@ import {
   isActionsColumn,
   newCustomColumns,
   readColumns,
-  sanitizeColumns
+  sanitizeColumns,
+  type ColumnDef
 } from './columns';
 import { canAddCardInColumn } from './phase';
 
@@ -101,7 +102,7 @@ describe('newCustomColumns', () => {
 
 describe('column helpers', () => {
   it('opens input columns in Brainstorm and Action items in Actions', () => {
-    const custom = col('c-1', 'Problem');
+    const custom: ColumnDef = { key: 'c-1', title: 'Problem', color: 'violet' };
     expect(canAddCardInColumn(custom, 'brainstorm')).toBe(true);
     expect(canAddCardInColumn(custom, 'actions')).toBe(false);
     expect(canAddCardInColumn(DEFAULT_COLUMNS[2], 'actions')).toBe(true);
@@ -110,6 +111,6 @@ describe('column helpers', () => {
 
   it('keeps the legacy empty hints and has a generic one for custom columns', () => {
     expect(columnEmptyHint(DEFAULT_COLUMNS[0])).toBe('Nothing here yet — what worked this sprint?');
-    expect(columnEmptyHint(col('c-1'))).toBe('Nothing here yet — add the first idea.');
+    expect(columnEmptyHint({ key: 'c-1', title: 'Problem', color: 'violet' })).toBe('Nothing here yet — add the first idea.');
   });
 });
