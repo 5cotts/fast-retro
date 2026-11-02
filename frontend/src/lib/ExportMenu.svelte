@@ -4,10 +4,18 @@
 
   // One "Export" menu instead of a button per file format. Items are named by
   // what the user wants to do, with the format as secondary text.
-  let { onSaveBoardFile, onExportCSV, compact = false } = $props<{
+  let {
+    onSaveBoardFile,
+    onExportCSV,
+    compact = false,
+    disabled = false,
+    align = compact ? 'right' : 'left'
+  } = $props<{
     onSaveBoardFile: () => void;
     onExportCSV: () => void;
     compact?: boolean;
+    disabled?: boolean;
+    align?: 'left' | 'right';
   }>();
 
   let open = $state(false);
@@ -85,7 +93,8 @@
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label="Export"
-    title="Export this board"
+    title={disabled ? 'Loading the board…' : 'Export this board'}
+    {disabled}
     onclick={() => (open ? closeMenu() : openMenu())}
     onkeydown={onTriggerKeydown}
   >
@@ -100,7 +109,7 @@
       aria-label="Export"
       tabindex="-1"
       onkeydown={onMenuKeydown}
-      class="absolute z-30 top-full mt-1.5 w-72 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {compact
+      class="absolute z-30 top-full mt-1.5 w-72 p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150 {align === 'right'
         ? 'right-0'
         : 'left-0'}"
     >
