@@ -161,3 +161,12 @@ export function boardGridClass(columnCount: number): string {
     ? 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-none md:grid-flow-col md:auto-cols-[minmax(17rem,1fr)] md:overflow-x-auto md:snap-x md:pb-2 md:*:snap-start'
     : 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(0,1fr))]';
 }
+
+export type BoardTemplateId = 'retro' | 'custom';
+
+// What "Start a new retro" offers. A preset (Start/Stop/Continue, …) is one
+// more entry with a fixed column list.
+export const BOARD_TEMPLATES: { id: BoardTemplateId; name: string }[] = [
+  { id: 'retro', name: 'Retro' },
+  { id: 'custom', name: 'Custom' }
+];

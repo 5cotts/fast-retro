@@ -11,7 +11,7 @@
   } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
-  import { newBoardSeed, type BoardFile } from '$lib/boardfile';
+  import type { PendingSeed } from '$lib/yboard';
 
   interface LiveBoard {
     slug: string;
@@ -112,19 +112,10 @@
     showNewModal = true;
   }
 
-  function onNewConfirm({
-    slug,
-    label,
-    importFile
-  }: {
-    slug: string;
-    label: string;
-    importFile?: BoardFile;
-  }) {
+  function onNewConfirm({ slug, label, seed }: { slug: string; label: string; seed: PendingSeed }) {
     showNewModal = false;
     if (label) recordRecentBoard(slug, { label });
-    if (importFile) setPendingSeed(slug, importFile, { kind: 'file' });
-    else setPendingSeed(slug, newBoardSeed({ label, anonymous: false }), { kind: 'new' });
+    setPendingSeed(slug, seed.file, seed.origin);
     goto(`/lead/${token}/${slug}`);
   }
 
@@ -291,6 +282,7 @@
       onClose={() => (showNewModal = false)}
       onConfirm={onNewConfirm}
       hostMode={true}
+      anonymousByDefault={false}
     />
   {/if}
 {:else if !ok}

@@ -1,22 +1,34 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { track } from './analytics';
-  import { FileUp, Sparkles, X } from 'lucide-svelte';
+  import { FileUp, Lock, Plus, Sparkles, X } from 'lucide-svelte';
   import { newSlug, slugifyLabel } from './boards';
   import {
     BOARD_FILE_EXTENSION,
     MAX_IMPORT_BYTES,
     describeStats,
     importError,
+    newBoardSeed,
     parseBoardFile,
-    type BoardFile,
     type ParseResult
   } from './boardfile';
+  import { BOARD_TEMPLATES, MAX_COLUMN_TITLE_LEN, MAX_INPUT_COLUMNS, newCustomColumns, type BoardTemplateId } from './columns';
+  import type { PendingSeed } from './yboard';
 
-  let { onClose, onConfirm, hostMode = false, initialFile = null } = $props<{
+  let {
+    onClose,
+    onConfirm,
+    hostMode = false,
+    anonymousByDefault = true,
+    initialFile = null
+  } = $props<{
     onClose: () => void;
-    onConfirm: (result: { slug: string; label: string; importFile?: BoardFile }) => void;
+    // The modal builds the new board's seed; callers stash it with
+    // setPendingSeed and create the board.
+    onConfirm: (result: { slug: string; label: string; seed: PendingSeed }) => void;
     hostMode?: boolean;
+    // Whether a new (not imported) board starts anonymous.
+    anonymousByDefault?: boolean;
     // A file dropped on the page before the modal opened.
     initialFile?: File | null;
   }>();
@@ -28,6 +40,27 @@
   let importName = $state('');
   let importResult = $state<ParseResult | null>(null);
   const importing = $derived(importResult?.ok === true);
+
+  let template = $state<BoardTemplateId>('retro');
+  // Each row has a stable id so removing one doesn't shift focus or values.
+  let columnRows = $state<{ id: number; title: string }[]>([{ id: 0, title: '' }]);
+  let nextRowId = 1;
+  const customTitles = $derived(columnRows.map((r) => r.title.trim()).filter(Boolean));
+  const needsColumns = $derived(!importing && template === 'custom' && customTitles.length === 0);
+
+  async function addColumnRow() {
+    if (columnRows.length >= MAX_INPUT_COLUMNS) return;
+    const id = nextRowId++;
+    columnRows.push({ id, title: '' });
+    await tick();
+    document.getElementById(`new-retro-column-${id}`)?.focus();
+  }
+
+  function removeColumnRow(id: number) {
+    if (columnRows.length <= 1) return;
+    columnRows = columnRows.filter((r) => r.id !== id);
+  }
+
 
   let dragging = $state(false);
 
@@ -99,21 +132,32 @@
   // hint without burning a real one — we only mint the real slug on submit.
   const previewSlug = $derived(slugifyLabel(labelInput) || '— random —');
 
+  function newSeed(label: string): PendingSeed {
+    const columns = template === 'custom' ? newCustomColumns(customTitles) : undefined;
+    track({
+      name: 'board_create',
+      params: { template, columns: columns ? columns.length - 1 : 2 }
+    });
+    return { file: newBoardSeed({ label, anonymous: anonymousByDefault, columns }), origin: { kind: 'new' } };
+  }
+
   function submit(e?: SubmitEvent) {
     e?.preventDefault();
+    if (needsColumns) return;
     const label = labelInput.trim().slice(0, 60);
     const base = slugifyLabel(label);
     const slug = base ? `${base}-${newSlug(3)}` : newSlug();
     if (importResult?.ok) {
-      const importFile = { ...importResult.file, board: { ...importResult.file.board, label } };
-      onConfirm({ slug, label, importFile });
+      const file = { ...importResult.file, board: { ...importResult.file.board, label } };
+      onConfirm({ slug, label, seed: { file, origin: { kind: 'file' } } });
       return;
     }
-    onConfirm({ slug, label });
+    onConfirm({ slug, label, seed: newSeed(label) });
   }
 
   function skip() {
-    onConfirm({ slug: newSlug(), label: '' });
+    if (needsColumns) return;
+    onConfirm({ slug: newSlug(), label: '', seed: newSeed('') });
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -145,7 +189,7 @@
     ondragover={onDragOver}
     ondragleave={onDragLeave}
     ondrop={onDrop}
-    class="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-full max-w-md p-6 motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-150"
+    class="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 motion-safe:animate-in motion-safe:zoom-in-95 motion-safe:duration-150"
   >
     {#if dragging}
       <div
@@ -167,7 +211,7 @@
           Start a new retro
         </h2>
         <p class="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-          Give it a name so you {hostMode ? 'and your team' : ''}can find it later. Optional — leave blank for a quick anonymous board.
+          Give it a name so you{hostMode ? ' and your team' : ''} can find it later. Optional — leave blank for a quick anonymous board.
         </p>
       </div>
       <button
@@ -202,6 +246,66 @@
         </code>
       </div>
 
+      {#if !importing}
+        <fieldset class="mt-4">
+          <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">Columns</legend>
+          <div class="mt-1 inline-flex rounded-md border border-slate-300 dark:border-slate-600 p-0.5 text-sm" role="radiogroup" aria-label="Columns">
+            {#each BOARD_TEMPLATES as t (t.id)}
+              <label
+                class="px-3 py-1.5 rounded cursor-pointer select-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-400 {template === t.id
+                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}"
+              >
+                <input type="radio" name="new-retro-template" value={t.id} bind:group={template} class="sr-only" />
+                {t.name}
+              </label>
+            {/each}
+          </div>
+          {#if template === 'retro'}
+            <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">What went well · What to improve · Action items</p>
+          {:else}
+            <ol class="mt-2 space-y-1.5 max-h-60 overflow-y-auto pr-1" aria-label="Custom columns">
+              {#each columnRows as row, i (row.id)}
+                <li class="flex items-center gap-1.5">
+                  <input
+                    id={`new-retro-column-${row.id}`}
+                    bind:value={row.title}
+                    type="text"
+                    maxlength={MAX_COLUMN_TITLE_LEN}
+                    autocomplete="off"
+                    placeholder={i === 0 ? 'e.g. How might we speed up onboarding?' : `Column ${i + 1}`}
+                    aria-label={`Column ${i + 1} name`}
+                    class="input flex-1 min-w-0 px-2.5 py-2 text-sm"
+                  />
+                  <button
+                    type="button"
+                    class="btn-ghost text-slate-500 dark:text-slate-400 min-h-[32px] min-w-[32px] px-1.5"
+                    onclick={() => removeColumnRow(row.id)}
+                    disabled={columnRows.length <= 1}
+                    aria-label={`Remove column ${i + 1}`}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              {/each}
+              <li class="flex items-center gap-1.5 px-2.5 py-2 text-sm rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400">
+                <Lock size={13} aria-hidden="true" />
+                Action items <span class="text-xs">(always included)</span>
+              </li>
+            </ol>
+            {#if columnRows.length < MAX_INPUT_COLUMNS}
+              <button type="button" class="btn-ghost mt-1.5 text-xs px-2 py-1" onclick={addColumnRow}>
+                <Plus size={14} aria-hidden="true" />
+                Add column
+              </button>
+            {/if}
+            {#if needsColumns}
+              <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Name at least one column.</p>
+            {/if}
+          {/if}
+        </fieldset>
+      {/if}
+
       {#if importResult}
         <div
           class="mt-4 rounded-md border p-3 text-xs {importResult.ok
@@ -232,7 +336,7 @@
       <div class="mt-5 flex items-center gap-2">
         <button
           type="submit"
-          disabled={importResult !== null && !importResult.ok}
+          disabled={(importResult !== null && !importResult.ok) || needsColumns}
           class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md py-2.5 min-h-[44px] font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           {importing ? 'Import retro' : 'Create retro'}
@@ -242,6 +346,7 @@
             type="button"
             class="btn text-sm px-4 py-2 min-h-[44px]"
             onclick={skip}
+            disabled={needsColumns}
           >
             Skip naming
           </button>
