@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { csvCell, exportCSV } from './csv';
-import type { CardData, ColumnKey } from './types';
+import type { CardData } from './types';
 
 describe('csvCell', () => {
   it('neutralizes formula-injection prefixes with a leading quote', () => {
@@ -47,7 +47,7 @@ describe('exportCSV', () => {
   }
 
   it('neutralizes formula injection in card text end-to-end', () => {
-    const snapshot: Record<ColumnKey, CardData[]> = {
+    const snapshot: Record<string, CardData[]> = {
       wentWell: [card('=cmd|"/c calc"!A1')],
       toImprove: [],
       actions: []
@@ -59,7 +59,7 @@ describe('exportCSV', () => {
   });
 
   it('neutralizes formula injection in comment text end-to-end', () => {
-    const snapshot: Record<ColumnKey, CardData[]> = {
+    const snapshot: Record<string, CardData[]> = {
       wentWell: [
         card('fine card text', {
           comments: [{ id: 'k1', text: '=HYPERLINK("http://evil.example")', authorId: 'u2', createdAt: 1 }]

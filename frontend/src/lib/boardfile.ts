@@ -1,5 +1,5 @@
-import type { CardData, ColumnKey, CommentData } from './types';
-import { COLUMNS } from './types';
+import type { CardData, CommentData } from './types';
+import { DEFAULT_COLUMNS, type ColumnDef } from './columns';
 import { PHASES, type Phase } from './phase';
 
 // Round-trippable board export. `cards` deliberately matches the archive
@@ -20,7 +20,7 @@ export interface BoardFile {
     autoSort: boolean;
   };
   names?: Record<string, string>;
-  cards: Record<ColumnKey, CardData[]>;
+  cards: Record<string, CardData[]>;
 }
 
 export interface BoardFileSource {
@@ -28,7 +28,7 @@ export interface BoardFileSource {
   anonymous: boolean;
   phase: Phase;
   autoSort: boolean;
-  cards: Record<ColumnKey, CardData[]>;
+  cards: Record<string, CardData[]>;
   namesMap: Record<string, string>;
 }
 
@@ -36,10 +36,10 @@ export function isPhase(v: unknown): v is Phase {
   return typeof v === 'string' && (PHASES as readonly string[]).includes(v);
 }
 
-function referencedUserIds(cards: Record<ColumnKey, CardData[]>): Set<string> {
+function referencedUserIds(cards: Record<string, CardData[]>): Set<string> {
   const ids = new Set<string>();
-  for (const col of COLUMNS) {
-    for (const card of cards[col.key] ?? []) {
+  for (const list of Object.values(cards)) {
+    for (const card of list) {
       if (card.authorId) ids.add(card.authorId);
       for (const v of card.votes) ids.add(v);
       for (const users of Object.values(card.reactions)) for (const u of users) ids.add(u);
@@ -49,9 +49,11 @@ function referencedUserIds(cards: Record<ColumnKey, CardData[]>): Set<string> {
   return ids;
 }
 
-function copyCards(cards: Record<ColumnKey, CardData[]>): Record<ColumnKey, CardData[]> {
-  const out = { wentWell: [], toImprove: [], actions: [] } as Record<ColumnKey, CardData[]>;
-  for (const col of COLUMNS) {
+// Copies only the given columns, in order, so stray arrays in the doc never
+// reach a file.
+function copyCards(cards: Record<string, CardData[]>, columns: ColumnDef[]): Record<string, CardData[]> {
+  const out: Record<string, CardData[]> = {};
+  for (const col of columns) {
     out[col.key] = (cards[col.key] ?? []).map((card) => ({
       id: card.id,
       text: card.text,
@@ -69,7 +71,7 @@ function copyCards(cards: Record<ColumnKey, CardData[]>): Record<ColumnKey, Card
 }
 
 export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFile {
-  const cards = copyCards(src.cards);
+  const cards = copyCards(src.cards, DEFAULT_COLUMNS);
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
     version: BOARD_FILE_VERSION,
@@ -132,7 +134,7 @@ export function downloadBoardFile(file: BoardFile): void {
 
 export interface ArchiveLike {
   label: string;
-  cards: Partial<Record<ColumnKey, CardData[]>>;
+  cards: Partial<Record<string, CardData[]>>;
   names?: Record<string, string>;
   anonymous?: boolean;
   phase?: string;
@@ -149,11 +151,9 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       anonymous: archive.anonymous ?? true,
       phase: isPhase(archive.phase) ? archive.phase : 'brainstorm',
       autoSort: archive.autoSort ?? true,
-      cards: {
-        wentWell: archive.cards.wentWell ?? [],
-        toImprove: archive.cards.toImprove ?? [],
-        actions: archive.cards.actions ?? []
-      },
+      cards: Object.fromEntries(
+        Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
+      ),
       namesMap: archive.names ?? {}
     },
     now
@@ -232,8 +232,8 @@ function plural(n: number, word: string): string {
 
 export function boardFileStats(file: BoardFile): BoardFileStats {
   const stats = { cards: 0, comments: 0, votes: 0, reactions: 0, namesRestored: !!file.names };
-  for (const col of COLUMNS) {
-    for (const card of file.cards[col.key]) {
+  for (const list of Object.values(file.cards)) {
+    for (const card of list) {
       stats.cards++;
       stats.comments += card.comments.length;
       stats.votes += card.votes.length;
@@ -278,11 +278,11 @@ export function parseBoardFile(text: string): ParseResult {
   const autoSort = rawBoard.autoSort !== false;
 
   const rawCards = isRecord(raw.cards) ? raw.cards : {};
-  const cards = { wentWell: [], toImprove: [], actions: [] } as Record<ColumnKey, CardData[]>;
+  const cards: Record<string, CardData[]> = Object.fromEntries(DEFAULT_COLUMNS.map((c) => [c.key, []]));
   let skippedCards = 0;
   let skippedComments = 0;
   let total = 0;
-  for (const col of COLUMNS) {
+  for (const col of DEFAULT_COLUMNS) {
     const list = rawCards[col.key];
     if (!Array.isArray(list)) continue;
     for (const rc of list) {

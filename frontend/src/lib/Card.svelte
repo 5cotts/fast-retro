@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CardData, CommentData, ColumnKey } from './types';
+  import type { CardData, CommentData } from './types';
   import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
   import { Pencil, Trash2, ChevronUp, Smile, MessageSquare, X, Check } from 'lucide-svelte';
@@ -37,7 +37,7 @@
     onMergeDrop
   } = $props<{
     card: CardData;
-    column: ColumnKey;
+    column: string;
     userId: string;
     userName: string;
     isLead: boolean;
@@ -55,7 +55,7 @@
     onAddComment: (cardId: string, text: string) => void;
     onDeleteComment: (cardId: string, commentId: string) => void;
     onTypingComment: (cardId: string | null) => void;
-    onDragStart: (e: DragEvent, cardId: string, fromCol: ColumnKey) => void;
+    onDragStart: (e: DragEvent, cardId: string, fromCol: string) => void;
     onDragEnd: () => void;
     onKeydown?: (e: KeyboardEvent) => void;
     onFocusCard?: () => void;

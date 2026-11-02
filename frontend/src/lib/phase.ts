@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { isActionsColumn, type ColumnDef } from './columns';
 
 export const PHASES = ['brainstorm', 'group', 'vote', 'discuss', 'actions'] as const;
 export type Phase = typeof PHASES[number];
@@ -50,12 +51,10 @@ export function prevPhase(current: Phase): Phase {
 // Reactions, comments, edits, and drag-to-reorder remain available in every
 // phase: they're either conversational (low stakes) or remediation of
 // honest mistakes. Only "structural" actions are gated.
-export function canAddCardInColumn(column: string, phase: Phase): boolean {
-  // Inputs (went-well, to-improve) are captured during Brainstorm.
-  // Action items are captured during the final Actions phase.
-  if (column === 'wentWell' || column === 'toImprove') return phase === 'brainstorm';
-  if (column === 'actions') return phase === 'actions';
-  return true;
+export function canAddCardInColumn(column: ColumnDef, phase: Phase): boolean {
+  // Input columns are captured during Brainstorm, action items during the
+  // final Actions phase.
+  return isActionsColumn(column) ? phase === 'actions' : phase === 'brainstorm';
 }
 
 export function canVoteInPhase(phase: Phase): boolean {

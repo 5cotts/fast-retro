@@ -1,6 +1,8 @@
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import type { CardData, CommentData, ColumnKey } from './types';
+import type { CardData } from './types';
+import { cardFromY, cardToY, commentToY } from './cardcodec';
+import { readColumns } from './columns';
 import { newId } from './identity';
 import { setPhase } from './phase';
 import type { BoardFile } from './boardfile';
@@ -59,9 +61,9 @@ export function createBoard(slug: string): BoardState {
   // gets synced back and persisted.
   provider.once('sync', () => {
     doc.transact(() => {
-      for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
-        if (!board.has(col)) {
-          board.set(col, new Y.Array<Y.Map<unknown>>());
+      for (const col of readColumns(meta)) {
+        if (!board.has(col.key)) {
+          board.set(col.key, new Y.Array<Y.Map<unknown>>());
         }
       }
     });
@@ -157,19 +159,12 @@ export function setBoardEnded(meta: Y.Map<unknown>, message: string): void {
 }
 
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
-  const card = new Y.Map<unknown>();
-  card.set('id', newId());
-  card.set('text', text);
-  card.set('authorId', authorId);
-  card.set('votes', new Y.Array<string>());
-  card.set('reactions', new Y.Map<Y.Array<string>>());
-  card.set('comments', new Y.Array<Y.Map<unknown>>());
-  return card;
+  return cardToY({ id: newId(), text, authorId, votes: [], reactions: {}, comments: [] });
 }
 
 export function addCard(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   text: string,
   authorId: string
 ) {
@@ -184,10 +179,9 @@ export function resetBoard(
   timer: Y.Map<unknown>
 ) {
   doc.transact(() => {
-    for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
-      const arr = board.get(col);
-      if (arr && arr.length > 0) arr.delete(0, arr.length);
-    }
+    board.forEach((arr) => {
+      if (arr.length > 0) arr.delete(0, arr.length);
+    });
     timer.set('durationSec', 0);
     timer.set('startedAt', null);
     timer.set('paused', false);
@@ -197,7 +191,7 @@ export function resetBoard(
 
 export function editCardText(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string,
   text: string
 ) {
@@ -212,7 +206,7 @@ export function editCardText(
 
 export function deleteCard(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string
 ) {
   const arr = board.get(column);
@@ -226,7 +220,7 @@ export function deleteCard(
 
 export function toggleVote(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string,
   userId: string
 ) {
@@ -246,7 +240,7 @@ export function toggleVote(
 
 export function toggleReaction(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string,
   emoji: string,
   userId: string
@@ -276,7 +270,7 @@ export function toggleReaction(
 
 export function addComment(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string,
   text: string,
   authorId: string
@@ -286,18 +280,13 @@ export function addComment(
   arr.forEach((card) => {
     if (card.get('id') !== cardId) return;
     const comments = card.get('comments') as Y.Array<Y.Map<unknown>>;
-    const c = new Y.Map<unknown>();
-    c.set('id', newId());
-    c.set('text', text);
-    c.set('authorId', authorId);
-    c.set('createdAt', Date.now());
-    comments.push([c]);
+    comments.push([commentToY({ id: newId(), text, authorId, createdAt: Date.now() })]);
   });
 }
 
 export function deleteComment(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  column: ColumnKey,
+  column: string,
   cardId: string,
   commentId: string
 ) {
@@ -314,6 +303,16 @@ export function deleteComment(
   });
 }
 
+// Last match wins, as it always has: a concurrent move can leave a duplicate
+// card behind (see moveCard), and callers have always acted on the later copy.
+function lastIndexOfCard(arr: Y.Array<Y.Map<unknown>>, cardId: string): number {
+  let idx = -1;
+  arr.forEach((card, i) => {
+    if (card.get('id') === cardId) idx = i;
+  });
+  return idx;
+}
+
 // Known limitation: moveCard snapshots the source card and rebuilds it at the
 // destination because Y.Array doesn't expose an atomic move. If two clients
 // move the same card concurrently, both may insert a rehydrated copy and the
@@ -323,96 +322,31 @@ export function deleteComment(
 export function moveCard(
   doc: Y.Doc,
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  fromCol: ColumnKey,
+  fromCol: string,
   cardId: string,
-  toCol: ColumnKey,
+  toCol: string,
   toIndex: number
 ) {
   doc.transact(() => {
     const fromArr = board.get(fromCol);
     const toArr = board.get(toCol);
     if (!fromArr || !toArr) return;
-    let fromIdx = -1;
-    let snapshot: { id: string; text: string; authorId: string; votes: string[]; reactions: Record<string, string[]>; comments: CommentData[] } | null = null;
-    fromArr.forEach((card, i) => {
-      if (card.get('id') !== cardId) return;
-      fromIdx = i;
-      const votes = (card.get('votes') as Y.Array<string>).toArray();
-      const reactionsMap = card.get('reactions') as Y.Map<Y.Array<string>>;
-      const reactions: Record<string, string[]> = {};
-      reactionsMap.forEach((users, emoji) => {
-        reactions[emoji] = users.toArray();
-      });
-      const commentsArr = card.get('comments') as Y.Array<Y.Map<unknown>>;
-      const comments: CommentData[] = [];
-      commentsArr.forEach((c) => {
-        const id = c.get('id');
-        const text = c.get('text');
-        const createdAt = c.get('createdAt');
-        const authorId = (c.get('authorId') as string | undefined) ?? '';
-        if (typeof id === 'string' && typeof text === 'string' && typeof createdAt === 'number') {
-          comments.push({ id, text, authorId, createdAt });
-        }
-      });
-      snapshot = {
-        id: card.get('id') as string,
-        text: card.get('text') as string,
-        authorId: (card.get('authorId') as string | undefined) ?? '',
-        votes,
-        reactions,
-        comments
-      };
-    });
-
-    if (fromIdx < 0 || !snapshot) return;
+    const fromIdx = lastIndexOfCard(fromArr, cardId);
+    const snapshot = fromIdx >= 0 ? cardFromY(fromArr.get(fromIdx)) : null;
+    if (!snapshot) return;
 
     if (fromCol === toCol) {
       const current = toIndex;
       if (current === fromIdx) return;
       fromArr.delete(fromIdx, 1);
       const insertAt = current > fromIdx ? current - 1 : current;
-      fromArr.insert(Math.max(0, Math.min(insertAt, fromArr.length)), [rehydrateCard(snapshot)]);
+      fromArr.insert(Math.max(0, Math.min(insertAt, fromArr.length)), [cardToY(snapshot)]);
     } else {
       fromArr.delete(fromIdx, 1);
       const clamped = Math.max(0, Math.min(toIndex, toArr.length));
-      toArr.insert(clamped, [rehydrateCard(snapshot)]);
+      toArr.insert(clamped, [cardToY(snapshot)]);
     }
   });
-}
-
-function rehydrateCard(snap: {
-  id: string;
-  text: string;
-  authorId: string;
-  votes: string[];
-  reactions: Record<string, string[]>;
-  comments: CommentData[];
-}): Y.Map<unknown> {
-  const card = new Y.Map<unknown>();
-  card.set('id', snap.id);
-  card.set('text', snap.text);
-  card.set('authorId', snap.authorId);
-  const votes = new Y.Array<string>();
-  if (snap.votes.length) votes.push(snap.votes);
-  card.set('votes', votes);
-  const reactions = new Y.Map<Y.Array<string>>();
-  for (const [emoji, users] of Object.entries(snap.reactions)) {
-    const ya = new Y.Array<string>();
-    if (users.length) ya.push(users);
-    reactions.set(emoji, ya);
-  }
-  card.set('reactions', reactions);
-  const comments = new Y.Array<Y.Map<unknown>>();
-  for (const c of snap.comments) {
-    const cm = new Y.Map<unknown>();
-    cm.set('id', c.id);
-    cm.set('text', c.text);
-    cm.set('authorId', c.authorId);
-    cm.set('createdAt', c.createdAt);
-    comments.push([cm]);
-  }
-  card.set('comments', comments);
-  return card;
 }
 
 // Merge source card into target: union votes, union reactions per emoji,
@@ -423,9 +357,9 @@ function rehydrateCard(snap: {
 export function mergeCards(
   doc: Y.Doc,
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
-  fromCol: ColumnKey,
+  fromCol: string,
   fromId: string,
-  toCol: ColumnKey,
+  toCol: string,
   toId: string
 ) {
   if (fromId === toId && fromCol === toCol) return;
@@ -434,36 +368,9 @@ export function mergeCards(
     const toArr = board.get(toCol);
     if (!fromArr || !toArr) return;
 
-    let fromIdx = -1;
-    let fromText = '';
-    let fromVotes: string[] = [];
-    let fromReactions: Record<string, string[]> = {};
-    let fromComments: CommentData[] = [];
-    fromArr.forEach((card, i) => {
-      if (card.get('id') !== fromId) return;
-      fromIdx = i;
-      fromText = (card.get('text') as string | undefined) ?? '';
-      fromVotes = ((card.get('votes') as Y.Array<string> | undefined)?.toArray()) ?? [];
-      const rm = card.get('reactions') as Y.Map<Y.Array<string>> | undefined;
-      if (rm) {
-        rm.forEach((users, emoji) => {
-          fromReactions[emoji] = users.toArray();
-        });
-      }
-      const cm = card.get('comments') as Y.Array<Y.Map<unknown>> | undefined;
-      if (cm) {
-        cm.forEach((c) => {
-          const id = c.get('id');
-          const text = c.get('text');
-          const createdAt = c.get('createdAt');
-          const authorId = (c.get('authorId') as string | undefined) ?? '';
-          if (typeof id === 'string' && typeof text === 'string' && typeof createdAt === 'number') {
-            fromComments.push({ id, text, authorId, createdAt });
-          }
-        });
-      }
-    });
-    if (fromIdx < 0) return;
+    const fromIdx = lastIndexOfCard(fromArr, fromId);
+    const source = fromIdx >= 0 ? cardFromY(fromArr.get(fromIdx)) : null;
+    if (!source) return;
 
     let merged = false;
     toArr.forEach((card) => {
@@ -471,7 +378,7 @@ export function mergeCards(
       if (card.get('id') !== toId) return;
       merged = true;
       const toText = (card.get('text') as string | undefined) ?? '';
-      const trimmedFrom = fromText.trim();
+      const trimmedFrom = source.text.trim();
       if (trimmedFrom.length > 0) {
         const sep = toText.endsWith('\n') ? '— — —\n' : '\n— — —\n';
         card.set('text', `${toText}${sep}${trimmedFrom}`);
@@ -479,11 +386,11 @@ export function mergeCards(
 
       const toVotes = card.get('votes') as Y.Array<string>;
       const existing = new Set(toVotes.toArray());
-      const toAdd = fromVotes.filter((v) => !existing.has(v));
+      const toAdd = source.votes.filter((v) => !existing.has(v));
       if (toAdd.length) toVotes.push(toAdd);
 
       const toReactions = card.get('reactions') as Y.Map<Y.Array<string>>;
-      for (const [emoji, users] of Object.entries(fromReactions)) {
+      for (const [emoji, users] of Object.entries(source.reactions)) {
         let bucket = toReactions.get(emoji);
         if (!bucket) {
           bucket = new Y.Array<string>();
@@ -495,15 +402,8 @@ export function mergeCards(
       }
 
       const toComments = card.get('comments') as Y.Array<Y.Map<unknown>>;
-      fromComments.sort((a, b) => a.createdAt - b.createdAt);
-      for (const c of fromComments) {
-        const cm = new Y.Map<unknown>();
-        cm.set('id', c.id);
-        cm.set('text', c.text);
-        cm.set('authorId', c.authorId);
-        cm.set('createdAt', c.createdAt);
-        toComments.push([cm]);
-      }
+      const fromComments = [...source.comments].sort((a, b) => a.createdAt - b.createdAt);
+      for (const c of fromComments) toComments.push([commentToY(c)]);
     });
 
     if (!merged) return;
@@ -511,47 +411,40 @@ export function mergeCards(
   });
 }
 
-export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: ColumnKey): CardData[] {
+export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: string): CardData[] {
   const arr = board.get(column);
   if (!arr) return [];
   const out: CardData[] = [];
   arr.forEach((card) => {
-    const id = card.get('id');
-    const text = card.get('text');
-    if (typeof id !== 'string' || typeof text !== 'string') return;
-    const authorId = (card.get('authorId') as string | undefined) ?? '';
-    const votesArr = card.get('votes') as Y.Array<string> | undefined;
-    const votes = votesArr ? votesArr.toArray() : [];
-    const reactionsMap = card.get('reactions') as Y.Map<Y.Array<string>> | undefined;
-    const reactions: Record<string, string[]> = {};
-    if (reactionsMap) {
-      reactionsMap.forEach((users, emoji) => {
-        reactions[emoji] = users.toArray();
-      });
-    }
-    const commentsArr = card.get('comments') as Y.Array<Y.Map<unknown>> | undefined;
-    const comments: CommentData[] = [];
-    if (commentsArr) {
-      commentsArr.forEach((c) => {
-        const cid = c.get('id');
-        const ctext = c.get('text');
-        const createdAt = c.get('createdAt');
-        const authorId = (c.get('authorId') as string | undefined) ?? '';
-        if (typeof cid === 'string' && typeof ctext === 'string' && typeof createdAt === 'number') {
-          comments.push({ id: cid, text: ctext, authorId, createdAt });
-        }
-      });
-    }
-    out.push({ id, text, authorId, votes, reactions, comments });
+    const parsed = cardFromY(card);
+    if (parsed) out.push(parsed);
   });
   return out;
 }
 
+// Every column array in the doc, keyed by column key. Readers that render or
+// export pick the keys they need from the board's column list; stray arrays
+// are harmless.
+export function readAllCards(board: Y.Map<Y.Array<Y.Map<unknown>>>): Record<string, CardData[]> {
+  const out: Record<string, CardData[]> = {};
+  board.forEach((_arr, key) => {
+    out[key] = readCards(board, key);
+  });
+  return out;
+}
+
+export function countCards(cards: Record<string, CardData[]>): number {
+  let n = 0;
+  for (const list of Object.values(cards)) n += list.length;
+  return n;
+}
+
 export function isBoardEmpty(board: Y.Map<Y.Array<Y.Map<unknown>>>): boolean {
-  for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
-    if ((board.get(col)?.length ?? 0) > 0) return false;
-  }
-  return true;
+  let empty = true;
+  board.forEach((arr) => {
+    if (arr.length > 0) empty = false;
+  });
+  return empty;
 }
 
 // Writes an imported board file into a (normally empty, already-synced) board
@@ -567,14 +460,14 @@ export function importBoard(
 ): void {
   const { doc, board, meta, names, phase } = state;
   doc.transact(() => {
-    for (const col of ['wentWell', 'toImprove', 'actions'] as const) {
+    for (const [col, list] of Object.entries(file.cards)) {
       let arr = board.get(col);
       if (!arr) {
         arr = new Y.Array<Y.Map<unknown>>();
         board.set(col, arr);
       }
-      const cards = file.cards[col].map((card) =>
-        rehydrateCard({
+      const cards = list.map((card) =>
+        cardToY({
           ...card,
           id: newId(),
           comments: card.comments.map((c) => ({ ...c, id: newId() }))

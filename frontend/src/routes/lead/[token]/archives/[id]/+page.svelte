@@ -2,7 +2,8 @@
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import Wordmark from '$lib/Wordmark.svelte';
-  import { COLUMNS, type CardData, type ColumnKey } from '$lib/types';
+  import type { CardData } from '$lib/types';
+  import { COLUMN_STYLE, DEFAULT_COLUMNS } from '$lib/columns';
   import { boardFileFromArchive, downloadBoardFile } from '$lib/boardfile';
   import { FileJson } from 'lucide-svelte';
   import { track } from '$lib/analytics';
@@ -12,7 +13,7 @@
     slug: string;
     label: string;
     endedAt: number;
-    cards: Record<ColumnKey, CardData[]>;
+    cards: Record<string, CardData[]>;
     names: Record<string, string>;
     anonymous?: boolean;
     phase?: string;
@@ -141,14 +142,15 @@
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-          {#each COLUMNS as col (col.key)}
+          {#each DEFAULT_COLUMNS as col (col.key)}
             {@const cards = archive.cards[col.key] ?? []}
-            <section class="border rounded-xl shadow-sm flex flex-col {col.accent}" aria-label={col.title}>
+            {@const style = COLUMN_STYLE[col.color]}
+            <section class="border rounded-xl shadow-sm flex flex-col {style.accent}" aria-label={col.title}>
               <header
-                class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {col.header}"
+                class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}"
               >
                 <div class="flex items-center gap-2">
-                  <span class="w-1.5 h-5 rounded-full {col.dot}" aria-hidden="true"></span>
+                  <span class="w-1.5 h-5 rounded-full {style.dot}" aria-hidden="true"></span>
                   <h2 class="text-sm font-semibold">{col.title}</h2>
                 </div>
                 <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cards.length}</span>

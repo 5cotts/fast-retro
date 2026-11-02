@@ -15,7 +15,7 @@ import {
 import { importBoard, readBoardAnonymous, readBoardAutoSort, readBoardLabel, readCards } from './yboard';
 import { readPhase } from './phase';
 import { readNames } from './identity';
-import type { CardData, ColumnKey } from './types';
+import type { CardData } from './types';
 
 function card(partial: Partial<CardData> & { id: string; text: string }): CardData {
   return { authorId: '', votes: [], reactions: {}, comments: [], ...partial };
@@ -148,7 +148,7 @@ function freshDoc() {
 }
 
 function readBack(state: ReturnType<typeof freshDoc>): BoardFileSource {
-  const cards = {} as Record<ColumnKey, CardData[]>;
+  const cards = {} as Record<string, CardData[]>;
   for (const col of ['wentWell', 'toImprove', 'actions'] as const) cards[col] = readCards(state.board, col);
   return {
     label: readBoardLabel(state.meta),
@@ -160,7 +160,7 @@ function readBack(state: ReturnType<typeof freshDoc>): BoardFileSource {
   };
 }
 
-function withoutIds(cards: Record<ColumnKey, CardData[]>) {
+function withoutIds(cards: Record<string, CardData[]>) {
   const out: Record<string, unknown[]> = {};
   for (const [col, list] of Object.entries(cards)) {
     out[col] = list.map(({ id: _id, comments, ...rest }) => ({
