@@ -504,12 +504,19 @@ impl Db {
         false
     }
 
-    /// Mark a board ended (read-only). Returns false if the board doesn't exist.
+    /// Mark a board ended (read-only). Boards opened straight from a lead URL
+    /// never got a `boards` row, so create one if needed; otherwise the ended
+    /// state would be lost (status would report it live, and a restart would
+    /// make it writable again). Returns false if it was already ended.
     pub fn end_board(&self, slug: &str) -> bool {
+        let now = now_ms();
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE boards SET ended_at = ?2 WHERE slug = ?1 AND ended_at IS NULL",
-            params![slug, now_ms()],
+            "INSERT INTO boards (slug, created_at, ended_at, last_active_at)
+             VALUES (?1, ?2, ?2, ?2)
+             ON CONFLICT(slug) DO UPDATE SET ended_at = excluded.ended_at
+             WHERE boards.ended_at IS NULL",
+            params![slug, now],
         )
         .map(|n| n > 0)
         .unwrap_or(false)
@@ -554,5 +561,33 @@ impl Db {
             })
         })?;
         rows.collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn end_board_records_boards_without_a_row() {
+        let db = Db::open(":memory:").expect("open in-memory db");
+        assert!(db.get_board("lead-only").is_none());
+        assert!(db.end_board("lead-only"));
+        assert!(db.get_board("lead-only").unwrap().ended_at.is_some());
+        // Ending again is a no-op and keeps the first timestamp.
+        let first = db.get_board("lead-only").unwrap().ended_at;
+        assert!(!db.end_board("lead-only"));
+        assert_eq!(db.get_board("lead-only").unwrap().ended_at, first);
+    }
+
+    #[test]
+    fn end_board_keeps_existing_board_details() {
+        let db = Db::open(":memory:").expect("open in-memory db");
+        db.create_board("made", "Sprint 9", Some("u1")).unwrap();
+        assert!(db.end_board("made"));
+        let b = db.get_board("made").unwrap();
+        assert!(b.ended_at.is_some());
+        assert_eq!(b.label, "Sprint 9");
+        assert_eq!(b.created_by.as_deref(), Some("u1"));
     }
 }

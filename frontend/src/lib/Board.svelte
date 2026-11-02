@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import Card from './Card.svelte';
   import BoardHeader from './BoardHeader.svelte';
+  import ExportMenu from './ExportMenu.svelte';
   import NamePrompt from './NamePrompt.svelte';
   import Onboarding from './Onboarding.svelte';
   import {
@@ -219,6 +220,11 @@
       // of the first-run onboarding overlay — they already know the product.
       if (!getOnboarded()) setOnboarded();
       conn.start({ userId, userName, isLead, slug });
+    } else if (readOnly) {
+      // An ended board can't be edited, so a name isn't needed to view or
+      // export it. Skip the prompt (and onboarding) and connect as a guest.
+      promptingName = false;
+      conn.start({ userId, userName: '', isLead, slug });
     }
     tickHandle = setInterval(() => {
       nowTick = Date.now();
@@ -321,19 +327,23 @@
   }
 
   // Fires for every connected client — not just the lead who clicked End —
-  // the moment endedAt shows up on the meta map (see setBoardEnded in
+  // the moment endedAt shows up on the meta map while they're connected (see setBoardEnded in
   // confirmEndBoard). Also flips the local `ended` flag so participants see
   // the read-only banner live instead of only after a reload.
   $effect(() => {
     const endedAt = conn.state.endedAt;
     if (endedAt !== null && endedAt !== prevEndedAt) {
       ended = true;
-      showEndCelebration = true;
-      if (!reducedMotion) fireConfettiShow();
-      if (endCelebrationHandle !== null) clearTimeout(endCelebrationHandle);
-      endCelebrationHandle = setTimeout(() => {
-        showEndCelebration = false;
-      }, 9000);
+      // Only celebrate a live end, not a board that was already ended when
+      // it was opened or reloaded.
+      if (conn.state.endedLive) {
+        showEndCelebration = true;
+        if (!reducedMotion) fireConfettiShow();
+        if (endCelebrationHandle !== null) clearTimeout(endCelebrationHandle);
+        endCelebrationHandle = setTimeout(() => {
+          showEndCelebration = false;
+        }, 9000);
+      }
     }
     prevEndedAt = endedAt;
   });
@@ -793,15 +803,15 @@
       .map((entry) => entry.card);
   }
 
-  function downloadCSV() {
-    track({ name: 'board_export', params: { format: 'csv', source: 'board' } });
+  function downloadCSV(source: 'board' | 'ended' = 'board') {
+    track({ name: 'board_export', params: { format: 'csv', source } });
     // The BOM makes Excel read the file as UTF-8 so emoji reactions survive.
     const csv = '\uFEFF' + exportCSV(conn.state.cards);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     downloadBlob(blob, `${exportFileStem(conn.state.label)}.csv`);
   }
 
-  function downloadJSON(source: 'board' | 'end' = 'board') {
+  function downloadJSON(source: 'board' | 'end' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'board_file', source } });
     downloadBoardFile(
       exportBoardFile({
@@ -960,14 +970,14 @@
       {darkMode}
       presence={presenceDisambiguated}
       currentClientId={conn.state.currentClientId}
-      {userName}
+      userName={userName || 'Guest'}
       anonymous={conn.state.anonymous}
       autoSort={conn.state.autoSort}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
       onResetTimer={leadReset}
-      onExportCSV={downloadCSV}
+      onExportCSV={() => downloadCSV('board')}
       onExportJSON={() => downloadJSON('board')}
       onEndBoard={startEndBoard}
       onCycleTheme={cycleTheme}
@@ -1057,9 +1067,15 @@
           <div class="flex-1 min-w-[200px]">
             <div class="font-semibold text-sm">This retro has ended</div>
             <div class="text-xs opacity-80">
-              It's archived and read-only now. {isLead ? 'Start a fresh one for your next session.' : 'Ask your host to start a new one.'}
+              It's archived and read-only now. Anyone with the link can still export it. {isLead ? 'Start a fresh one for your next session.' : 'Ask your host to start a new one.'}
             </div>
           </div>
+          <ExportMenu
+            onSaveBoardFile={() => downloadJSON('ended')}
+            onExportCSV={() => downloadCSV('ended')}
+            disabled={!conn.state.synced}
+            align="right"
+          />
           {#if isLead}
             {#if actionCount > 0}
               <label class="inline-flex items-center gap-1.5 text-xs cursor-pointer select-none">

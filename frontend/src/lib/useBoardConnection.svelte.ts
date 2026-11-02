@@ -28,6 +28,9 @@ export interface UseBoardConnectionState {
   cleanup: (() => void) | null;
   currentClientId: number;
   connected: boolean;
+  // True once the first full sync from the server has landed. Until then the
+  // board may look empty even if it isn't, so exports wait for this.
+  synced: boolean;
   namesMap: Record<string, string>;
   cards: Record<ColumnKey, CardData[]>;
   timerState: TimerState;
@@ -37,6 +40,10 @@ export interface UseBoardConnectionState {
   anonymous: boolean;
   autoSort: boolean;
   endedAt: number | null;
+  // True only if the retro ended while this client was connected and synced,
+  // as opposed to the board already being ended when it loaded. Drives the
+  // end-of-retro celebration.
+  endedLive: boolean;
   endedMessage: string;
   imported: ImportedInfo | null;
 }
@@ -57,6 +64,7 @@ export function useBoardConnection() {
     cleanup: null,
     currentClientId: -1,
     connected: false,
+    synced: false,
     namesMap: {},
     cards: { wentWell: [], toImprove: [], actions: [] },
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
@@ -66,6 +74,7 @@ export function useBoardConnection() {
     anonymous: false,
     autoSort: true,
     endedAt: null,
+    endedLive: false,
     endedMessage: '',
     imported: null
   });
@@ -98,7 +107,12 @@ export function useBoardConnection() {
       state.label = readBoardLabel(meta);
       state.anonymous = readBoardAnonymous(meta);
       state.autoSort = readBoardAutoSort(meta);
-      state.endedAt = readBoardEndedAt(meta);
+      const endedAt = readBoardEndedAt(meta);
+      // Observers run synchronously while an update is applied, and y-websocket
+      // only flips `synced` after the initial state has been applied, so an
+      // endedAt that arrives with the initial load is not counted as live.
+      if (endedAt !== null && state.endedAt === null && provider.synced) state.endedLive = true;
+      state.endedAt = endedAt;
       state.endedMessage = readBoardEndedMessage(meta);
       state.imported = readBoardImported(meta);
     };
@@ -114,15 +128,22 @@ export function useBoardConnection() {
     recomputePhase();
     recomputeMeta();
 
-    setDisplayName(names, init.userId, init.userName);
+    // A viewer of an ended board may have no name (they skip the prompt).
+    // Don't write an empty name into the board's names map.
+    if (init.userName) setDisplayName(names, init.userId, init.userName);
 
     const onStatus = (e: { status: string }) => {
       state.connected = e.status === 'connected';
     };
     provider.on('status', onStatus);
+    const onSync = (isSynced: boolean) => {
+      state.synced = isSynced;
+    };
+    provider.on('sync', onSync);
+    state.synced = provider.synced;
 
     updateAwarenessUser(provider, {
-      name: init.userName,
+      name: init.userName || 'Guest',
       color: pickColor(init.userId),
       isLead: init.isLead,
       typing: null
@@ -163,6 +184,7 @@ export function useBoardConnection() {
       meta.unobserve(recomputeMeta);
       aw.off('change', refreshPresence);
       provider.off('status', onStatus);
+      provider.off('sync', onSync);
       aw.setLocalState(null);
       provider.destroy();
       doc.destroy();

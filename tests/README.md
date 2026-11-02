@@ -164,6 +164,14 @@ file anywhere on the homepage, the "Imported from a file" note, and
 Start next retro bringing action items along (without votes or
 reactions) by default. Analytics are checked with a stubbed `gtag`.
 
+`ended-export.spec.ts` — exporting a retro after it has ended (skipped
+unless `RETRO_LEAD_TOKEN` is set). The host after a reload, a participant
+who was there when it ended, and a brand-new visitor all get the Export
+menu in the ended banner, and their files match a live export. The new
+visitor gets no name prompt. Also covers the CSV, the `ended` analytics
+source, importing the ended export, anonymous boards (no names), and the
+menu staying disabled until the board has synced.
+
 The frozen v1 board file lives in
 `frontend/src/lib/fixtures/board-v1.fastretro.json` and is checked by
 the unit test `boardfile-v1.spec.ts` (`bun run test:unit`). Never edit
