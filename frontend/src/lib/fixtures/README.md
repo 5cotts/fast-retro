@@ -1,9 +1,14 @@
 # Board file fixtures
 
-`board-v1.fastretro.json` is a frozen example of a version 1 board file, the
-format written by Export → Save board file. People keep these files, so every
-future release must still import it. `boardfile-v1.spec.ts` checks that.
+Frozen examples of each board file version, the format written by Export →
+Save board file. People keep these files, so every future release must still
+import them.
 
-Never edit it to make a test pass. If the format changes, bump
-`BOARD_FILE_VERSION`, add `board-v2.fastretro.json` next to it, and keep the v1
-test passing.
+- `board-v1.fastretro.json`: a classic three-column board (version 1).
+  Checked by `boardfile-v1.spec.ts`. Classic boards are still exported as v1.
+- `board-v2.fastretro.json`: a five-column brainstorm board with custom
+  columns (version 2). Checked by `boardfile-v2.spec.ts`.
+
+Never edit them to make a test pass. If the format changes in a way an older
+reader would silently lose data, bump `BOARD_FILE_VERSION`, add the next
+fixture next to these, and keep the existing tests passing.

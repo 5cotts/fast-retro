@@ -2,10 +2,10 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
-import { readColumns } from './columns';
+import { DEFAULT_COLUMNS, readColumns, sameColumns } from './columns';
 import { newId } from './identity';
 import { setPhase } from './phase';
-import type { BoardFile } from './boardfile';
+import { boardFileColumns, type BoardFile } from './boardfile';
 
 export function buildWsUrl(): string {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -497,14 +497,18 @@ export function seedBoard(
   now = Date.now()
 ): void {
   const { doc, board, meta, names, phase } = state;
+  const columns = boardFileColumns(file);
   doc.transact(() => {
-    for (const [col, list] of Object.entries(file.cards)) {
-      let arr = board.get(col);
+    // The column list and every column's array land in this one transaction
+    // (see setUpAfterSync). Classic boards store no list.
+    if (!sameColumns(columns, DEFAULT_COLUMNS)) meta.set('columns', columns.map((c) => ({ ...c })));
+    for (const col of columns) {
+      let arr = board.get(col.key);
       if (!arr) {
         arr = new Y.Array<Y.Map<unknown>>();
-        board.set(col, arr);
+        board.set(col.key, arr);
       }
-      const cards = list.map((card) =>
+      const cards = (file.cards[col.key] ?? []).map((card) =>
         cardToY({
           ...card,
           id: newId(),
