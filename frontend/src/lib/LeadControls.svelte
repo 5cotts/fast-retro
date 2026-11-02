@@ -3,6 +3,44 @@
   import ExportMenu from './ExportMenu.svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
+  import type { BoardSettingKey, BoardSettings } from './settings';
+
+  // One entry per board setting the host can toggle; both layouts render
+  // from this list.
+  const TOGGLES: {
+    key: BoardSettingKey;
+    icon: (on: boolean) => typeof Eye;
+    ariaLabel: (on: boolean) => string;
+    title: (on: boolean) => string;
+    text: (on: boolean) => string;
+    compactText: (on: boolean) => string;
+    onClass: string;
+    offClass: string;
+  }[] = [
+    {
+      key: 'anonymous',
+      icon: (on) => (on ? EyeOff : Eye),
+      ariaLabel: (on) => (on ? 'Turn off anonymous mode' : 'Turn on anonymous mode'),
+      title: (on) => (on ? 'Anonymous mode is ON — author names are hidden on cards and comments' : 'Hide author names on cards and comments'),
+      text: (on) => (on ? 'Anonymous: On' : 'Anonymous: Off'),
+      compactText: () => 'Anonymous',
+      onClass: 'border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200 bg-violet-50 dark:bg-violet-900/30',
+      offClass: ''
+    },
+    {
+      key: 'autoSort',
+      icon: () => ArrowDownUp,
+      ariaLabel: (on) => (on ? 'Turn off auto-sort by votes' : 'Turn on auto-sort by votes'),
+      title: (on) =>
+        on
+          ? 'Auto-sort is ON — cards reorder by vote count from Discuss onward'
+          : 'Auto-sort is OFF — cards keep their manual order in Discuss and Actions',
+      text: (on) => (on ? 'Auto-sort: On' : 'Auto-sort: Off'),
+      compactText: (on) => (on ? 'Auto-sort: On' : 'Auto-sort: Off'),
+      onClass: 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30',
+      offClass: 'opacity-60'
+    }
+  ];
 
   let {
     timerInputMin = $bindable(),
@@ -10,8 +48,7 @@
     remainingSec,
     timerRunning,
     timerExpired,
-    anonymous,
-    autoSort,
+    settings,
     onSet,
     onStart,
     onPause,
@@ -19,8 +56,7 @@
     onExportCSV,
     onExportJSON,
     onEnd,
-    onToggleAnonymous,
-    onToggleAutoSort,
+    onToggleSetting,
     mobile = false
   } = $props<{
     timerInputMin: string;
@@ -28,8 +64,7 @@
     remainingSec: number;
     timerRunning: boolean;
     timerExpired: boolean;
-    anonymous: boolean;
-    autoSort: boolean;
+    settings: BoardSettings;
     onSet: () => void;
     onStart: () => void;
     onPause: () => void;
@@ -37,8 +72,7 @@
     onExportCSV: () => void;
     onExportJSON: () => void;
     onEnd: () => void;
-    onToggleAnonymous: () => void;
-    onToggleAutoSort: () => void;
+    onToggleSetting: (key: BoardSettingKey) => void;
     mobile?: boolean;
   }>();
 
@@ -117,31 +151,19 @@
       </button>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
-      <button
-        class="btn text-sm px-3 py-2 min-h-[44px] {anonymous ? 'border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200 bg-violet-50 dark:bg-violet-900/30' : ''}"
-        onclick={onToggleAnonymous}
-        aria-pressed={anonymous}
-        aria-label={anonymous ? 'Turn off anonymous mode' : 'Turn on anonymous mode'}
-        title={anonymous ? 'Anonymous mode is ON — author names are hidden' : 'Anonymous mode is OFF — hide author names on cards and comments'}
-      >
-        {#if anonymous}
-          <EyeOff size={14} aria-hidden="true" /> Anonymous: On
-        {:else}
-          <Eye size={14} aria-hidden="true" /> Anonymous: Off
-        {/if}
-      </button>
-      <button
-        class="btn text-sm px-3 py-2 min-h-[44px] {autoSort
-          ? 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30'
-          : 'opacity-60'}"
-        onclick={onToggleAutoSort}
-        aria-pressed={autoSort}
-        aria-label={autoSort ? 'Turn off auto-sort by votes' : 'Turn on auto-sort by votes'}
-        title={autoSort ? 'Auto-sort is ON — cards reorder by vote count from Discuss onward' : 'Auto-sort is OFF — cards keep their manual order in Discuss and Actions'}
-      >
-        <ArrowDownUp size={14} aria-hidden="true" />
-        {autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}
-      </button>
+      {#each TOGGLES as t (t.key)}
+        {@const on = settings[t.key]}
+        {@const Icon = t.icon(on)}
+        <button
+          class="btn text-sm px-3 py-2 min-h-[44px] {on ? t.onClass : t.offClass}"
+          onclick={() => onToggleSetting(t.key)}
+          aria-pressed={on}
+          aria-label={t.ariaLabel(on)}
+          title={t.title(on)}
+        >
+          <Icon size={14} aria-hidden="true" /> {t.text(on)}
+        </button>
+      {/each}
       <ExportMenu onSaveBoardFile={onExportJSON} {onExportCSV} />
       <button class="btn-danger text-sm px-3 py-2 min-h-[44px]" onclick={onEnd}>
         <X size={14} aria-hidden="true" /> End retro
@@ -216,34 +238,20 @@
     {/if}
   </div>
 
-  <button
-    class="btn text-xs px-2 py-1 min-h-[32px] {anonymous ? 'border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-200 bg-violet-50 dark:bg-violet-900/30' : ''}"
-    onclick={onToggleAnonymous}
-    aria-pressed={anonymous}
-    aria-label={anonymous ? 'Turn off anonymous mode' : 'Turn on anonymous mode'}
-    title={anonymous ? 'Anonymous mode is ON — author names are hidden on cards and comments' : 'Hide author names on cards and comments'}
-  >
-    {#if anonymous}
-      <EyeOff size={14} aria-hidden="true" />
-      <span class="hidden lg:inline">Anonymous</span>
-    {:else}
-      <Eye size={14} aria-hidden="true" />
-      <span class="hidden lg:inline">Anonymous</span>
-    {/if}
-  </button>
-
-  <button
-    class="btn text-xs px-2 py-1 min-h-[32px] {autoSort
-      ? 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-200 bg-sky-50 dark:bg-sky-900/30'
-      : 'opacity-60'}"
-    onclick={onToggleAutoSort}
-    aria-pressed={autoSort}
-    aria-label={autoSort ? 'Turn off auto-sort by votes' : 'Turn on auto-sort by votes'}
-    title={autoSort ? 'Auto-sort is ON — cards reorder by vote count from Discuss onward' : 'Auto-sort is OFF — cards keep their manual order in Discuss and Actions'}
-  >
-    <ArrowDownUp size={14} aria-hidden="true" />
-    <span class="hidden lg:inline">{autoSort ? 'Auto-sort: On' : 'Auto-sort: Off'}</span>
-  </button>
+  {#each TOGGLES as t (t.key)}
+    {@const on = settings[t.key]}
+    {@const Icon = t.icon(on)}
+    <button
+      class="btn text-xs px-2 py-1 min-h-[32px] {on ? t.onClass : t.offClass}"
+      onclick={() => onToggleSetting(t.key)}
+      aria-pressed={on}
+      aria-label={t.ariaLabel(on)}
+      title={t.title(on)}
+    >
+      <Icon size={14} aria-hidden="true" />
+      <span class="hidden lg:inline">{t.compactText(on)}</span>
+    </button>
+  {/each}
 
   <ExportMenu onSaveBoardFile={onExportJSON} {onExportCSV} compact />
 

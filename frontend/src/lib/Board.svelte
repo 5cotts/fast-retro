@@ -16,8 +16,6 @@
     moveCard,
     mergeCards,
     setBoardLabel,
-    setBoardAnonymous,
-    setBoardAutoSort,
     setBoardEnded,
     countCards,
     type SeedSource
@@ -57,6 +55,7 @@
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
+  import { setBoardSetting, type BoardSettingKey } from './settings';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, isWideBoard, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
@@ -174,7 +173,7 @@
     const map = new Map<string, string[]>();
     for (const p of presenceDisambiguated) {
       if (p.typing && p.clientId !== conn.state.currentClientId) {
-        const label = conn.state.anonymous ? 'Someone' : p.name;
+        const label = conn.state.settings.anonymous ? 'Someone' : p.name;
         const list = map.get(p.typing) ?? [];
         if (!list.includes(label)) list.push(label);
         map.set(p.typing, list);
@@ -441,14 +440,9 @@
     setBoardLabel(conn.state.board.meta, next);
   }
 
-  function toggleAnonymous() {
+  function toggleSetting(key: BoardSettingKey) {
     if (!conn.state.board || !isLead) return;
-    setBoardAnonymous(conn.state.board.meta, !conn.state.anonymous);
-  }
-
-  function toggleAutoSort() {
-    if (!conn.state.board || !isLead) return;
-    setBoardAutoSort(conn.state.board.meta, !conn.state.autoSort);
+    setBoardSetting(conn.state.board.meta, key, !conn.state.settings[key]);
   }
 
   // Mirror the board label into this browser's recent-boards list so the
@@ -727,7 +721,7 @@
   // keep original array position via stable sort. Manual drag-to-reorder is
   // disabled whenever the sort is actually active, since a drag would just
   // get overridden by the next sort on re-render.
-  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.autoSort);
+  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.settings.autoSort);
   const canReorder = $derived(!sortActive);
   function sortedByVotes(cards: CardData[]): CardData[] {
     return cards
@@ -749,9 +743,9 @@
     downloadBoardFile(
       exportBoardFile({
         label: conn.state.label,
-        anonymous: conn.state.anonymous,
+        anonymous: conn.state.settings.anonymous,
         phase: conn.state.phase,
-        autoSort: conn.state.autoSort,
+        autoSort: conn.state.settings.autoSort,
         columns: conn.state.columns,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
@@ -795,10 +789,10 @@
         {
           label: conn.state.label,
           cards: Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key)])),
-          names: conn.state.anonymous ? {} : conn.state.namesMap,
-          anonymous: conn.state.anonymous,
+          names: conn.state.settings.anonymous ? {} : conn.state.namesMap,
+          anonymous: conn.state.settings.anonymous,
           phase: conn.state.phase,
-          autoSort: conn.state.autoSort,
+          autoSort: conn.state.settings.autoSort,
           // Classic boards send no list, so their archives look as they always have.
           columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns
         },
@@ -841,7 +835,7 @@
       label,
       anonymous: true,
       phase: 'brainstorm',
-      autoSort: conn.state.autoSort,
+      autoSort: conn.state.settings.autoSort,
       // The next retro keeps this board's columns.
       columns: conn.state.columns,
       cards: { [ACTIONS_COLUMN_KEY]: actions },
@@ -903,8 +897,7 @@
       presence={presenceDisambiguated}
       currentClientId={conn.state.currentClientId}
       userName={userName || 'Guest'}
-      anonymous={conn.state.anonymous}
-      autoSort={conn.state.autoSort}
+      settings={conn.state.settings}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -915,8 +908,7 @@
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
       onChangeLabel={changeLabel}
-      onToggleAnonymous={toggleAnonymous}
-      onToggleAutoSort={toggleAutoSort}
+      onToggleSetting={toggleSetting}
     />
 
     <div
@@ -1118,7 +1110,7 @@
             isLead={effectiveLead}
             readOnly={ended}
             {canVote}
-            anonymous={conn.state.anonymous}
+            anonymous={conn.state.settings.anonymous}
             namesMap={namesMapDisambiguated}
             {mergeMode}
             {canReorder}

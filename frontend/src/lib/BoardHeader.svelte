@@ -2,6 +2,7 @@
   import { formatMMSS } from './timer';
   import type { PresenceUser, TimerState } from './types';
   import type { ThemePref } from './storage';
+  import type { BoardSettingKey, BoardSettings } from './settings';
   import LeadControls from './LeadControls.svelte';
   import PresenceList from './PresenceList.svelte';
   import NameBadge from './NameBadge.svelte';
@@ -25,8 +26,7 @@
     presence,
     currentClientId,
     userName,
-    anonymous,
-    autoSort,
+    settings,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -37,8 +37,7 @@
     onCycleTheme,
     onChangeName,
     onChangeLabel,
-    onToggleAnonymous,
-    onToggleAutoSort
+    onToggleSetting
   } = $props<{
     isLead: boolean;
     connected: boolean;
@@ -55,8 +54,7 @@
     presence: PresenceUser[];
     currentClientId: number;
     userName: string;
-    anonymous: boolean;
-    autoSort: boolean;
+    settings: BoardSettings;
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -67,9 +65,10 @@
     onCycleTheme: () => void;
     onChangeName: (newName: string) => void;
     onChangeLabel: (next: string) => void;
-    onToggleAnonymous: () => void;
-    onToggleAutoSort: () => void;
+    onToggleSetting: (key: BoardSettingKey) => void;
   }>();
+
+  const anonymous = $derived(settings.anonymous);
 
   let showMobileMenu = $state(false);
   let linkCopied = $state(false);
@@ -206,8 +205,7 @@
             {remainingSec}
             {timerRunning}
             {timerExpired}
-            {anonymous}
-            {autoSort}
+            {settings}
             onSet={onSetTimer}
             onStart={onStartTimer}
             onPause={onPauseTimer}
@@ -215,8 +213,7 @@
             {onExportCSV}
             {onExportJSON}
             onEnd={onEndBoard}
-            {onToggleAnonymous}
-            {onToggleAutoSort}
+            {onToggleSetting}
           />
         {/if}
 
@@ -252,8 +249,7 @@
           {remainingSec}
           {timerRunning}
           {timerExpired}
-          {anonymous}
-          {autoSort}
+          {settings}
           onSet={onSetTimer}
           onStart={onStartTimer}
           onPause={onPauseTimer}
@@ -261,8 +257,7 @@
           {onExportCSV}
           {onExportJSON}
           onEnd={onEndBoard}
-          {onToggleAnonymous}
-          {onToggleAutoSort}
+          {onToggleSetting}
           mobile
         />
       {/if}

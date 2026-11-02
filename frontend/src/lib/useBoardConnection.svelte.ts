@@ -2,8 +2,6 @@ import {
   createBoard,
   readAllCards,
   readBoardLabel,
-  readBoardAnonymous,
-  readBoardAutoSort,
   readBoardEndedAt,
   readBoardEndedMessage,
   readBoardImported,
@@ -17,6 +15,7 @@ import { updateAwarenessUser } from './awareness';
 import { readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
+import { BOARD_SETTING_DEFAULTS, readBoardSettings, sameSettings, type BoardSettings } from './settings';
 
 export interface UseBoardConnectionInit {
   userId: string;
@@ -44,8 +43,7 @@ export interface UseBoardConnectionState {
   presence: PresenceUser[];
   phase: Phase;
   label: string;
-  anonymous: boolean;
-  autoSort: boolean;
+  settings: BoardSettings;
   endedAt: number | null;
   // True only if the retro ended while this client was connected and synced,
   // as opposed to the board already being ended when it loaded. Drives the
@@ -79,8 +77,7 @@ export function useBoardConnection() {
     presence: [],
     phase: 'brainstorm',
     label: '',
-    anonymous: false,
-    autoSort: true,
+    settings: { ...BOARD_SETTING_DEFAULTS },
     endedAt: null,
     endedLive: false,
     endedMessage: '',
@@ -111,8 +108,8 @@ export function useBoardConnection() {
       const columns = readColumns(meta);
       if (!sameColumns(columns, state.columns)) state.columns = columns;
       state.label = readBoardLabel(meta);
-      state.anonymous = readBoardAnonymous(meta);
-      state.autoSort = readBoardAutoSort(meta);
+      const settings = readBoardSettings(meta);
+      if (!sameSettings(settings, state.settings)) state.settings = settings;
       const endedAt = readBoardEndedAt(meta);
       // Observers run synchronously while an update is applied, and y-websocket
       // only flips `synced` after the initial state has been applied, so an

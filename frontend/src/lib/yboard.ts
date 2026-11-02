@@ -3,6 +3,7 @@ import { WebsocketProvider } from 'y-websocket';
 import type { CardData } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
 import { DEFAULT_COLUMNS, readColumns, sameColumns } from './columns';
+import { readBoardSetting, setBoardSetting } from './settings';
 import { newId } from './identity';
 import { setPhase } from './phase';
 import { boardFileColumns, type BoardFile } from './boardfile';
@@ -124,26 +125,9 @@ export function setBoardLabel(meta: Y.Map<unknown>, label: string): void {
   }
 }
 
-export function readBoardAnonymous(meta: Y.Map<unknown>): boolean {
-  return meta.get('anonymous') === true;
-}
-
-export function setBoardAnonymous(meta: Y.Map<unknown>, on: boolean): void {
-  if (on) meta.set('anonymous', true);
-  else meta.delete('anonymous');
-}
-
-// Auto-sort-by-votes defaults to on, so the stored flag only ever records the
-// off state (inverse of readBoardAnonymous/setBoardAnonymous, which default
-// to off and record the on state).
-export function readBoardAutoSort(meta: Y.Map<unknown>): boolean {
-  return meta.get('autoSort') !== false;
-}
-
-export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
-  if (on) meta.delete('autoSort');
-  else meta.set('autoSort', false);
-}
+// Shorthands for the settings registry (settings.ts).
+export const readBoardAnonymous = (meta: Y.Map<unknown>) => readBoardSetting(meta, 'anonymous');
+export const readBoardAutoSort = (meta: Y.Map<unknown>) => readBoardSetting(meta, 'autoSort');
 
 // Where an imported board came from, shown as a small note in the header.
 // The file is untrusted (it chooses which user IDs own cards and votes), so
@@ -518,8 +502,8 @@ export function seedBoard(
       if (cards.length) arr.push(cards);
     }
     setBoardLabel(meta, file.board.label);
-    setBoardAnonymous(meta, file.board.anonymous);
-    setBoardAutoSort(meta, file.board.autoSort);
+    setBoardSetting(meta, 'anonymous', file.board.anonymous);
+    setBoardSetting(meta, 'autoSort', file.board.autoSort);
     setPhase(phase, file.board.phase);
     if (origin.kind !== 'new') setBoardImported(meta, origin, now);
     if (!file.board.anonymous && file.names) {
