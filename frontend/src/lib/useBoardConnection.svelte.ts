@@ -12,7 +12,7 @@ import {
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
-import { readPhase, type Phase } from './phase';
+import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
 import { BOARD_SETTING_DEFAULTS, readBoardSettings, sameSettings, type BoardSettings } from './settings';
@@ -102,11 +102,14 @@ export function useBoardConnection() {
       state.namesMap = readNames(names);
     };
     const recomputePhase = () => {
-      state.phase = readPhase(phase);
+      state.phase = clampPhase(readPhase(phase), phasesFor(state.columns));
     };
     const recomputeMeta = () => {
       const columns = readColumns(meta);
-      if (!sameColumns(columns, state.columns)) state.columns = columns;
+      if (!sameColumns(columns, state.columns)) {
+        state.columns = columns;
+        recomputePhase();
+      }
       state.label = readBoardLabel(meta);
       const settings = readBoardSettings(meta);
       if (!sameSettings(settings, state.settings)) state.settings = settings;

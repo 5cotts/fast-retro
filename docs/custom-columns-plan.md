@@ -15,7 +15,7 @@ Competitors: EasyRetro has owner-editable columns and a "Hide cards" setting. Sp
 ## Decisions (Scott, 2026-11-02)
 
 - **D1:** no product limit on columns. A hidden safety ceiling of 50 input columns guards against junk in the (untrusted) doc.
-- **D2:** custom boards always include the Action items column.
+- **D2:** custom boards include the Action items column by default; the host can untick it, and the board then ends at Discuss (changed 2026-11-03, see the D2 row).
 - **D3–D9:** go with the recommendations in the table below (Scott said to start building with them; any can still change in review).
 
 
@@ -83,7 +83,7 @@ export const BOARD_TEMPLATES = [{ id: 'retro', name: 'Retro', columns: DEFAULT_C
 **Invariants:**
 
 - **Keys are stable IDs, not slugs of titles.** A future rename then never moves cards. Custom keys are `c-` plus 6 random characters (reuse `newId()`) and must match `/^[A-Za-z0-9_-]{1,32}$/`.
-- **The Action items column always exists, is last, and its key is** `actions`**.** "Is this the actions column" is `isActionsColumn`, the only place that knows this. This avoids a separate `kind` field and rules out states like "two actions columns". Carry-over, the Actions phase gate and the footer text all go through `isActionsColumn`.
+- **The Action items column is optional on custom boards. When it exists it is last, and its key is** `actions`**.** "Is this the actions column" is `isActionsColumn`, the only place that knows this. This avoids a separate `kind` field and rules out states like "two actions columns". Carry-over, the Actions phase gate and the footer text all go through `isActionsColumn`.
 - `sanitizeColumns` **cleans the list rather than rejecting it.**
   - Drop entries with bad keys or empty titles, and dedupe keys.
   - Trim titles to the max length, and assign a palette color by position if the color is missing or unknown.
@@ -218,7 +218,7 @@ None of PRs 1–5 should add a card field or rely on a fixed card shape outside 
 | \# | Question | Recommendation | Why |
 | --- | --- | --- | --- |
 | D1 | Max columns | **Decided: no product limit.** Hosts add as many as they want. | Scott's call: managing a wide board is the user's problem. The ≥5-column horizontal-scroll layout already handles any width. A hidden safety ceiling of 50 (`MAX_INPUT_COLUMNS`) stays in `sanitizeColumns` and the archive check, because `meta.columns` is untrusted and a client writing 100k columns would freeze everyone's tab. |
-| D2 | Can a custom board drop Action items? | **Decided: no, always included.** | It's empty until the Actions phase, so it costs a brainstorm board nothing. Dropping it means the phase list depends on the columns, which is a bigger change. The `isActionsColumn` helper keeps that possible later. |
+| D2 | Can a custom board drop Action items? | **Decided (revised 2026-11-03): yes, optional, on by default.** | First decided as "always included"; revised because a custom board should be the host's call. A board without it has no Actions phase (`phasesFor(columns)` ends at Discuss), a stored `actions` phase shows as Discuss, and Start next retro has nothing to carry. Classic retros keep it. |
 | D3 | Edit columns after creation? | **No in v1** (rename/add later) | The data model already supports rename, thanks to stable keys and an atomic list. The UI and the "what happens to cards in a deleted column" question are the real cost. |
 | D4 | Does hide-cards hide from the host too? | **Yes, with no peek** | The point is to avoid anchoring, and hosts often write cards too. Matches Spreo. EasyRetro's peek can come later. |
 | D5 | Hide cards again if the lead goes back to Brainstorm? | **Yes** (visibility depends only on phase) | No reveal state to store or sync. Going back is usually done to add late ideas privately. |

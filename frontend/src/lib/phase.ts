@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { isActionsColumn, type ColumnDef } from './columns';
+import { hasActionsColumn, isActionsColumn, type ColumnDef } from './columns';
 
 export const PHASES = ['brainstorm', 'group', 'vote', 'discuss', 'actions'] as const;
 export type Phase = typeof PHASES[number];
@@ -32,16 +32,28 @@ export function setPhase(phaseMap: Y.Map<unknown>, next: Phase): void {
   phaseMap.set('current', next);
 }
 
-export function nextPhase(current: Phase): Phase {
-  const idx = PHASES.indexOf(current);
-  if (idx < 0 || idx >= PHASES.length - 1) return current;
-  return PHASES[idx + 1];
+// The phases a board walks through. The Actions phase only exists to fill the
+// Action items column, so a board without that column ends at Discuss.
+export function phasesFor(columns: ColumnDef[]): readonly Phase[] {
+  return hasActionsColumn(columns) ? PHASES : PHASES.filter((p) => p !== 'actions');
 }
 
-export function prevPhase(current: Phase): Phase {
-  const idx = PHASES.indexOf(current);
+// A stored phase the board doesn't have (only 'actions', on a board without
+// Action items) shows as that board's last phase.
+export function clampPhase(phase: Phase, phases: readonly Phase[]): Phase {
+  return phases.includes(phase) ? phase : phases[phases.length - 1];
+}
+
+export function nextPhase(current: Phase, phases: readonly Phase[] = PHASES): Phase {
+  const idx = phases.indexOf(current);
+  if (idx < 0 || idx >= phases.length - 1) return current;
+  return phases[idx + 1];
+}
+
+export function prevPhase(current: Phase, phases: readonly Phase[] = PHASES): Phase {
+  const idx = phases.indexOf(current);
   if (idx <= 0) return current;
-  return PHASES[idx - 1];
+  return phases[idx - 1];
 }
 
 // Per-phase action gating. The phase strip is more than an indicator — it

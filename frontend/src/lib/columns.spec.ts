@@ -12,7 +12,7 @@ import {
   sanitizeColumns,
   type ColumnDef
 } from './columns';
-import { canAddCardInColumn } from './phase';
+import { PHASES, canAddCardInColumn, clampPhase, nextPhase, phasesFor, prevPhase } from './phase';
 
 const col = (key: string, title = key, color = 'emerald') => ({ key, title, color });
 
@@ -39,15 +39,14 @@ describe('sanitizeColumns', () => {
       null,
       col('d', 'D')
     ]);
-    expect(out?.map((c) => c.key)).toEqual(['a', 'd', ACTIONS_COLUMN_KEY]);
+    expect(out?.map((c) => c.key)).toEqual(['a', 'd']);
   });
 
-  it('forces the Action items column to the end, adding it when missing', () => {
+  it('moves the Action items column to the end, and leaves it out when missing', () => {
     const out = sanitizeColumns([col(ACTIONS_COLUMN_KEY, 'Next steps'), col('a', 'A')]);
     expect(out?.map((c) => c.key)).toEqual(['a', ACTIONS_COLUMN_KEY]);
     expect(out?.[1]).toEqual({ key: ACTIONS_COLUMN_KEY, title: 'Next steps', color: 'sky' });
-    const added = sanitizeColumns([col('a', 'A')]);
-    expect(added?.[1]).toEqual(DEFAULT_COLUMNS[2]);
+    expect(sanitizeColumns([col('a', 'A')])).toEqual([{ key: 'a', title: 'A', color: 'emerald' }]);
   });
 
   it('trims titles and caps their length', () => {
@@ -59,13 +58,14 @@ describe('sanitizeColumns', () => {
     const out = sanitizeColumns([
       { key: 'a', title: 'A' },
       { key: 'b', title: 'B', color: 'chartreuse' },
-      { key: 'c', title: 'C', color: 'rose' }
+      { key: 'c', title: 'C', color: 'rose' },
+      { key: ACTIONS_COLUMN_KEY, title: 'Action items', color: 'rose' }
     ]);
     expect(out?.map((c) => c.color)).toEqual(['emerald', 'amber', 'rose', 'sky']);
   });
 
   it('caps the number of input columns as a safety limit', () => {
-    const many = Array.from({ length: MAX_INPUT_COLUMNS + 10 }, (_, i) => col(`k${i}`, `T${i}`));
+    const many = [...Array.from({ length: MAX_INPUT_COLUMNS + 10 }, (_, i) => col(`k${i}`, `T${i}`)), col(ACTIONS_COLUMN_KEY, 'Action items')];
     const out = sanitizeColumns(many)!;
     expect(out.length).toBe(MAX_INPUT_COLUMNS + 1);
     expect(isActionsColumn(out[out.length - 1])).toBe(true);
@@ -95,6 +95,12 @@ describe('newCustomColumns', () => {
     expect(out[0].key).not.toBe(out[1].key);
   });
 
+  it('leaves out Action items when asked', () => {
+    const out = newCustomColumns(['One', 'Two'], { actionItems: false });
+    expect(out.map((c) => c.title)).toEqual(['One', 'Two']);
+    expect(out.some(isActionsColumn)).toBe(false);
+  });
+
   it('falls back to the defaults when every title is blank', () => {
     expect(newCustomColumns(['', '  '])).toEqual(DEFAULT_COLUMNS);
   });
@@ -112,5 +118,28 @@ describe('column helpers', () => {
   it('keeps the legacy empty hints and has a generic one for custom columns', () => {
     expect(columnEmptyHint(DEFAULT_COLUMNS[0])).toBe('Nothing here yet — what worked this sprint?');
     expect(columnEmptyHint({ key: 'c-1', title: 'Problem', color: 'violet' })).toBe('Nothing here yet — add the first idea.');
+  });
+});
+
+describe('phases', () => {
+  const noActions: ColumnDef[] = [{ key: 'c-1', title: 'Problem', color: 'violet' }];
+
+  it('ends at Discuss on a board without Action items', () => {
+    expect(phasesFor(DEFAULT_COLUMNS)).toEqual(PHASES);
+    expect(phasesFor(noActions)).toEqual(['brainstorm', 'group', 'vote', 'discuss']);
+  });
+
+  it('steps through only the board\'s phases', () => {
+    const phases = phasesFor(noActions);
+    expect(nextPhase('vote', phases)).toBe('discuss');
+    expect(nextPhase('discuss', phases)).toBe('discuss');
+    expect(nextPhase('discuss')).toBe('actions');
+    expect(prevPhase('discuss', phases)).toBe('vote');
+  });
+
+  it('shows a stored Actions phase as Discuss when the board has no Action items', () => {
+    expect(clampPhase('actions', phasesFor(noActions))).toBe('discuss');
+    expect(clampPhase('actions', phasesFor(DEFAULT_COLUMNS))).toBe('actions');
+    expect(clampPhase('vote', phasesFor(noActions))).toBe('vote');
   });
 });

@@ -1,6 +1,6 @@
 import type { CardData, CommentData } from './types';
 import { DEFAULT_COLUMNS, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
-import { PHASES, type Phase } from './phase';
+import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -331,6 +331,7 @@ export function parseBoardFile(text: string): ParseResult {
     if (clean) columns = clean;
     else warnings.push("The file's column list is invalid; using the standard retro columns.");
   }
+  phase = clampPhase(phase, phasesFor(columns));
 
   const rawCards = isRecord(raw.cards) ? raw.cards : {};
   const cards: Record<string, CardData[]> = Object.fromEntries(columns.map((c) => [c.key, []]));
