@@ -19,22 +19,16 @@
     setBoardAnonymous,
     setBoardAutoSort,
     setBoardEnded,
-    importBoard,
-    isBoardEmpty,
-    countCards
+    countCards,
+    type SeedSource
   } from './yboard';
   import { pickMotivationalMessage } from './motivation';
   import confetti from 'canvas-confetti';
   import {
     recordRecentBoard,
-    consumePendingLabel,
-    consumePendingAnonymous,
-    hasPendingImport,
-    consumePendingImport,
+    consumePendingSeed,
     setHostKey,
-    setPendingLabel,
-    setPendingAnonymous,
-    setPendingImport,
+    setPendingSeed,
     newSlug,
     slugifyLabel
   } from './boards';
@@ -51,6 +45,7 @@
   import { exportCSV } from './csv';
   import {
     exportBoardFile,
+    newBoardSeed,
     downloadBoardFile,
     downloadBlob,
     exportFileStem,
@@ -212,12 +207,12 @@
       // Returning users (already had a name persisted) are grandfathered out
       // of the first-run onboarding overlay — they already know the product.
       if (!getOnboarded()) setOnboarded();
-      conn.start({ userId, userName, isLead, slug });
+      startConnection();
     } else if (readOnly) {
       // An ended board can't be edited, so a name isn't needed to view or
       // export it. Skip the prompt (and onboarding) and connect as a guest.
       promptingName = false;
-      conn.start({ userId, userName: '', isLead, slug });
+      startConnection();
     }
     tickHandle = setInterval(() => {
       nowTick = Date.now();
@@ -406,7 +401,23 @@
     setName(t);
     promptingName = false;
     if (!getOnboarded()) showOnboarding = true;
-    conn.start({ userId, userName, isLead, slug });
+    startConnection();
+  }
+
+  // Only the host sets up a new board, from the seed its creator stashed
+  // (see setPendingSeed). Taken on the first sync, so a refresh before then
+  // doesn't lose it.
+  const seedSource: SeedSource = {
+    take: () => consumePendingSeed(slug),
+    onApplied: ({ file, origin }) => {
+      if (origin.kind === 'file') {
+        track({ name: 'board_import', params: { result: 'success', origin: 'file', cards: countCards(file.cards) } });
+      }
+    }
+  };
+
+  function startConnection() {
+    conn.start({ userId, userName, isLead, slug, seed: isLead ? seedSource : undefined });
   }
 
   function dismissOnboarding() {
@@ -446,71 +457,6 @@
     if (!slug) return;
     const labelSnapshot = conn.state.label;
     recordRecentBoard(slug, labelSnapshot ? { label: labelSnapshot } : { label: undefined });
-  });
-
-  // If the host arrived from the "Start a new retro" modal with a pre-chosen
-  // name, apply it once the Yjs doc is ready and the board is still unnamed.
-  // Guarded on isLead because only the host can write the meta map.
-  let pendingApplied = false;
-  $effect(() => {
-    if (pendingApplied) return;
-    if (!isLead || !conn.state.board) return;
-    if (conn.state.label) {
-      pendingApplied = true;
-      return;
-    }
-    const pending = consumePendingLabel(slug);
-    if (pending) {
-      setBoardLabel(conn.state.board.meta, pending);
-    }
-    pendingApplied = true;
-  });
-
-  // Newly created boards default to anonymous (the lead can still opt into
-  // names via the existing toggle). Applied the same way as the pending
-  // label above — once, host-only — so boards that were already open when
-  // this shipped keep their current behavior untouched.
-  let pendingAnonymousApplied = false;
-  $effect(() => {
-    if (pendingAnonymousApplied) return;
-    if (!isLead || !conn.state.board) return;
-    if (conn.state.anonymous) {
-      pendingAnonymousApplied = true;
-      return;
-    }
-    const pending = consumePendingAnonymous(slug);
-    if (pending) {
-      setBoardAnonymous(conn.state.board.meta, true);
-    }
-    pendingAnonymousApplied = true;
-  });
-
-  // A board created via "Import from file…" fills itself from the stashed
-  // file once the first sync lands, when the columns exist and we can tell the
-  // board is still empty. Host-only and run-once; the stash is cleared on use
-  // and a non-empty board is never imported into, so a refresh can't import
-  // twice. The file's anonymous flag wins over the new-board default above,
-  // because the import flow doesn't set a pending anonymous flag.
-  let pendingImportHandled = false;
-  $effect(() => {
-    if (pendingImportHandled) return;
-    if (!isLead || !conn.state.board) return;
-    pendingImportHandled = true;
-    if (!hasPendingImport(slug)) return;
-    const state = conn.state.board;
-    const apply = () => {
-      const pending = consumePendingImport(slug);
-      if (!pending || !isBoardEmpty(state.board)) return;
-      importBoard(state, pending.file, pending.origin);
-      if (pending.origin.kind === 'file') {
-        track({
-          name: 'board_import',
-          params: { result: 'success', origin: 'file', cards: countCards(pending.file.cards) }
-        });
-      }
-    };
-    if (state.provider.synced) apply();
-    else state.provider.once('sync', apply);
   });
 
   function formatImportDate(at: number): string {
@@ -910,12 +856,8 @@
       setHostKey(res.slug, res.hostKey);
       if (base) recordRecentBoard(res.slug, { label: base });
       const carried = carryActions ? actionCount : 0;
-      if (carried > 0 && setPendingImport(res.slug, carryOverFile(base), { kind: 'carryover', from: base })) {
-        // The import sets the label and anonymous flag itself.
-      } else {
-        setPendingAnonymous(res.slug);
-        if (base) setPendingLabel(res.slug, base);
-      }
+      const seeded = carried > 0 && setPendingSeed(res.slug, carryOverFile(base), { kind: 'carryover', from: base });
+      if (!seeded) setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true }), { kind: 'new' });
       track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);
     } catch {

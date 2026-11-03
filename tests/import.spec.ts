@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 
 /**
- * Export → import round trip (frontend/src/lib/boardfile.ts, importBoard in
+ * Export → import round trip (frontend/src/lib/boardfile.ts, seedBoard in
  * yboard.ts, "Import from file…" in NewRetroModal.svelte). A board exported
  * with Export → Save board file and imported in a fresh browser must look the same:
  * cards and order per column, votes, reactions, comments, author names,

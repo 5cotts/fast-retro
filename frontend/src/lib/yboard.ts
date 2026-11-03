@@ -23,7 +23,21 @@ export interface BoardState {
   slug: string;
 }
 
-export function createBoard(slug: string): BoardState {
+// A new board's first contents: a board file plus where it came from. Every
+// new board is set up this way (blank, imported or "next retro"), so there is
+// one setup path instead of one per feature.
+export interface PendingSeed {
+  file: BoardFile;
+  origin: SeedOrigin;
+}
+
+export interface SeedSource {
+  // Called once, after the first sync. Returns the seed to apply, if any.
+  take: () => PendingSeed | null;
+  onApplied?: (seed: PendingSeed) => void;
+}
+
+export function createBoard(slug: string, seed?: SeedSource): BoardState {
   const doc = new Y.Doc();
   const wsUrl = buildWsUrl();
   const base = wsUrl.replace(/\/ws$/, '');
@@ -59,17 +73,39 @@ export function createBoard(slug: string): BoardState {
   // pre-sync empty array can — and empirically does, roughly half the time —
   // beat an existing column full of cards, wiping it once the empty state
   // gets synced back and persisted.
+  //
+  // The seed goes in the same transaction and *before* the ensure loop, so a
+  // board's column list and its arrays always arrive together, and nothing
+  // ever creates a column array lazily (the same race, for any column).
   provider.once('sync', () => {
-    doc.transact(() => {
-      for (const col of readColumns(meta)) {
-        if (!board.has(col.key)) {
-          board.set(col.key, new Y.Array<Y.Map<unknown>>());
-        }
-      }
-    });
+    const pending = seed?.take() ?? null;
+    if (setUpAfterSync({ doc, board, meta, names, phase }, pending) && pending) seed?.onApplied?.(pending);
   });
 
   return { doc, provider, board, timer, names, phase, meta, slug };
+}
+
+// Runs once per client after the first sync: applies the seed (only to a
+// board that's still empty and has no column list), then makes sure every
+// column has its array. Returns whether the seed was applied.
+export function setUpAfterSync(
+  state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'names' | 'phase'>,
+  pending: PendingSeed | null
+): boolean {
+  const { doc, board, meta } = state;
+  let applied = false;
+  doc.transact(() => {
+    if (pending && isBoardEmpty(board) && !meta.has('columns')) {
+      seedBoard(state, pending.file, pending.origin);
+      applied = true;
+    }
+    for (const col of readColumns(meta)) {
+      if (!board.has(col.key)) {
+        board.set(col.key, new Y.Array<Y.Map<unknown>>());
+      }
+    }
+  });
+  return applied;
 }
 
 const MAX_LABEL_LEN = 60;
@@ -111,8 +147,10 @@ export function setBoardAutoSort(meta: Y.Map<unknown>, on: boolean): void {
 
 // Where an imported board came from, shown as a small note in the header.
 // The file is untrusted (it chooses which user IDs own cards and votes), so
-// imported boards say so. Set once by importBoard; never exported.
+// imported boards say so. Set once by seedBoard; never exported.
 export type ImportOrigin = { kind: 'file' } | { kind: 'carryover'; from: string };
+// A blank new board is seeded too, but isn't "imported".
+export type SeedOrigin = ImportOrigin | { kind: 'new' };
 
 export interface ImportedInfo {
   origin: ImportOrigin;
@@ -447,15 +485,15 @@ export function isBoardEmpty(board: Y.Map<Y.Array<Y.Map<unknown>>>): boolean {
   return empty;
 }
 
-// Writes an imported board file into a (normally empty, already-synced) board
-// in one transaction, so peers and the server get it as a single update.
+// Writes a board file into a (normally empty, already-synced) board in one
+// transaction, so peers and the server get it as a single update.
 // Card and comment IDs are regenerated: importing the same file twice must not
 // produce duplicate IDs, which mergeCards/moveCard lookups assume are unique.
 // User IDs are kept so a returning participant still owns their cards and votes.
-export function importBoard(
+export function seedBoard(
   state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'names' | 'phase'>,
   file: BoardFile,
-  origin: ImportOrigin = { kind: 'file' },
+  origin: SeedOrigin = { kind: 'file' },
   now = Date.now()
 ): void {
   const { doc, board, meta, names, phase } = state;
@@ -479,7 +517,7 @@ export function importBoard(
     setBoardAnonymous(meta, file.board.anonymous);
     setBoardAutoSort(meta, file.board.autoSort);
     setPhase(phase, file.board.phase);
-    setBoardImported(meta, origin, now);
+    if (origin.kind !== 'new') setBoardImported(meta, origin, now);
     if (!file.board.anonymous && file.names) {
       for (const [id, name] of Object.entries(file.names)) {
         if (!names.has(id)) names.set(id, name);

@@ -6,13 +6,12 @@
     newSlug,
     readRecentBoards,
     recordRecentBoard,
-    setPendingLabel,
-    setPendingImport,
+    setPendingSeed,
     type RecentBoard
   } from '$lib/boards';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
-  import type { BoardFile } from '$lib/boardfile';
+  import { newBoardSeed, type BoardFile } from '$lib/boardfile';
 
   interface LiveBoard {
     slug: string;
@@ -124,8 +123,8 @@
   }) {
     showNewModal = false;
     if (label) recordRecentBoard(slug, { label });
-    if (importFile) setPendingImport(slug, importFile);
-    else if (label) setPendingLabel(slug, label);
+    if (importFile) setPendingSeed(slug, importFile, { kind: 'file' });
+    else setPendingSeed(slug, newBoardSeed({ label, anonymous: false }), { kind: 'new' });
     goto(`/lead/${token}/${slug}`);
   }
 
