@@ -210,7 +210,11 @@ host doesn't. Options change from the dialog, Cancel changes nothing, and
 the export has the edited columns. Also: turning Action items off in the
 Actions phase lands the board in Discuss (and back on gives an empty
 column); Save stays disabled with no named column; non-hosts and ended
-boards have no Edit button; the `board_edit` analytics counts.
+boards have no Edit button; the `board_edit` analytics counts. Another
+test covers inline rename: the host clicks a column title, Enter or
+clicking away saves and the guest sees it live, Escape cancels, a blank
+title keeps the old one, Action items can be renamed, and participants and
+ended boards get a plain heading.
 
 The frozen board files live in `frontend/src/lib/fixtures/`
 (`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`

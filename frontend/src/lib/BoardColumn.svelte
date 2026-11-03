@@ -1,6 +1,7 @@
 <script lang="ts">
   import Card from './Card.svelte';
   import HiddenCard from './HiddenCard.svelte';
+  import ColumnTitle from './ColumnTitle.svelte';
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
@@ -52,6 +53,8 @@
     onSlotDragOver: (e: DragEvent, index: number) => void;
     onColumnDragOver: (e: DragEvent) => void;
     onColumnDrop: (e: DragEvent) => void;
+    // Host only: rename this column in place.
+    onRename?: (title: string) => void;
   }
 
   let {
@@ -92,7 +95,8 @@
     onMergeDrop,
     onSlotDragOver,
     onColumnDragOver,
-    onColumnDrop
+    onColumnDrop,
+    onRename
   }: Props = $props();
 
   let draft = $state('');
@@ -123,9 +127,9 @@
   ondrop={onColumnDrop}
 >
   <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}">
-    <div class="flex items-center gap-2">
-      <span class="w-1.5 h-5 rounded-full {style.dot}" aria-hidden="true"></span>
-      <h2 class="font-semibold tracking-tight text-slate-800 dark:text-slate-100">{column.title}</h2>
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <span class="w-1.5 h-5 rounded-full shrink-0 {style.dot}" aria-hidden="true"></span>
+      <ColumnTitle title={column.title} canEdit={isLead && !readOnly && !!onRename} onRename={(t) => onRename?.(t)} />
     </div>
     <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cards.length}</span>
   </header>
