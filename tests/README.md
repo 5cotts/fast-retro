@@ -185,6 +185,15 @@ bar ends at Discuss, the export has no `actions` column and re-imports
 that way, ending offers no action items to bring, and Start next retro
 keeps the columns.
 
+`brainstorm-scenario.spec.ts` — the problem-solving brainstorm that
+prompted custom columns, end to end with a host and two participants (no
+lead token): five problem-statement columns, no Action items, hidden
+cards; a 10-minute timer everyone sees; private ideas shown to others only
+as placeholders; Group reveals them; the host merges a duplicate; voting;
+Discuss is the last phase, sorts by votes and takes comments; ending and
+exporting keep the columns. `docs/qa-brainstorm-scenario.md` is the same
+scenario as a manual script.
+
 `hide-cards.spec.ts` — Hide others' cards while brainstorming (two
 browsers, no lead token). Set in Start a new retro; others' cards are
 placeholders with no text in the page; Group reveals them live; going back
