@@ -201,6 +201,17 @@ to Brainstorm hides them again; turning the setting off reveals at once;
 an ended board shows everything. A second test imports a file with the
 setting on and checks that action items are never hidden.
 
+`edit-board.spec.ts` — Edit board (two browsers, no lead token). The host
+renames, reorders and adds columns mid-Brainstorm in one save; the guest
+sees the new columns live, cards stay with their column, and the guest can
+add to the new one. Removing a column with cards warns with the count and
+deletes them; the guest gets a "host changed the columns" notice and the
+host doesn't. Options change from the dialog, Cancel changes nothing, and
+the export has the edited columns. Also: turning Action items off in the
+Actions phase lands the board in Discuss (and back on gives an empty
+column); Save stays disabled with no named column; non-hosts and ended
+boards have no Edit button; the `board_edit` analytics counts.
+
 The frozen board files live in `frontend/src/lib/fixtures/`
 (`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`
 for custom columns) and are checked by the unit tests
