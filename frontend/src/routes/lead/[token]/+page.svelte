@@ -282,7 +282,6 @@
       onClose={() => (showNewModal = false)}
       onConfirm={onNewConfirm}
       hostMode={true}
-      anonymousByDefault={false}
     />
   {/if}
 {:else if !ok}
