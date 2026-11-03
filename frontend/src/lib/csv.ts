@@ -1,5 +1,5 @@
-import type { CardData, ColumnKey } from './types';
-import { COLUMNS } from './types';
+import type { CardData } from './types';
+import { DEFAULT_COLUMNS, type ColumnDef } from './columns';
 
 // Neutralize CSV/formula injection: a cell starting with =, +, -, @, tab, or
 // CR is interpreted as a formula by Excel/Sheets when the file is opened.
@@ -13,10 +13,13 @@ export function csvCell(v: string): string {
   return safe;
 }
 
-export function exportCSV(boardSnapshot: Record<ColumnKey, CardData[]>): string {
+export function exportCSV(
+  boardSnapshot: Record<string, CardData[]>,
+  columns: ColumnDef[] = DEFAULT_COLUMNS
+): string {
   const rows: string[][] = [['column', 'card_text', 'votes', 'reactions', 'comments']];
-  for (const col of COLUMNS) {
-    for (const card of boardSnapshot[col.key]) {
+  for (const col of columns) {
+    for (const card of boardSnapshot[col.key] ?? []) {
       const reactionStr = Object.entries(card.reactions)
         .filter(([, users]) => users.length > 0)
         .map(([emoji, users]) => `${emoji}:${users.length}`)

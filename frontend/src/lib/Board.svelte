@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import Card from './Card.svelte';
+  import BoardColumn from './BoardColumn.svelte';
   import BoardHeader from './BoardHeader.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import NamePrompt from './NamePrompt.svelte';
@@ -20,7 +20,8 @@
     setBoardAutoSort,
     setBoardEnded,
     importBoard,
-    isBoardEmpty
+    isBoardEmpty,
+    countCards
   } from './yboard';
   import { pickMotivationalMessage } from './motivation';
   import confetti from 'canvas-confetti';
@@ -61,10 +62,8 @@
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
-  import { COLUMNS, COLUMN_EMPTY_HINT, COLUMN_PLACEHOLDER, type CardData, type ColumnKey } from './types';
-  import { fly } from 'svelte/transition';
-  import { flip } from 'svelte/animate';
-  import { cubicOut } from 'svelte/easing';
+  import type { CardData } from './types';
+  import { ACTIONS_COLUMN_KEY } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History } from 'lucide-svelte';
   import {
@@ -121,8 +120,8 @@
 
   let timerInputMin = $state<string>('5');
   let dragCardId = $state<string | null>(null);
-  let dragFromCol = $state<ColumnKey | null>(null);
-  let dragOverCol = $state<ColumnKey | null>(null);
+  let dragFromCol = $state<string | null>(null);
+  let dragOverCol = $state<string | null>(null);
   let dragOverIndex = $state<number>(-1);
   let dragMergeTargetId = $state<string | null>(null);
   let coarsePointer = $state<boolean>(false);
@@ -187,12 +186,6 @@
       }
     }
     return map;
-  });
-
-  let drafts = $state<Record<ColumnKey, string>>({
-    wentWell: '',
-    toImprove: '',
-    actions: ''
   });
 
   onMount(() => {
@@ -510,10 +503,9 @@
       if (!pending || !isBoardEmpty(state.board)) return;
       importBoard(state, pending.file, pending.origin);
       if (pending.origin.kind === 'file') {
-        const f = pending.file.cards;
         track({
           name: 'board_import',
-          params: { result: 'success', origin: 'file', cards: f.wentWell.length + f.toImprove.length + f.actions.length }
+          params: { result: 'success', origin: 'file', cards: countCards(pending.file.cards) }
         });
       }
     };
@@ -530,52 +522,46 @@
     updateAwarenessUser(conn.state.board.provider, { typing: target });
   }
 
-  function submitNew(col: ColumnKey) {
-    const text = drafts[col].trim();
-    if (!text || !conn.state.board) return;
+  function cardsIn(col: string): CardData[] {
+    return conn.state.cards[col] ?? [];
+  }
+
+  function handleAddCard(col: string, text: string) {
+    if (!conn.state.board) return;
     addCard(conn.state.board.board, col, text, userId);
-    drafts[col] = '';
-    setTyping(null);
   }
 
-  function onNewKey(e: KeyboardEvent, col: ColumnKey) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submitNew(col);
-    }
-  }
-
-  function handleEdit(col: ColumnKey, cardId: string, text: string) {
+  function handleEdit(col: string, cardId: string, text: string) {
     if (!conn.state.board) return;
     editCardText(conn.state.board.board, col, cardId, text);
   }
 
-  function handleDelete(col: ColumnKey, cardId: string) {
+  function handleDelete(col: string, cardId: string) {
     if (!conn.state.board) return;
     deleteCard(conn.state.board.board, col, cardId);
   }
 
-  function handleVote(col: ColumnKey, cardId: string) {
+  function handleVote(col: string, cardId: string) {
     if (!conn.state.board) return;
     toggleVote(conn.state.board.board, col, cardId, userId);
   }
 
-  function handleReact(col: ColumnKey, cardId: string, emoji: string) {
+  function handleReact(col: string, cardId: string, emoji: string) {
     if (!conn.state.board) return;
     toggleReaction(conn.state.board.board, col, cardId, emoji, userId);
   }
 
-  function handleAddComment(col: ColumnKey, cardId: string, text: string) {
+  function handleAddComment(col: string, cardId: string, text: string) {
     if (!conn.state.board) return;
     addComment(conn.state.board.board, col, cardId, text, userId);
   }
 
-  function handleDeleteComment(col: ColumnKey, cardId: string, commentId: string) {
+  function handleDeleteComment(col: string, cardId: string, commentId: string) {
     if (!conn.state.board) return;
     deleteComment(conn.state.board.board, col, cardId, commentId);
   }
 
-  function onDragStart(e: DragEvent, cardId: string, fromCol: ColumnKey) {
+  function onDragStart(e: DragEvent, cardId: string, fromCol: string) {
     dragCardId = cardId;
     dragFromCol = fromCol;
     if (e.dataTransfer) {
@@ -607,7 +593,7 @@
     if (dragMergeTargetId === cardId) dragMergeTargetId = null;
   }
 
-  function onCardMergeDrop(targetCol: ColumnKey, targetId: string) {
+  function onCardMergeDrop(targetCol: string, targetId: string) {
     if (!conn.state.board || !dragCardId || !dragFromCol) {
       onDragEnd();
       return;
@@ -627,7 +613,7 @@
     onDragEnd();
   }
 
-  function onCardSlotDragOver(e: DragEvent, col: ColumnKey, index: number) {
+  function onCardSlotDragOver(e: DragEvent, col: string, index: number) {
     if (!dragCardId || !canReorder) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -635,23 +621,23 @@
     dragOverIndex = index;
   }
 
-  function onColumnDragOver(e: DragEvent, col: ColumnKey) {
+  function onColumnDragOver(e: DragEvent, col: string) {
     if (!dragCardId || !canReorder) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     if (dragOverCol !== col) {
       dragOverCol = col;
-      dragOverIndex = conn.state.cards[col].length;
+      dragOverIndex = cardsIn(col).length;
     }
   }
 
-  function onColumnDrop(e: DragEvent, col: ColumnKey) {
+  function onColumnDrop(e: DragEvent, col: string) {
     e.preventDefault();
     if (!conn.state.board || !dragCardId || !dragFromCol || !canReorder) {
       onDragEnd();
       return;
     }
-    const toIndex = dragOverIndex < 0 ? conn.state.cards[col].length : dragOverIndex;
+    const toIndex = dragOverIndex < 0 ? cardsIn(col).length : dragOverIndex;
     moveCard(
       conn.state.board.doc,
       conn.state.board.board,
@@ -665,19 +651,20 @@
 
   // Keyboard-driven card move: shift+arrow on a focused card moves it
   // within or between columns. Mirrors drag-and-drop without the mouse.
-  function findCard(cardId: string): { col: ColumnKey; index: number } | null {
-    for (const col of COLUMNS) {
-      const idx = conn.state.cards[col.key].findIndex((c: CardData) => c.id === cardId);
+  function findCard(cardId: string): { col: string; index: number } | null {
+    for (const col of conn.state.columns) {
+      const idx = cardsIn(col.key).findIndex((c: CardData) => c.id === cardId);
       if (idx >= 0) return { col: col.key, index: idx };
     }
     return null;
   }
 
-  function neighborColumn(col: ColumnKey, direction: -1 | 1): ColumnKey | null {
-    const i = COLUMNS.findIndex((c) => c.key === col);
+  function neighborColumn(col: string, direction: -1 | 1): string | null {
+    const columns = conn.state.columns;
+    const i = columns.findIndex((c) => c.key === col);
     const j = i + direction;
-    if (j < 0 || j >= COLUMNS.length) return null;
-    return COLUMNS[j].key;
+    if (i < 0 || j < 0 || j >= columns.length) return null;
+    return columns[j].key;
   }
 
   function moveFocused(direction: 'up' | 'down' | 'left' | 'right') {
@@ -687,7 +674,7 @@
     const { col, index } = loc;
     if (direction === 'up' || direction === 'down') {
       const delta = direction === 'up' ? -1 : 1;
-      const newIdx = Math.max(0, Math.min(conn.state.cards[col].length - 1, index + delta));
+      const newIdx = Math.max(0, Math.min(cardsIn(col).length - 1, index + delta));
       if (newIdx === index) return;
       // moveCard treats target index relative to current sequence; when
       // moving within a column, pass the target slot index.
@@ -702,7 +689,7 @@
         col,
         focusedCardId,
         target,
-        conn.state.cards[target].length
+        cardsIn(target).length
       );
     }
   }
@@ -806,7 +793,7 @@
   function downloadCSV(source: 'board' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'csv', source } });
     // The BOM makes Excel read the file as UTF-8 so emoji reactions survive.
-    const csv = '\uFEFF' + exportCSV(conn.state.cards);
+    const csv = '\uFEFF' + exportCSV(conn.state.cards, conn.state.columns);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     downloadBlob(blob, `${exportFileStem(conn.state.label)}.csv`);
   }
@@ -825,11 +812,7 @@
     );
   }
 
-  const cardCount = $derived(
-    conn.state.cards.wentWell.length +
-      conn.state.cards.toImprove.length +
-      conn.state.cards.actions.length
-  );
+  const cardCount = $derived(conn.state.columns.reduce((n, col) => n + cardsIn(col.key).length, 0));
 
   function startEndBoard() {
     if (!isLead) return;
@@ -896,10 +879,10 @@
   // the host unticks it, this retro's action items so the team can review
   // them. They arrive through the import handoff as fresh cards (no votes or
   // reactions; comments kept) on a new anonymous board, same as before.
-  const actionCount = $derived(conn.state.cards.actions.length);
+  const actionCount = $derived(cardsIn(ACTIONS_COLUMN_KEY).length);
 
   function carryOverFile(label: string) {
-    const actions = conn.state.cards.actions.slice(0, MAX_IMPORT_CARDS).map((card) => ({
+    const actions = cardsIn(ACTIONS_COLUMN_KEY).slice(0, MAX_IMPORT_CARDS).map((card) => ({
       ...card,
       votes: [],
       reactions: {},
@@ -910,7 +893,7 @@
       anonymous: true,
       phase: 'brainstorm',
       autoSort: conn.state.autoSort,
-      cards: { wentWell: [], toImprove: [], actions },
+      cards: { [ACTIONS_COLUMN_KEY]: actions },
       namesMap: {}
     });
   }
@@ -1168,131 +1151,47 @@
 
     <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-        {#each COLUMNS as col (col.key)}
-          {@const typingNew = typingByCard.get(`new-${col.key}`) ?? []}
-          {@const colCards = sortActive ? sortedByVotes(conn.state.cards[col.key]) : conn.state.cards[col.key]}
-          {@const canAdd = canAddCardInColumn(col.key, conn.state.phase) && !ended}
-          <section
-            class="border rounded-xl shadow-sm flex flex-col {col.accent}"
-            role="list"
-            aria-label={col.title}
-            ondragover={(e) => onColumnDragOver(e, col.key)}
-            ondrop={(e) => onColumnDrop(e, col.key)}
-          >
-            <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {col.header}">
-              <div class="flex items-center gap-2">
-                <span class="w-1.5 h-5 rounded-full {col.dot}" aria-hidden="true"></span>
-                <h2 class="font-semibold tracking-tight text-slate-800 dark:text-slate-100">{col.title}</h2>
-              </div>
-              <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{colCards.length}</span>
-            </header>
-            <div class="p-3 flex-1 space-y-2 min-h-[96px]">
-              {#if colCards.length === 0}
-                <div class="text-xs text-slate-400 dark:text-slate-500 italic px-1 py-2 select-none">
-                  {COLUMN_EMPTY_HINT[col.key]}
-                </div>
-              {/if}
-              {#each colCards as card, i (card.id)}
-                {@const typers = typingByCard.get(card.id) ?? []}
-                <div
-                  class="relative"
-                  role="listitem"
-                  ondragover={(e) => onCardSlotDragOver(e, col.key, i)}
-                  in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
-                  animate:flip={{ duration: reducedMotion ? 0 : 500, easing: cubicOut }}
-                >
-                  {#if dragOverCol === col.key && dragOverIndex === i && dragCardId !== card.id}
-                    <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
-                  {/if}
-                  <Card
-                    {card}
-                    column={col.key}
-                    {userId}
-                    {userName}
-                    isLead={effectiveLead}
-                    readOnly={ended}
-                    {canVote}
-                    anonymous={conn.state.anonymous}
-                    namesMap={namesMapDisambiguated}
-                    mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
-                    isMergeTarget={dragMergeTargetId === card.id}
-                    {canReorder}
-                    onEdit={(id, text) => handleEdit(col.key, id, text)}
-                    onDelete={(id) => handleDelete(col.key, id)}
-                    onToggleVote={(id) => handleVote(col.key, id)}
-                    onToggleReaction={(id, e) => handleReact(col.key, id, e)}
-                    onAddComment={(id, t) => handleAddComment(col.key, id, t)}
-                    onDeleteComment={(id, cid) => handleDeleteComment(col.key, id, cid)}
-                    onTypingComment={(target) => setTyping(target)}
-                    onKeydown={(e) => onCardKeydown(e, card.id)}
-                    onFocusCard={() => (focusedCardId = card.id)}
-                    {onDragStart}
-                    {onDragEnd}
-                    onMergeDragOver={() => onCardMergeDragOver(card.id)}
-                    onMergeDragLeave={() => onCardMergeDragLeave(card.id)}
-                    onMergeDrop={() => onCardMergeDrop(col.key, card.id)}
-                  />
-                  {#if typers.length > 0}
-                    <div
-                      class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
-                      aria-live="polite"
-                    >
-                      {typers.join(', ')} typing…
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-              {#if dragOverCol === col.key && dragOverIndex >= colCards.length}
-                <div class="h-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
-              {/if}
-            </div>
-            <footer class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl">
-              {#if canAdd}
-                <textarea
-                  bind:value={drafts[col.key]}
-                  onkeydown={(e) => onNewKey(e, col.key)}
-                  onfocus={() => setTyping(`new-${col.key}`)}
-                  onblur={() => setTyping(null)}
-                  placeholder={COLUMN_PLACEHOLDER[col.key]}
-                  rows="2"
-                  aria-label={`Add a card to ${col.title}`}
-                  class="input w-full resize-none px-2.5 py-2 text-sm leading-snug"
-                ></textarea>
-                {#if typingNew.length > 0}
-                  <div
-                    class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
-                    aria-live="polite"
-                  >
-                    {typingNew.join(', ')} typing…
-                  </div>
-                {/if}
-                <div class="mt-2 flex items-center gap-2">
-                  <button
-                    onclick={() => submitNew(col.key)}
-                    disabled={!drafts[col.key].trim()}
-                    class="flex-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm rounded-md py-2 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
-                  >
-                    Add card
-                  </button>
-                  {#if !coarsePointer}
-                    <kbd
-                      class="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-slate-500 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 tabular-nums"
-                      title="Enter to add, Shift+Enter for a new line"
-                    >↵</kbd>
-                  {/if}
-                </div>
-              {:else}
-                <div
-                  class="text-xs text-slate-500 dark:text-slate-400 italic px-1 py-2 text-center select-none"
-                  aria-label={`Adding cards to ${col.title} is closed in the ${PHASE_LABEL[conn.state.phase]} phase`}
-                >
-                  {col.key === 'actions'
-                    ? 'Action items open in the Actions phase.'
-                    : 'Card entry closed — Brainstorm phase only.'}
-                </div>
-              {/if}
-            </footer>
-          </section>
+        {#each conn.state.columns as col (col.key)}
+          {@const colCards = sortActive ? sortedByVotes(cardsIn(col.key)) : cardsIn(col.key)}
+          <BoardColumn
+            column={col}
+            cards={colCards}
+            canAdd={canAddCardInColumn(col, conn.state.phase) && !ended}
+            phase={conn.state.phase}
+            {userId}
+            {userName}
+            isLead={effectiveLead}
+            readOnly={ended}
+            {canVote}
+            anonymous={conn.state.anonymous}
+            namesMap={namesMapDisambiguated}
+            {mergeMode}
+            {canReorder}
+            {dragCardId}
+            {dragMergeTargetId}
+            dropIndex={dragOverCol === col.key ? dragOverIndex : -1}
+            {typingByCard}
+            {reducedMotion}
+            {coarsePointer}
+            onAddCard={(text) => handleAddCard(col.key, text)}
+            onTyping={setTyping}
+            onEdit={(id, text) => handleEdit(col.key, id, text)}
+            onDelete={(id) => handleDelete(col.key, id)}
+            onToggleVote={(id) => handleVote(col.key, id)}
+            onToggleReaction={(id, e) => handleReact(col.key, id, e)}
+            onAddComment={(id, t) => handleAddComment(col.key, id, t)}
+            onDeleteComment={(id, cid) => handleDeleteComment(col.key, id, cid)}
+            {onCardKeydown}
+            onFocusCard={(id) => (focusedCardId = id)}
+            {onDragStart}
+            {onDragEnd}
+            onMergeDragOver={onCardMergeDragOver}
+            onMergeDragLeave={onCardMergeDragLeave}
+            onMergeDrop={(id) => onCardMergeDrop(col.key, id)}
+            onSlotDragOver={(e, i) => onCardSlotDragOver(e, col.key, i)}
+            onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
+            onColumnDrop={(e) => onColumnDrop(e, col.key)}
+          />
         {/each}
       </div>
     </main>

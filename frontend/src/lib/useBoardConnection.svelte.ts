@@ -1,6 +1,6 @@
 import {
   createBoard,
-  readCards,
+  readAllCards,
   readBoardLabel,
   readBoardAnonymous,
   readBoardAutoSort,
@@ -14,7 +14,8 @@ import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
 import { updateAwarenessUser } from './awareness';
 import { readPhase, type Phase } from './phase';
-import type { CardData, ColumnKey, PresenceUser, TimerState } from './types';
+import type { CardData, PresenceUser, TimerState } from './types';
+import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
 
 export interface UseBoardConnectionInit {
   userId: string;
@@ -32,7 +33,10 @@ export interface UseBoardConnectionState {
   // board may look empty even if it isn't, so exports wait for this.
   synced: boolean;
   namesMap: Record<string, string>;
-  cards: Record<ColumnKey, CardData[]>;
+  // Every column array in the doc, keyed by column key. Look columns up with
+  // `cards[col.key] ?? []`: a column's array may not have synced yet.
+  cards: Record<string, CardData[]>;
+  columns: ColumnDef[];
   timerState: TimerState;
   presence: PresenceUser[];
   phase: Phase;
@@ -66,7 +70,8 @@ export function useBoardConnection() {
     connected: false,
     synced: false,
     namesMap: {},
-    cards: { wentWell: [], toImprove: [], actions: [] },
+    cards: {},
+    columns: DEFAULT_COLUMNS,
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
     presence: [],
     phase: 'brainstorm',
@@ -88,11 +93,7 @@ export function useBoardConnection() {
     state.currentClientId = doc.clientID;
 
     const recomputeCards = () => {
-      state.cards = {
-        wentWell: readCards(board, 'wentWell'),
-        toImprove: readCards(board, 'toImprove'),
-        actions: readCards(board, 'actions')
-      };
+      state.cards = readAllCards(board);
     };
     const recomputeTimer = () => {
       state.timerState = readTimer(timer);
@@ -104,6 +105,8 @@ export function useBoardConnection() {
       state.phase = readPhase(phase);
     };
     const recomputeMeta = () => {
+      const columns = readColumns(meta);
+      if (!sameColumns(columns, state.columns)) state.columns = columns;
       state.label = readBoardLabel(meta);
       state.anonymous = readBoardAnonymous(meta);
       state.autoSort = readBoardAutoSort(meta);

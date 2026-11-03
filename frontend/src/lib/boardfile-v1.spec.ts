@@ -5,7 +5,7 @@ import { BOARD_FILE_VERSION, exportBoardFile, parseBoardFile, serializeBoardFile
 import { importBoard, readBoardAnonymous, readBoardAutoSort, readBoardImported, readBoardLabel, readCards } from './yboard';
 import { readPhase } from './phase';
 import { readNames } from './identity';
-import type { CardData, ColumnKey } from './types';
+import type { CardData } from './types';
 
 // The frozen v1 file (fixtures/README.md). These tests compare against the
 // file on disk, not against today's exporter, so a change that alters export
@@ -52,7 +52,7 @@ describe('frozen v1 board file', () => {
     const file = parseV1();
     const state = freshDoc();
     importBoard(state, file, { kind: 'file' }, 1);
-    const cards = {} as Record<ColumnKey, CardData[]>;
+    const cards = {} as Record<string, CardData[]>;
     for (const col of ['wentWell', 'toImprove', 'actions'] as const) cards[col] = readCards(state.board, col);
     const again = exportBoardFile(
       {

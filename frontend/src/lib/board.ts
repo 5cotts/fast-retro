@@ -1,6 +1,7 @@
 // Re-export aggregator. The original board.ts grew unwieldy and has been
 // split into:
-//   - types.ts     : interfaces, COLUMNS, placeholders
+//   - types.ts     : interfaces
+//   - columns.ts   : column definitions, colors, hints
 //   - emojis.ts    : reaction emoji catalog + search
 //   - yboard.ts    : Yjs board/card primitives
 //   - timer.ts     : timer state machine + formatting
