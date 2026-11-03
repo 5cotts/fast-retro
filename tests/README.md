@@ -179,7 +179,20 @@ reload; the wide board scrolls sideways; merging works across columns;
 the JSON export (v2) and CSV keep the columns and re-import the same; the
 archive keeps them (archive viewer checked when `RETRO_LEAD_TOKEN` is
 set); Start next retro keeps them. A second test checks that a classic
-board still has the three retro columns and exports as v1.
+board still has the three retro columns and exports as v1. Another
+creates a custom board with the Action items column unticked: the phase
+bar ends at Discuss, the export has no `actions` column and re-imports
+that way, ending offers no action items to bring, and Start next retro
+keeps the columns.
+
+`brainstorm-scenario.spec.ts` — the problem-solving brainstorm that
+prompted custom columns, end to end with a host and two participants (no
+lead token): five problem-statement columns, no Action items, hidden
+cards; a 10-minute timer everyone sees; private ideas shown to others only
+as placeholders; Group reveals them; the host merges a duplicate; voting;
+Discuss is the last phase, sorts by votes and takes comments; ending and
+exporting keep the columns. `docs/qa-brainstorm-scenario.md` is the same
+scenario as a manual script.
 
 `hide-cards.spec.ts` — Hide others' cards while brainstorming (two
 browsers, no lead token). Set in Start a new retro; others' cards are

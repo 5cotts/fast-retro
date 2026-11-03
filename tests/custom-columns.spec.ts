@@ -269,7 +269,7 @@ test.describe('fast-retro custom columns', () => {
         await chooseColumns(dialog, 'Custom');
         await expect(create).toBeDisabled();
         await expect(dialog.getByRole('button', { name: 'Skip naming' })).toBeDisabled();
-        await expect(dialog.getByText('Action items (always included)')).toBeVisible();
+        await expect(dialog.getByRole('checkbox', { name: /^Action items column/ })).toBeChecked();
 
         const long = `How might we ${'really '.repeat(12)}make this long title wrap instead of cutting it off?`.slice(0, 100);
         const titles = [long, ...Array.from({ length: 9 }, (_, i) => `Problem ${i + 2}`)];
@@ -304,7 +304,72 @@ test.describe('fast-retro custom columns', () => {
         const events = await page.evaluate(() =>
           (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event')
         );
-        expect(events).toContainEqual(['event', 'board_create', { template: 'custom', columns: 10 }]);
+        expect(events).toContainEqual(['event', 'board_create', { template: 'custom', columns: 10, action_items: true }]);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    test('without an Action items column the board ends at Discuss', async ({ browser }) => {
+      test.setTimeout(90_000);
+      const { ctx, page } = await newPage(browser);
+      try {
+        await stubAnalytics(page);
+        const dialog = await openNewRetroDialog(page);
+        await chooseColumns(dialog, 'Custom');
+        await dialog.getByLabel('Column 1 name').fill('Problem A');
+        await dialog.getByRole('button', { name: 'Add column' }).click();
+        await page.keyboard.type('Problem B');
+        await dialog.getByRole('checkbox', { name: /^Action items column/ }).uncheck();
+        await dialog.getByLabel('Retro name').fill('No actions');
+        await dialog.getByRole('button', { name: 'Create retro' }).click();
+        await page.waitForURL(/\/board\/no-actions-/);
+        await joinIfAsked(page, 'Creator');
+
+        expect(await columnTitles(page)).toEqual(['Problem A', 'Problem B']);
+        const phases = page.getByRole('list', { name: 'Phases' }).getByRole('listitem');
+        await expect(phases).toHaveText([/Brainstorm/, /Group/, /Vote/, /Discuss/]);
+        await addCard(page, 'Problem B', 'an idea');
+
+        await advance(page, 'Group');
+        await advance(page, 'Vote');
+        await advance(page, 'Discuss');
+        await expect(page.getByRole('button', { name: /^Advance to/ })).toHaveCount(0);
+        await expect(page.getByRole('button', { name: 'Go back to Vote phase' })).toBeVisible();
+
+        // The file keeps the board without Action items, and imports that way.
+        const file = JSON.parse(await download(page, /^Save board file/));
+        expect(file.version).toBe(2);
+        expect(file.board.phase).toBe('discuss');
+        expect(file.board.columns.map((c: { key: string }) => c.key)).not.toContain('actions');
+
+        const events = await page.evaluate(() =>
+          (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event')
+        );
+        expect(events).toContainEqual(['event', 'board_create', { template: 'custom', columns: 2, action_items: false }]);
+
+        // Ending offers no action items to bring, and the next retro keeps the columns.
+        await page.getByRole('button', { name: 'End retro' }).click();
+        await page.getByRole('alertdialog').getByRole('button', { name: 'Archive & end' }).click();
+        await expect(page.getByText('This retro has ended')).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText(/^Bring \d+ action item/)).toHaveCount(0);
+        const boardUrl = page.url();
+        await page.getByRole('button', { name: 'Start next retro' }).click();
+        await page.waitForURL((u) => u.toString() !== boardUrl && /\/board\//.test(u.pathname));
+        await joinIfAsked(page, 'Creator');
+        expect(await columnTitles(page)).toEqual(['Problem A', 'Problem B']);
+        await expect(phases).toHaveCount(4);
+
+        const again = await newPage(browser);
+        try {
+          await importFile(again.page, 'no-actions.fastretro.json', JSON.stringify(file));
+          await joinIfAsked(again.page, 'Importer');
+          expect(await columnTitles(again.page)).toEqual(['Problem A', 'Problem B']);
+          await expect(card(again.page, 'Problem B', 'an idea')).toBeVisible();
+          await expect(again.page.locator('[role="listitem"][aria-current="step"]')).toHaveText(/Discuss/);
+        } finally {
+          await again.ctx.close();
+        }
       } finally {
         await ctx.close();
       }
@@ -324,7 +389,7 @@ test.describe('fast-retro custom columns', () => {
         const events = await page.evaluate(() =>
           (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event')
         );
-        expect(events).toContainEqual(['event', 'board_create', { template: 'retro', columns: 2 }]);
+        expect(events).toContainEqual(['event', 'board_create', { template: 'retro', columns: 2, action_items: true }]);
       } finally {
         await ctx.close();
       }

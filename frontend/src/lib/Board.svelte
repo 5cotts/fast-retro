@@ -58,11 +58,11 @@
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
   import type { CardData } from './types';
-  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, isWideBoard, sameColumns } from './columns';
+  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
-    PHASES,
+    phasesFor,
     PHASE_LABEL,
     PHASE_HINT,
     nextPhase,
@@ -698,18 +698,19 @@
 
   function advancePhase() {
     if (!conn.state.board || !isLead) return;
-    const next = nextPhase(conn.state.phase);
+    const next = nextPhase(conn.state.phase, phases);
     if (next !== conn.state.phase) setPhase(conn.state.board.phase, next);
   }
 
   function previousPhase() {
     if (!conn.state.board || !isLead) return;
-    const prev = prevPhase(conn.state.phase);
+    const prev = prevPhase(conn.state.phase, phases);
     if (prev !== conn.state.phase) setPhase(conn.state.board.phase, prev);
   }
 
-  const phaseIndex = $derived(PHASES.indexOf(conn.state.phase));
-  const isLastPhase = $derived(phaseIndex === PHASES.length - 1);
+  const phases = $derived(phasesFor(conn.state.columns));
+  const phaseIndex = $derived(phases.indexOf(conn.state.phase));
+  const isLastPhase = $derived(phaseIndex === phases.length - 1);
   const isFirstPhase = $derived(phaseIndex === 0);
   const canVote = $derived(canVoteInPhase(conn.state.phase));
   const mergeMode = $derived(effectiveLead && conn.state.phase === 'group');
@@ -825,7 +826,8 @@
   // the host unticks it, this retro's action items so the team can review
   // them. They arrive through the import handoff as fresh cards (no votes or
   // reactions; comments kept) on a new anonymous board, same as before.
-  const actionCount = $derived(cardsIn(ACTIONS_COLUMN_KEY).length);
+  // Boards without an Action items column have nothing to carry.
+  const actionCount = $derived(hasActionsColumn(conn.state.columns) ? cardsIn(ACTIONS_COLUMN_KEY).length : 0);
 
   function carryOverFile(label: string) {
     const actions = cardsIn(ACTIONS_COLUMN_KEY).slice(0, MAX_IMPORT_CARDS).map((card) => ({
@@ -922,7 +924,7 @@
       <div class="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 flex items-center gap-2 flex-wrap text-xs">
         <span class="text-slate-500 dark:text-slate-400 hidden sm:inline">Phase</span>
         <div class="flex items-center gap-1" role="list" aria-label="Phases">
-          {#each PHASES as p, i (p)}
+          {#each phases as p, i (p)}
             {@const active = p === conn.state.phase}
             {@const done = i < phaseIndex}
             <span
@@ -964,7 +966,7 @@
               <button
                 class="btn text-xs px-2.5 py-1 min-h-[32px]"
                 onclick={previousPhase}
-                aria-label={`Go back to ${PHASE_LABEL[PHASES[phaseIndex - 1]]} phase`}
+                aria-label={`Go back to ${PHASE_LABEL[phases[phaseIndex - 1]]} phase`}
               >
                 <ArrowLeft size={13} aria-hidden="true" />
                 <span class="hidden sm:inline">Previous</span>
@@ -974,7 +976,7 @@
               <button
                 class="btn text-xs px-2.5 py-1 min-h-[32px]"
                 onclick={advancePhase}
-                aria-label={`Advance to ${PHASE_LABEL[PHASES[phaseIndex + 1]]} phase`}
+                aria-label={`Advance to ${PHASE_LABEL[phases[phaseIndex + 1]]} phase`}
               >
                 Next phase
                 <ArrowRight size={13} aria-hidden="true" />

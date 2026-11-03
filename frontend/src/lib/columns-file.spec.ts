@@ -68,6 +68,16 @@ describe('board files with custom columns', () => {
     expect(file.cards['c-b']).toEqual([]);
   });
 
+  it('round-trips a board without Action items, landing an Actions phase on Discuss', () => {
+    const noActions = custom.slice(0, 2);
+    const file = exportBoardFile({ ...source(noActions), phase: 'actions' });
+    expect(file.board.columns).toEqual(noActions);
+    expect(file.cards.actions).toBeUndefined();
+    const r = parseBoardFile(serializeBoardFile(file));
+    expect(r.ok && boardFileColumns(r.file)).toEqual(noActions);
+    expect(r.ok && r.file.board.phase).toBe('discuss');
+  });
+
   it('builds a blank custom seed', () => {
     const seed = newBoardSeed({ label: 'B', anonymous: true, columns: custom });
     expect(boardFileColumns(seed)).toEqual(custom);

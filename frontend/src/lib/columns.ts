@@ -14,10 +14,12 @@ export interface ColumnDef {
   color: ColumnColor;
 }
 
-// The Action items column always exists, is always last and always has this
-// key. isActionsColumn is the one place that knows how to recognize it.
+// The Action items column is optional on custom boards (classic retros always
+// have it). When present it is always last and always has this key.
+// isActionsColumn is the one place that knows how to recognize it.
 export const ACTIONS_COLUMN_KEY = 'actions';
 export const isActionsColumn = (c: Pick<ColumnDef, 'key'>): boolean => c.key === ACTIONS_COLUMN_KEY;
+export const hasActionsColumn = (columns: ColumnDef[]): boolean => columns.some(isActionsColumn);
 
 export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'wentWell', title: 'What went well', color: 'emerald' },
@@ -104,7 +106,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 // Cleans an untrusted column list (from the shared doc or an imported file)
 // instead of rejecting it: rejecting the whole list would hide every card on
 // the board because of one bad entry. Returns null only when no input column
-// survives, so callers can fall back to DEFAULT_COLUMNS.
+// survives, so callers can fall back to DEFAULT_COLUMNS. A list without an
+// Action items entry stays without one: that board opted out of it.
 export function sanitizeColumns(raw: unknown): ColumnDef[] | null {
   if (!Array.isArray(raw)) return null;
   const seen = new Set<string>();
@@ -127,7 +130,7 @@ export function sanitizeColumns(raw: unknown): ColumnDef[] | null {
     inputs.push({ key, title: t, color: c });
   }
   if (inputs.length === 0) return null;
-  return [...inputs, actions ?? { ...ACTIONS_COLUMN }];
+  return actions ? [...inputs, actions] : inputs;
 }
 
 export function readColumns(meta: Y.Map<unknown>): ColumnDef[] {
@@ -136,13 +139,14 @@ export function readColumns(meta: Y.Map<unknown>): ColumnDef[] {
 
 // Fresh columns for a custom board. Keys are random and stable, never derived
 // from titles, so renaming a column later never moves its cards.
-export function newCustomColumns(titles: string[]): ColumnDef[] {
+export function newCustomColumns(titles: string[], opts: { actionItems?: boolean } = {}): ColumnDef[] {
   const inputs = titles
     .map((t) => t.trim().slice(0, MAX_COLUMN_TITLE_LEN))
     .filter(Boolean)
     .slice(0, MAX_INPUT_COLUMNS)
     .map((title, i) => ({ key: `c-${newId().slice(0, 8)}`, title, color: paletteColor(i) }));
-  return sanitizeColumns([...inputs, ACTIONS_COLUMN]) ?? DEFAULT_COLUMNS;
+  const tail = opts.actionItems === false ? [] : [ACTIONS_COLUMN];
+  return sanitizeColumns([...inputs, ...tail]) ?? DEFAULT_COLUMNS;
 }
 
 export function sameColumns(a: ColumnDef[], b: ColumnDef[]): boolean {

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { track } from './analytics';
-  import { FileUp, Lock, Plus, Sparkles, X } from 'lucide-svelte';
+  import { FileUp, Plus, Sparkles, X } from 'lucide-svelte';
   import { newSlug, slugifyLabel } from './boards';
   import {
     BOARD_FILE_EXTENSION,
@@ -12,7 +12,7 @@
     parseBoardFile,
     type ParseResult
   } from './boardfile';
-  import { BOARD_TEMPLATES, MAX_COLUMN_TITLE_LEN, MAX_INPUT_COLUMNS, newCustomColumns, type BoardTemplateId } from './columns';
+  import { BOARD_TEMPLATES, MAX_COLUMN_TITLE_LEN, MAX_INPUT_COLUMNS, isActionsColumn, newCustomColumns, type BoardTemplateId } from './columns';
   import type { PendingSeed } from './yboard';
 
   let {
@@ -40,6 +40,7 @@
 
   let template = $state<BoardTemplateId>('retro');
   let hideCards = $state(false);
+  let actionItems = $state(true);
   // Each row has a stable id so removing one doesn't shift focus or values.
   let columnRows = $state<{ id: number; title: string }[]>([{ id: 0, title: '' }]);
   let nextRowId = 1;
@@ -131,10 +132,14 @@
   const previewSlug = $derived(slugifyLabel(labelInput) || '— random —');
 
   function newSeed(label: string): PendingSeed {
-    const columns = template === 'custom' ? newCustomColumns(customTitles) : undefined;
+    const columns = template === 'custom' ? newCustomColumns(customTitles, { actionItems }) : undefined;
     track({
       name: 'board_create',
-      params: { template, columns: columns ? columns.length - 1 : 2 }
+      params: {
+        template,
+        columns: columns ? columns.filter((c) => !isActionsColumn(c)).length : 2,
+        action_items: columns ? columns.some(isActionsColumn) : true
+      }
     });
     return { file: newBoardSeed({ label, anonymous: true, hideCards, columns }), origin: { kind: 'new' } };
   }
@@ -286,9 +291,14 @@
                   </button>
                 </li>
               {/each}
-              <li class="flex items-center gap-1.5 px-2.5 py-2 text-sm rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400">
-                <Lock size={13} aria-hidden="true" />
-                Action items <span class="text-xs">(always included)</span>
+              <li>
+                <label class="flex items-start gap-2 px-2.5 py-2 text-sm rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+                  <input type="checkbox" bind:checked={actionItems} class="mt-0.5 rounded" />
+                  <span>
+                    Action items column
+                    <span class="block text-xs text-slate-500 dark:text-slate-400">Filled in during a final Actions phase. Leave it off to end at Discuss.</span>
+                  </span>
+                </label>
               </li>
             </ol>
             {#if columnRows.length < MAX_INPUT_COLUMNS}
