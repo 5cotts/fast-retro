@@ -12,18 +12,17 @@ You need three browser sessions: a normal window for the host and two private/in
 
 1. On the homepage, click **Start a new retro**.
 2. Name it, e.g. `Platform brainstorm`.
-3. Under **Columns**, pick **Custom** and add five columns:
+3. Under **Columns**, pick **Custom** and add four columns (leave out the fifth on purpose; you'll add it in step 2b):
    - How might we cut onboarding time?
    - How might we make deploys boring?
    - How might we make on-call less painful?
    - How might we keep docs up to date?
-   - How might we have fewer meetings?
 4. Untick **Action items column**. This session ends in discussion.
 5. Tick **Hide others' cards while brainstorming**.
 6. Click **Create retro** and enter your name.
 
 **Check:**
-- [ ] The board shows exactly the five columns, in that order, scrolling sideways if the window is narrow.
+- [ ] The board shows exactly the four columns, in that order.
 - [ ] The phase bar shows **Brainstorm · Group · Vote · Discuss**, with no Actions.
 - [ ] The board starts anonymous (the header shows **Anonymous**).
 
@@ -32,9 +31,20 @@ You need three browser sessions: a normal window for the host and two private/in
 Copy the board URL into both private windows and join as `Ana` and `Ben`.
 
 **Check:**
-- [ ] Both see the same five columns.
+- [ ] Both see the same four columns.
 - [ ] Both see a banner saying others' cards are hidden until Group.
 - [ ] Neither gets a host toolbar.
+
+## 2b. Add the forgotten problem statement (host)
+
+1. Click **Edit** (the gear button in the header).
+2. Click **Add column** and type `How might we have fewer meetings?`.
+3. Click **Save**.
+
+**Check:**
+- [ ] All three windows now show five columns, with the new one last, without reloading. The board scrolls sideways if the window is narrow.
+- [ ] Nobody got a "host changed the columns" notice (nothing was removed).
+- [ ] To fix a typo in a column name, click the column's title on the board, edit it and press Enter.
 
 ## 3. Start the 10-minute timer (host)
 
