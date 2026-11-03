@@ -1,6 +1,6 @@
 # Plan: edit a board after it's created ("setup mode")
 
-Status: discovery, awaiting decisions · 2026-11-03 · checked against `main` at `e5c7427`
+Status: decided, ready to build · 2026-11-03 · checked against `main` at `e5c7427`
 
 ## Goal
 
@@ -40,7 +40,9 @@ So the real gap is **columns**. The options can already be changed, but only as 
 
 The entry point is an **Edit board** button (gear icon) next to the host's other header controls, plus an item in the mobile menu. The header toggles stay as they are, for quick changes mid-session.
 
-**Why a dialog and not a separate Setup phase.** A literal Setup phase (participants can't add cards until the host clicks Start) would add a step to every retro, and it wouldn't help when the host notices a missing column 5 minutes into Brainstorm, which is the situation described in the feedback. An edit dialog available in every phase covers both cases. A "hold participants until I'm ready" gate can be added later if someone asks for it (see S1).
+**Inline rename (S4).** The host can also click a column title to rename it in place, the same way the board name works today (`BoardLabel.svelte`): Enter or blur saves, Escape cancels, an empty title reverts. It's only for renaming; adding, removing and reordering stay in the dialog.
+
+**Why a dialog and not a separate Setup phase.** A literal Setup phase (participants can't add cards until the host clicks Start) would add a step to every retro, and it wouldn't help when the host notices a missing column 5 minutes into Brainstorm, which is the situation described in the feedback. An edit dialog available in every phase covers both cases. A "hold participants until I'm ready" gate can be added later if someone asks for it (S1).
 
 ### Behavior details
 
@@ -50,6 +52,7 @@ The entry point is an **Edit board** button (gear icon) next to the host's other
 - **Turn Action items off** while it has cards: same warning. If the board is in the Actions phase, it moves to Discuss in the same change, because a board without Action items ends at Discuss (`phasesFor`).
 - **Turn Action items on:** the column comes back as the last column, empty unless it still has cards from before (see "Clear, don't delete" below).
 - **Participants** see the change live. If someone was typing in a column that gets removed, their unsent text is lost, so show a short notice: "The host changed the columns."
+- **Every phase (S3):** editing is allowed in Brainstorm, Vote, Discuss and Actions. A column added after Brainstorm just stays empty.
 - **Not allowed:** removing every input column (Save stays disabled, same rule as the creation dialog). Editing after the board has ended (the server already drops those writes).
 
 ## Engineering design
@@ -87,11 +90,12 @@ Keep the logic pure and testable, and reuse the creation dialog instead of copyi
 3. **`ColumnEditor.svelte`**, extracted from `NewRetroModal.svelte`: the row list (stable row ids, add/remove, focus handling), plus move up/down and an optional per-row card count for the removal warning. `NewRetroModal` uses it unchanged in behavior. Rows carry an optional `key`, so the same component edits existing columns.
 4. **`EditBoardModal.svelte`:** name, `ColumnEditor`, Action items checkbox, option checkboxes generated from `BOARD_SETTING_KEYS`, a removal warning, Save/Cancel. It reads its initial state from `conn.state` when opened and doesn't re-sync while open (the host is the only editor).
 5. **`Board.svelte` / `BoardHeader.svelte`:** an `onEditBoard` handler gated on `effectiveLead` (host and not ended), like the other lead handlers, and a "The host changed the columns" notice for participants when a column they had a draft in disappears.
-6. **Analytics:** a `board_edit` event with `{ added, removed, renamed, reordered, settingsChanged }` counts. This tells us whether people mostly fix typos or restructure.
+6. **`ColumnTitle.svelte`** (inline rename): the column header's `<h2>` becomes a button for the host, swapping to an input on click, modeled on `BoardLabel.svelte`. Title is trimmed and capped at `MAX_COLUMN_TITLE_LEN`; empty or unchanged does nothing. Saves through `applyBoardEdit` with only that title changed, so there's still a single writer. Non-hosts and ended boards see the plain heading.
+7. **Analytics:** a `board_edit` event with `{ added, removed, renamed, reordered, settingsChanged, source: 'dialog' | 'inline' }`. This tells us whether people mostly fix typos or restructure, and whether inline rename gets used.
 
 Move up/down buttons first, because they're keyboard-accessible and simple. Drag-to-reorder columns can come later.
 
-## Rollout: 3 stacked PRs (+ this doc)
+## Rollout: 4 stacked PRs (+ this doc)
 
 | PR | Content | Behavior change |
 | --- | --- | --- |
@@ -99,6 +103,7 @@ Move up/down buttons first, because they're keyboard-accessible and simple. Drag
 | 1 | Extract `ColumnEditor.svelte` from `NewRetroModal` (rows with optional key, move up/down hidden for creation). | none: the existing new-retro e2e specs must pass untouched |
 | 2 | `editColumns`, `diffColumns`, `applyBoardEdit` + unit tests (no UI yet). | none |
 | 3 | `EditBoardModal`, header and mobile entry points, participant notice, analytics, docs page, e2e tests. | the feature |
+| 4 | `ColumnTitle.svelte` inline rename in `BoardColumn`, docs page line, e2e tests. | click a column title to rename it |
 
 Each PR runs the full unit suite, `svelte-check`, the Rust tests and `./test-local.sh` (never against prod), the same as the custom-columns stack.
 
@@ -112,16 +117,20 @@ Each PR runs the full unit suite, `svelte-check`, the Rust tests and `./test-loc
   - Toggling Action items off in the Actions phase lands the board in Discuss.
   - Non-hosts and ended boards have no Edit button.
   - Export after an edit contains the new columns.
+- **E2E (PR 4):**
+  - The host clicks a column title, renames it with Enter, and a second browser sees the new title; cards stay.
+  - Escape cancels; an empty title keeps the old one.
+  - Non-hosts and ended boards get a plain heading, not a button.
 - **Scenario:** extend `docs/qa-brainstorm-scenario.md` (and its spec) with "realize you forgot a problem statement, add it from Edit board."
 
-## Decisions needed
+## Decisions (Scott, 2026-11-03)
 
-| # | Question | Recommendation |
+| # | Question | Decision |
 | --- | --- | --- |
 | S1 | Edit-anytime dialog, or a real Setup phase that blocks participants until the host starts? | **Edit-anytime dialog.** Revisit a "hold participants" gate only if asked. |
-| S2 | Removing a column with cards: delete with a warning, block it (TeamRhythm), or ask where to move the cards? | **Delete with a warning** (EasyRetro). It's the least UI, and the warning says how many cards. "Move cards to…" can be added later. |
-| S3 | Allow editing in every phase, or only in Brainstorm? | **Every phase.** Adding a column during Vote is harmless (it just stays empty), and blocking it would be surprising. |
-| S4 | Is the gear-icon dialog enough, or also inline rename by clicking a column title? | **Dialog only for now.** Inline rename is a small follow-up once the edit path exists. |
+| S2 | Removing a column with cards: delete with a warning, block it, or ask where to move the cards? | **Delete with a warning** that says how many cards. |
+| S3 | Allow editing in every phase, or only in Brainstorm? | **Every phase.** |
+| S4 | Gear-icon dialog only, or also inline rename by clicking a column title? | **Both.** Inline rename ships as its own PR (PR 4) on top of the dialog. |
 
 ## Open question for the requester
 
