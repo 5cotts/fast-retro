@@ -21,7 +21,7 @@
   } from '$lib/api';
   import Wordmark from '$lib/Wordmark.svelte';
   import NewRetroModal from '$lib/NewRetroModal.svelte';
-  import { newBoardSeed, type BoardFile } from '$lib/boardfile';
+  import type { PendingSeed } from '$lib/yboard';
   import GoogleSignIn from '$lib/GoogleSignIn.svelte';
   import { getTheme } from '$lib/storage';
   import { LogOut, Loader2 } from 'lucide-svelte';
@@ -97,15 +97,7 @@
     showNewModal = true;
   }
 
-  async function onNewConfirm({
-    slug,
-    label,
-    importFile
-  }: {
-    slug: string;
-    label: string;
-    importFile?: BoardFile;
-  }) {
+  async function onNewConfirm({ slug, label, seed }: { slug: string; label: string; seed: PendingSeed }) {
     showNewModal = false;
     droppedFile = null;
     creating = true;
@@ -116,16 +108,12 @@
       if (!result) result = await createBoard(newSlug(), label);
       setHostKey(result.slug, result.hostKey);
       if (label) recordRecentBoard(result.slug, { label });
-      if (importFile) {
-        // The file carries its own label and anonymous flag.
-        if (!setPendingSeed(result.slug, importFile, { kind: 'file' })) {
-          creating = false;
-          createError = "Couldn't prepare the import in this browser. Try again.";
-          return;
-        }
-      } else {
-        // New boards from the home page start anonymous.
-        setPendingSeed(result.slug, newBoardSeed({ label, anonymous: true }), { kind: 'new' });
+      // A blank board still works without its seed (it just isn't set up),
+      // but an import without one would silently lose the file.
+      if (!setPendingSeed(result.slug, seed.file, seed.origin) && seed.origin.kind === 'file') {
+        creating = false;
+        createError = "Couldn't prepare the import in this browser. Try again.";
+        return;
       }
       goto(`/board/${result.slug}`);
     } catch {

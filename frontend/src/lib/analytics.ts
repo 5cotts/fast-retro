@@ -8,7 +8,8 @@ export type AnalyticsEvent =
   | { name: 'board_export'; params: { format: 'board_file' | 'csv'; source: 'board' | 'end' | 'archive' | 'ended' } }
   | { name: 'board_import'; params: { result: 'success'; origin: 'file' | 'carryover'; cards: number } }
   | { name: 'board_import'; params: { result: 'error'; reason: ImportErrorCode } }
-  | { name: 'next_retro'; params: { carried_actions: number } };
+  | { name: 'next_retro'; params: { carried_actions: number } }
+  | { name: 'board_create'; params: { template: 'retro' | 'custom'; columns: number } };
 
 export function track(event: AnalyticsEvent): void {
   try {

@@ -107,7 +107,8 @@
           <ol class="space-y-3 list-none pl-0">
             <li>
               <strong class="text-sky-700 dark:text-sky-300">1. Brainstorm.</strong>
-              Add cards to <em>What went well</em> and <em>What to improve</em>. One thought per card.
+              Add cards to <em>What went well</em> and <em>What to improve</em> (or to the host's own
+              columns on a custom board). One thought per card.
               Don't worry about duplication — the Group phase handles that. Card entry is open
               <em>only</em> in this phase.
             </li>
@@ -232,6 +233,7 @@
         <section>
           <h2 class="font-semibold text-lg mb-2">Lead-only controls</h2>
           <ul class="space-y-1 list-disc pl-5">
+            <li><strong>Custom columns.</strong> In <em>Start a new retro</em>, pick <em>Custom</em> under <em>Columns</em> and name as many columns as you like, for example one per problem statement for a brainstorm. Everyone can add cards to every column during Brainstorm. <em>Action items</em> is always the last column, and <em>Start next retro</em> keeps the same columns. Columns can't be changed after the board is created.</li>
             <li><strong>Timer.</strong> Click the timer pill in the header — set minutes, Start, Pause, Reset. Engineers see the same countdown.</li>
             <li><strong>Next / Previous phase.</strong> Advance when the room is ready. The <em>← Previous</em> button is there for misclicks — phases don't lose data when you go back.</li>
             <li><strong>Merge cards</strong> (Group phase). Drag one card onto another to collapse duplicates; the combined votes, reactions, and comments carry over.</li>
@@ -240,7 +242,7 @@
             <li><strong>Export → Spreadsheet (CSV).</strong> Card text, vote counts, reactions and comments for reading in Sheets or Excel. It's a one-way export; it can't be imported back.</li>
             <li><strong>Exporting an ended retro.</strong> Once a retro has ended, anyone with its link can open it read-only (no name needed) and use the <em>Export</em> menu in the "This retro has ended" banner. The files are the same as a live export.</li>
             <li><strong>End retro.</strong> Auto-archives the board to <code class="font-mono text-xs break-all">/lead/&lt;token&gt;/archives</code> (cards, votes, reactions, comments, label, phase, settings, timestamp) and then clears it for the next session. Past archives stay browsable from the host dashboard.</li>
-            <li><strong>Start next retro.</strong> Once a retro has ended, starts a fresh board with the same name. By default it brings this retro's action items along (without their votes or reactions) so the team can check on them; untick <em>Bring N action items</em> for an empty board.</li>
+            <li><strong>Start next retro.</strong> Once a retro has ended, starts a fresh board with the same name and columns. By default it brings this retro's action items along (without their votes or reactions) so the team can check on them; untick <em>Bring N action items</em> for an empty board.</li>
           </ul>
         </section>
 

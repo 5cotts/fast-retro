@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { test, expect, type Browser, type Page } from '@playwright/test';
+import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 
 /**
  * Boards with custom columns (frontend/src/lib/columns.ts): a board file with
@@ -95,6 +95,12 @@ async function openNewRetroDialog(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a new retro' }).click();
   return page.getByRole('dialog', { name: 'Start a new retro' });
+}
+
+// The radios are visually hidden inside their labels; click what a person sees.
+async function chooseColumns(dialog: Locator, name: 'Retro' | 'Custom') {
+  await dialog.getByRole('radiogroup', { name: 'Columns' }).getByText(name, { exact: true }).click();
+  await expect(dialog.getByRole('radio', { name })).toBeChecked();
 }
 
 async function importFile(page: Page, name: string, json: string) {
@@ -239,5 +245,112 @@ test.describe('fast-retro custom columns', () => {
     } finally {
       await ctx.close();
     }
+  });
+
+  test.describe('creating a custom board', () => {
+    async function stubAnalytics(page: Page) {
+      await page.addInitScript(() => {
+        const w = window as unknown as { __gaEvents: unknown[][]; gtag: (...a: unknown[]) => void };
+        w.__gaEvents = [];
+        w.gtag = (...args: unknown[]) => {
+          w.__gaEvents.push(args);
+        };
+      });
+    }
+
+    test('from the homepage, with many columns, a blank one and a long title', async ({ browser }) => {
+      test.setTimeout(90_000);
+      const { ctx, page } = await newPage(browser);
+      try {
+        await stubAnalytics(page);
+        const dialog = await openNewRetroDialog(page);
+        const create = dialog.getByRole('button', { name: 'Create retro' });
+        await expect(dialog.getByText('What went well · What to improve · Action items')).toBeVisible();
+        await chooseColumns(dialog, 'Custom');
+        await expect(create).toBeDisabled();
+        await expect(dialog.getByRole('button', { name: 'Skip naming' })).toBeDisabled();
+        await expect(dialog.getByText('Action items (always included)')).toBeVisible();
+
+        const long = `How might we ${'really '.repeat(12)}make this long title wrap instead of cutting it off?`.slice(0, 100);
+        const titles = [long, ...Array.from({ length: 9 }, (_, i) => `Problem ${i + 2}`)];
+        await dialog.getByLabel('Column 1 name').fill(titles[0]);
+        await expect(create).toBeEnabled();
+        for (let i = 1; i < titles.length; i++) {
+          await dialog.getByRole('button', { name: 'Add column' }).click();
+          await expect(dialog.getByLabel(`Column ${i + 1} name`)).toBeFocused();
+          await page.keyboard.type(titles[i]);
+        }
+        // A blank row is skipped, and a removed row is gone.
+        await dialog.getByRole('button', { name: 'Add column' }).click();
+        await dialog.getByRole('button', { name: 'Add column' }).click();
+        await dialog.getByLabel('Column 12 name').fill('removed');
+        await dialog.getByRole('button', { name: 'Remove column 12' }).click();
+        await expect(dialog.getByLabel('Column 12 name')).toHaveCount(0);
+
+        await dialog.getByLabel('Retro name').fill('Ten problems');
+        await create.click();
+        await page.waitForURL(/\/board\/ten-problems-/);
+        await joinIfAsked(page, 'Creator');
+        expect(await columnTitles(page)).toEqual([...titles, 'Action items']);
+        await addCard(page, 'Problem 10', 'an idea');
+
+        const grid = page.getByTestId('board-columns');
+        expect(await grid.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+        const heading = column(page, long).getByRole('heading', { level: 2 });
+        await expect(heading).toHaveText(long);
+        const box = await heading.boundingBox();
+        expect(box!.height).toBeGreaterThan(30);
+
+        const events = await page.evaluate(() =>
+          (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event')
+        );
+        expect(events).toContainEqual(['event', 'board_create', { template: 'custom', columns: 10 }]);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    test('the classic choice records a retro board', async ({ browser }) => {
+      const { ctx, page } = await newPage(browser);
+      try {
+        await stubAnalytics(page);
+        const dialog = await openNewRetroDialog(page);
+        await chooseColumns(dialog, 'Custom');
+        await chooseColumns(dialog, 'Retro');
+        await dialog.getByRole('button', { name: 'Skip naming' }).click();
+        await page.waitForURL(/\/board\//);
+        await joinIfAsked(page, 'Classic');
+        expect(await columnTitles(page)).toEqual(['What went well', 'What to improve', 'Action items']);
+        const events = await page.evaluate(() =>
+          (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[0] === 'event')
+        );
+        expect(events).toContainEqual(['event', 'board_create', { template: 'retro', columns: 2 }]);
+      } finally {
+        await ctx.close();
+      }
+    });
+
+    test('from the host dashboard', async ({ browser }) => {
+      test.skip(!LEAD_TOKEN, 'RETRO_LEAD_TOKEN env var must be set');
+      const { ctx, page } = await newPage(browser);
+      try {
+        await page.goto(`/lead/${LEAD_TOKEN}`);
+        await page.getByRole('button', { name: 'Start a new retro' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+        await chooseColumns(dialog, 'Custom');
+        await dialog.getByLabel('Column 1 name').fill('Start');
+        await dialog.getByRole('button', { name: 'Add column' }).click();
+        await dialog.getByLabel('Column 2 name').fill('Stop');
+        await dialog.getByRole('button', { name: 'Create retro' }).click();
+        await page.waitForURL(new RegExp(`/lead/${LEAD_TOKEN}/`));
+        await joinIfAsked(page, 'Dashboard host');
+        expect(await columnTitles(page)).toEqual(['Start', 'Stop', 'Action items']);
+        await addCard(page, 'Stop', 'long meetings');
+        // Host-dashboard boards still don't start anonymous (unchanged).
+        await expect(page.getByRole('button', { name: 'Turn on anonymous mode' }).first()).toBeAttached();
+      } finally {
+        await ctx.close();
+      }
+    });
   });
 });
