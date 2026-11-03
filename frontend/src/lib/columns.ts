@@ -137,16 +137,79 @@ export function readColumns(meta: Y.Map<unknown>): ColumnDef[] {
   return sanitizeColumns(meta.get('columns')) ?? DEFAULT_COLUMNS;
 }
 
-// Fresh columns for a custom board. Keys are random and stable, never derived
-// from titles, so renaming a column later never moves its cards.
+// Keys are random and stable, never derived from titles, so renaming a column
+// later never moves its cards.
+const newColumnKey = (): string => `c-${newId().slice(0, 8)}`;
+
+// Fresh columns for a custom board.
 export function newCustomColumns(titles: string[], opts: { actionItems?: boolean } = {}): ColumnDef[] {
   const inputs = titles
     .map((t) => t.trim().slice(0, MAX_COLUMN_TITLE_LEN))
     .filter(Boolean)
     .slice(0, MAX_INPUT_COLUMNS)
-    .map((title, i) => ({ key: `c-${newId().slice(0, 8)}`, title, color: paletteColor(i) }));
+    .map((title, i) => ({ key: newColumnKey(), title, color: paletteColor(i) }));
   const tail = opts.actionItems === false ? [] : [ACTIONS_COLUMN];
   return sanitizeColumns([...inputs, ...tail]) ?? DEFAULT_COLUMNS;
+}
+
+// The column list after an edit. `rows` are the input columns in display
+// order: a row whose key is on the board keeps that key and color, so its
+// cards stay put; any other row is a new column with a fresh key and the
+// first palette color not already in use. Returns null when no input column
+// has a title (the edit dialog keeps Save disabled then).
+export function editColumns(
+  current: ColumnDef[],
+  rows: { key?: string; title: string }[],
+  opts: { actionItems: boolean }
+): ColumnDef[] | null {
+  const byKey = new Map(current.filter((c) => !isActionsColumn(c)).map((c) => [c.key, c]));
+  const kept = new Set<string>();
+  const used = new Set<ColumnColor>();
+  const draft: { key?: string; title: string; color?: ColumnColor }[] = [];
+  for (const row of rows) {
+    const title = row.title.trim().slice(0, MAX_COLUMN_TITLE_LEN);
+    if (!title) continue;
+    const existing = row.key && !kept.has(row.key) ? byKey.get(row.key) : undefined;
+    if (existing) {
+      kept.add(existing.key);
+      used.add(existing.color);
+      draft.push({ key: existing.key, title, color: existing.color });
+    } else {
+      draft.push({ title });
+    }
+  }
+  const inputs = draft.slice(0, MAX_INPUT_COLUMNS).map((d, i) => {
+    if (d.key && d.color) return { key: d.key, title: d.title, color: d.color };
+    const color = INPUT_PALETTE.find((c) => !used.has(c)) ?? paletteColor(i);
+    used.add(color);
+    return { key: newColumnKey(), title: d.title, color };
+  });
+  if (inputs.length === 0) return null;
+  const actions = current.find(isActionsColumn) ?? ACTIONS_COLUMN;
+  return sanitizeColumns(opts.actionItems ? [...inputs, actions] : inputs);
+}
+
+export interface ColumnDiff {
+  added: ColumnDef[];
+  removed: ColumnDef[];
+  renamed: number;
+  // Whether the columns kept by the edit changed order.
+  reordered: boolean;
+}
+
+export function diffColumns(prev: ColumnDef[], next: ColumnDef[]): ColumnDiff {
+  const prevByKey = new Map(prev.map((c) => [c.key, c]));
+  const nextKeys = new Set(next.map((c) => c.key));
+  const added = next.filter((c) => !prevByKey.has(c.key));
+  const removed = prev.filter((c) => !nextKeys.has(c.key));
+  const renamed = next.filter((c) => {
+    const p = prevByKey.get(c.key);
+    return p !== undefined && p.title !== c.title;
+  }).length;
+  const keptPrev = prev.filter((c) => nextKeys.has(c.key)).map((c) => c.key);
+  const keptNext = next.filter((c) => prevByKey.has(c.key)).map((c) => c.key);
+  const reordered = keptPrev.some((k, i) => k !== keptNext[i]);
+  return { added, removed, renamed, reordered };
 }
 
 export function sameColumns(a: ColumnDef[], b: ColumnDef[]): boolean {

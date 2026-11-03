@@ -2,10 +2,10 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
-import { DEFAULT_COLUMNS, readColumns, sameColumns } from './columns';
-import { readBoardSetting, setBoardSetting } from './settings';
+import { DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
+import { BOARD_SETTING_KEYS, readBoardSetting, setBoardSetting, type BoardSettings } from './settings';
 import { newId } from './identity';
-import { setPhase } from './phase';
+import { readPhase, setPhase } from './phase';
 import { boardFileColumns, type BoardFile } from './boardfile';
 
 export function buildWsUrl(): string {
@@ -178,6 +178,60 @@ export function readBoardEndedMessage(meta: Y.Map<unknown>): string {
 export function setBoardEnded(meta: Y.Map<unknown>, message: string): void {
   meta.set('endedAt', Date.now());
   meta.set('endedMessage', message);
+}
+
+export interface BoardEdit {
+  label?: string;
+  columns?: ColumnDef[];
+  settings?: Partial<BoardSettings>;
+}
+
+export interface BoardEditResult extends ColumnDiff {
+  settingsChanged: number;
+}
+
+// The one writer for "Edit board" (the dialog and inline column rename). It
+// all lands in one transaction, so peers see a single change.
+//
+// A removed column's array is emptied but kept in the board map, never
+// deleted. meta.columns is last-writer-wins, so another host tab saving an
+// older list could bring the column back; it must still have an array behind
+// it (addCard does nothing on a column without one). Keeping the array also
+// lets Action items be turned back on without recreating the 'actions' key,
+// which two clients could race on (see createBoard). New columns get fresh
+// random keys, so only this client ever creates their arrays.
+export function applyBoardEdit(
+  state: Pick<BoardState, 'doc' | 'board' | 'meta' | 'phase'>,
+  edit: BoardEdit
+): BoardEditResult {
+  const { doc, board, meta, phase } = state;
+  const prev = readColumns(meta);
+  const next = edit.columns ?? prev;
+  const diff = diffColumns(prev, next);
+  let settingsChanged = 0;
+  doc.transact(() => {
+    if (edit.label !== undefined && edit.label.trim() !== readBoardLabel(meta)) setBoardLabel(meta, edit.label);
+    for (const key of BOARD_SETTING_KEYS) {
+      const v = edit.settings?.[key];
+      if (v === undefined || v === readBoardSetting(meta, key)) continue;
+      setBoardSetting(meta, key, v);
+      settingsChanged++;
+    }
+    if (!edit.columns) return;
+    if (!sameColumns(prev, next)) {
+      if (sameColumns(next, DEFAULT_COLUMNS)) meta.delete('columns');
+      else meta.set('columns', next.map((c) => ({ ...c })));
+    }
+    for (const col of next) {
+      if (!board.has(col.key)) board.set(col.key, new Y.Array<Y.Map<unknown>>());
+    }
+    for (const col of diff.removed) {
+      const arr = board.get(col.key);
+      if (arr && arr.length > 0) arr.delete(0, arr.length);
+    }
+    if (!hasActionsColumn(next) && readPhase(phase) === 'actions') setPhase(phase, 'discuss');
+  });
+  return { ...diff, settingsChanged };
 }
 
 function makeCard(text: string, authorId: string): Y.Map<unknown> {
