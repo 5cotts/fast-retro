@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import {
+  BOARD_FILE_VERSION,
   MAX_IMPORT_BYTES,
   MAX_IMPORT_CARDS,
   MAX_IMPORT_COMMENTS_PER_CARD,
@@ -260,7 +261,7 @@ describe('parseBoardFile', () => {
       ok: false,
       error: expect.stringContaining('version')
     });
-    expect(parseBoardFile(JSON.stringify({ ...valid(), version: 2 }))).toEqual({
+    expect(parseBoardFile(JSON.stringify({ ...valid(), version: BOARD_FILE_VERSION + 1 }))).toEqual({
       ok: false,
       error: 'This file was exported by a newer version of fast-retro.',
       code: 'newer_version'

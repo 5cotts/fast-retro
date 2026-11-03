@@ -1,0 +1,121 @@
+{
+  "format": "fast-retro",
+  "version": 2,
+  "exportedAt": 1793600000000,
+  "board": {
+    "label": "Platform brainstorm — Q1",
+    "anonymous": false,
+    "phase": "group",
+    "autoSort": true,
+    "columns": [
+      {
+        "key": "c-onboard1",
+        "title": "How might we cut onboarding time for new hires?",
+        "color": "emerald"
+      },
+      {
+        "key": "c-deploy22",
+        "title": "How might we make deploys boring?",
+        "color": "amber"
+      },
+      {
+        "key": "c-oncall33",
+        "title": "How might we make on-call less painful?",
+        "color": "violet"
+      },
+      {
+        "key": "c-docs4444",
+        "title": "How might we keep docs up to date?",
+        "color": "rose"
+      },
+      {
+        "key": "c-meet5555",
+        "title": "How might we have fewer meetings? ☕",
+        "color": "teal"
+      },
+      {
+        "key": "actions",
+        "title": "Action items",
+        "color": "sky"
+      }
+    ]
+  },
+  "cards": {
+    "c-onboard1": [
+      {
+        "id": "k1",
+        "text": "Buddy system for week one",
+        "authorId": "u_alice",
+        "votes": [
+          "u_bob"
+        ],
+        "reactions": {
+          "🙌": [
+            "u_carol"
+          ]
+        },
+        "comments": []
+      },
+      {
+        "id": "k2",
+        "text": "Pre-provisioned laptops\nwith dev env",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {},
+        "comments": [
+          {
+            "id": "m1",
+            "text": "IT says 2 weeks lead time, \"maybe\"",
+            "authorId": "u_alice",
+            "createdAt": 1793600000000
+          }
+        ]
+      }
+    ],
+    "c-deploy22": [
+      {
+        "id": "k3",
+        "text": "=Feature flags for everything",
+        "authorId": "u_carol",
+        "votes": [
+          "u_alice",
+          "u_bob"
+        ],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c-oncall33": [],
+    "c-docs4444": [
+      {
+        "id": "k4",
+        "text": "Docs live next to the code",
+        "authorId": "u_alice",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c-meet5555": [
+      {
+        "id": "k5",
+        "text": "No-meeting Wednesdays",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {
+          "🎉": [
+            "u_alice",
+            "u_carol"
+          ]
+        },
+        "comments": []
+      }
+    ],
+    "actions": []
+  },
+  "names": {
+    "u_alice": "Alice",
+    "u_bob": "Bob",
+    "u_carol": "Carol"
+  }
+}

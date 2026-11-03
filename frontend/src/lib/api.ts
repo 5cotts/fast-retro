@@ -108,6 +108,7 @@ export async function endBoard(
     anonymous: boolean;
     phase: string;
     autoSort: boolean;
+    columns?: { key: string; title: string; color: string }[];
   },
   auth: { hostKey?: string; leadToken?: string }
 ): Promise<{ archiveId: string }> {

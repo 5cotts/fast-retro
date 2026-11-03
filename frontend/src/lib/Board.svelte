@@ -58,7 +58,7 @@
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
   import type { CardData } from './types';
-  import { ACTIONS_COLUMN_KEY } from './columns';
+  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, isWideBoard, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History } from 'lucide-svelte';
   import {
@@ -752,6 +752,7 @@
         anonymous: conn.state.anonymous,
         phase: conn.state.phase,
         autoSort: conn.state.autoSort,
+        columns: conn.state.columns,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
       })
@@ -793,11 +794,13 @@
         slug,
         {
           label: conn.state.label,
-          cards: conn.state.cards,
+          cards: Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key)])),
           names: conn.state.anonymous ? {} : conn.state.namesMap,
           anonymous: conn.state.anonymous,
           phase: conn.state.phase,
-          autoSort: conn.state.autoSort
+          autoSort: conn.state.autoSort,
+          // Classic boards send no list, so their archives look as they always have.
+          columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns
         },
         { hostKey, leadToken }
       );
@@ -839,6 +842,8 @@
       anonymous: true,
       phase: 'brainstorm',
       autoSort: conn.state.autoSort,
+      // The next retro keeps this board's columns.
+      columns: conn.state.columns,
       cards: { [ACTIONS_COLUMN_KEY]: actions },
       namesMap: {}
     });
@@ -857,7 +862,9 @@
       if (base) recordRecentBoard(res.slug, { label: base });
       const carried = carryActions ? actionCount : 0;
       const seeded = carried > 0 && setPendingSeed(res.slug, carryOverFile(base), { kind: 'carryover', from: base });
-      if (!seeded) setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true }), { kind: 'new' });
+      if (!seeded) {
+        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, columns: conn.state.columns }), { kind: 'new' });
+      }
       track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);
     } catch {
@@ -1091,8 +1098,14 @@
       </div>
     {/if}
 
-    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-4 py-4 sm:py-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+    <main
+      class="flex-1 w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 {isWideBoard(conn.state.columns.length) ? 'max-w-none' : 'max-w-7xl'}"
+    >
+      <div
+        class={boardGridClass(conn.state.columns.length)}
+        style="--board-cols: {conn.state.columns.length}"
+        data-testid="board-columns"
+      >
         {#each conn.state.columns as col (col.key)}
           {@const colCards = sortActive ? sortedByVotes(cardsIn(col.key)) : cardsIn(col.key)}
           <BoardColumn

@@ -901,6 +901,9 @@ async fn end_board(
     if !state.is_host(&slug, &headers) {
         return (StatusCode::FORBIDDEN, "forbidden").into_response();
     }
+    if let Err(e) = req.validate() {
+        return (StatusCode::BAD_REQUEST, e).into_response();
+    }
     let user = state.session_user(&headers);
     let created_by = user.as_ref().map(|u| u.id.as_str());
     let label = req.label.clone();
@@ -935,6 +938,9 @@ async fn create_archive(
     let Some(slug) = sanitize_slug(&slug) else {
         return (StatusCode::BAD_REQUEST, "bad slug").into_response();
     };
+    if let Err(e) = req.validate() {
+        return (StatusCode::BAD_REQUEST, e).into_response();
+    }
     let created_by = state.session_user(&headers).map(|u| u.id);
     match archive::save(&state.db, &slug, req, created_by.as_deref()) {
         Ok(a) => (StatusCode::OK, Json(serde_json::json!({ "id": a.id }))).into_response(),

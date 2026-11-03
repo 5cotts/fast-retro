@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import Wordmark from '$lib/Wordmark.svelte';
   import type { CardData } from '$lib/types';
-  import { COLUMN_STYLE, DEFAULT_COLUMNS } from '$lib/columns';
+  import { COLUMN_STYLE, DEFAULT_COLUMNS, boardGridClass, sanitizeColumns } from '$lib/columns';
   import { boardFileFromArchive, downloadBoardFile } from '$lib/boardfile';
   import { FileJson } from 'lucide-svelte';
   import { track } from '$lib/analytics';
@@ -18,12 +18,14 @@
     anonymous?: boolean;
     phase?: string;
     autoSort?: boolean;
+    columns?: unknown;
   }
 
   let ok = $state<boolean | null>(null);
   let archive = $state<Archive | null>(null);
   let loadError = $state<string>('');
 
+  const columns = $derived(sanitizeColumns(archive?.columns) ?? DEFAULT_COLUMNS);
   const token = $derived(page.params.token ?? '');
   const id = $derived(page.params.id ?? '');
 
@@ -141,8 +143,8 @@
           </button>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
-          {#each DEFAULT_COLUMNS as col (col.key)}
+        <div class={boardGridClass(columns.length)} style="--board-cols: {columns.length}">
+          {#each columns as col (col.key)}
             {@const cards = archive.cards[col.key] ?? []}
             {@const style = COLUMN_STYLE[col.color]}
             <section class="border rounded-xl shadow-sm flex flex-col {style.accent}" aria-label={col.title}>

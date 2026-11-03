@@ -206,12 +206,15 @@ impl Doc {
             _ => "brainstorm".to_string(),
         };
 
-        let mut card_count = 0usize;
-        for col in ["wentWell", "toImprove", "actions"] {
-            if let Some(Out::YArray(arr)) = board.get(&txn, col) {
-                card_count += arr.len(&txn) as usize;
-            }
-        }
+        // Every column array counts, whatever its key, so custom-column boards
+        // report the right total without the server knowing the column list.
+        let card_count = board
+            .iter(&txn)
+            .map(|(_, v)| match v {
+                Out::YArray(arr) => arr.len(&txn) as usize,
+                _ => 0,
+            })
+            .sum();
 
         BoardSummary {
             label,
@@ -285,5 +288,28 @@ impl Awareness {
             write_var_string(&mut out, state);
         }
         Some(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yrs::ArrayPrelim;
+
+    #[test]
+    fn card_count_includes_every_column() {
+        let src = YDoc::new();
+        let board = src.get_or_insert_map("board");
+        {
+            let mut txn = src.transact_mut();
+            board.insert(&mut txn, "c-abc", ArrayPrelim::from(vec![Any::from(1), Any::from(2)]));
+            board.insert(&mut txn, "wentWell", ArrayPrelim::from(vec![Any::from(3)]));
+            board.insert(&mut txn, "actions", ArrayPrelim::default());
+            board.insert(&mut txn, "notAnArray", Any::from("x"));
+        }
+        let update = src.transact().encode_state_as_update_v1(&StateVector::default());
+        let mut doc = Doc::new();
+        doc.apply_update_v1(&update).unwrap();
+        assert_eq!(doc.read_summary().card_count, 3);
     }
 }

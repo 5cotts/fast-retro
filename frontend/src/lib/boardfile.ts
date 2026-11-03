@@ -1,12 +1,19 @@
 import type { CardData, CommentData } from './types';
-import { DEFAULT_COLUMNS, type ColumnDef } from './columns';
+import { DEFAULT_COLUMNS, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
 import { PHASES, type Phase } from './phase';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
-// boards export through the same code. See docs/import-board-plan.md.
+// boards export through the same code.
+//
+// Versioning rule: bump the version only when an older reader would silently
+// lose data. Version 2 adds `board.columns` for custom columns, which a v1
+// reader would drop along with their cards, so only boards with custom
+// columns are written as v2 (and v1 readers refuse them). Classic boards are
+// still written as v1, readable by every build. Optional, ignorable fields
+// don't bump the version.
 export const BOARD_FILE_FORMAT = 'fast-retro';
-export const BOARD_FILE_VERSION = 1;
+export const BOARD_FILE_VERSION = 2;
 export const BOARD_FILE_EXTENSION = '.fastretro.json';
 
 export interface BoardFile {
@@ -18,6 +25,9 @@ export interface BoardFile {
     anonymous: boolean;
     phase: Phase;
     autoSort: boolean;
+    // Absent for classic boards (the three default columns). See
+    // boardFileColumns.
+    columns?: ColumnDef[];
   };
   names?: Record<string, string>;
   cards: Record<string, CardData[]>;
@@ -28,8 +38,15 @@ export interface BoardFileSource {
   anonymous: boolean;
   phase: Phase;
   autoSort: boolean;
+  // Only these columns' cards are exported. Defaults to the classic three;
+  // a custom board must pass its own list or its cards are left out.
+  columns?: ColumnDef[];
   cards: Record<string, CardData[]>;
   namesMap: Record<string, string>;
+}
+
+export function boardFileColumns(file: BoardFile): ColumnDef[] {
+  return file.board.columns ?? DEFAULT_COLUMNS;
 }
 
 export function isPhase(v: unknown): v is Phase {
@@ -71,16 +88,19 @@ function copyCards(cards: Record<string, CardData[]>, columns: ColumnDef[]): Rec
 }
 
 export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFile {
-  const cards = copyCards(src.cards, DEFAULT_COLUMNS);
+  const columns = src.columns ?? DEFAULT_COLUMNS;
+  const custom = !sameColumns(columns, DEFAULT_COLUMNS);
+  const cards = copyCards(src.cards, columns);
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: BOARD_FILE_VERSION,
+    version: custom ? 2 : 1,
     exportedAt: now,
     board: {
       label: src.label,
       anonymous: src.anonymous,
       phase: src.phase,
-      autoSort: src.autoSort
+      autoSort: src.autoSort,
+      ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {})
     },
     cards
   };
@@ -98,9 +118,20 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
 }
 
 // The seed for a blank new board: no cards, Brainstorm, auto-sort on.
-export function newBoardSeed(opts: { label: string; anonymous: boolean }, now = Date.now()): BoardFile {
+export function newBoardSeed(
+  opts: { label: string; anonymous: boolean; columns?: ColumnDef[] },
+  now = Date.now()
+): BoardFile {
   return exportBoardFile(
-    { label: opts.label, anonymous: opts.anonymous, phase: 'brainstorm', autoSort: true, cards: {}, namesMap: {} },
+    {
+      label: opts.label,
+      anonymous: opts.anonymous,
+      phase: 'brainstorm',
+      autoSort: true,
+      columns: opts.columns ?? DEFAULT_COLUMNS,
+      cards: {},
+      namesMap: {}
+    },
     now
   );
 }
@@ -147,6 +178,7 @@ export interface ArchiveLike {
   anonymous?: boolean;
   phase?: string;
   autoSort?: boolean;
+  columns?: unknown;
   endedAt: number;
 }
 
@@ -159,6 +191,7 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       anonymous: archive.anonymous ?? true,
       phase: isPhase(archive.phase) ? archive.phase : 'brainstorm',
       autoSort: archive.autoSort ?? true,
+      columns: sanitizeColumns(archive.columns) ?? DEFAULT_COLUMNS,
       cards: Object.fromEntries(
         Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
       ),
@@ -284,13 +317,24 @@ export function parseBoardFile(text: string): ParseResult {
   if (isPhase(rawBoard.phase)) phase = rawBoard.phase;
   else if (rawBoard.phase !== undefined) warnings.push('Unknown phase; the board will start in Brainstorm.');
   const autoSort = rawBoard.autoSort !== false;
+  let columns = DEFAULT_COLUMNS;
+  if (rawBoard.columns !== undefined) {
+    const clean = sanitizeColumns(rawBoard.columns);
+    if (clean) columns = clean;
+    else warnings.push("The file's column list is invalid; using the standard retro columns.");
+  }
 
   const rawCards = isRecord(raw.cards) ? raw.cards : {};
-  const cards: Record<string, CardData[]> = Object.fromEntries(DEFAULT_COLUMNS.map((c) => [c.key, []]));
+  const cards: Record<string, CardData[]> = Object.fromEntries(columns.map((c) => [c.key, []]));
   let skippedCards = 0;
   let skippedComments = 0;
   let total = 0;
-  for (const col of DEFAULT_COLUMNS) {
+  const known = new Set(columns.map((c) => c.key));
+  let orphanCards = 0;
+  for (const [key, list] of Object.entries(rawCards)) {
+    if (!known.has(key) && Array.isArray(list)) orphanCards += list.length;
+  }
+  for (const col of columns) {
     const list = rawCards[col.key];
     if (!Array.isArray(list)) continue;
     for (const rc of list) {
@@ -338,12 +382,14 @@ export function parseBoardFile(text: string): ParseResult {
   }
   if (skippedCards) warnings.push(`Skipped ${plural(skippedCards, 'card')} with no text.`);
   if (skippedComments) warnings.push(`Skipped ${plural(skippedComments, 'comment')} with no text.`);
+  if (orphanCards) warnings.push(`Skipped ${plural(orphanCards, 'card')} in columns this file doesn't define.`);
+  const custom = !sameColumns(columns, DEFAULT_COLUMNS);
 
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: BOARD_FILE_VERSION,
+    version: custom ? 2 : 1,
     exportedAt,
-    board: { label, anonymous, phase, autoSort },
+    board: { label, anonymous, phase, autoSort, ...(custom ? { columns } : {}) },
     cards
   };
   // A hand-edited anonymous file can't smuggle names in.

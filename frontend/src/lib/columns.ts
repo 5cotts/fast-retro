@@ -148,3 +148,16 @@ export function newCustomColumns(titles: string[]): ColumnDef[] {
 export function sameColumns(a: ColumnDef[], b: ColumnDef[]): boolean {
   return a.length === b.length && a.every((c, i) => c.key === b[i].key && c.title === b[i].title && c.color === b[i].color);
 }
+
+// Up to four columns share the page width (three look exactly as they always
+// have). From five on, columns keep a readable width and the board scrolls
+// sideways instead of squeezing them.
+export function isWideBoard(columnCount: number): boolean {
+  return columnCount >= 5;
+}
+
+export function boardGridClass(columnCount: number): string {
+  return isWideBoard(columnCount)
+    ? 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-none md:grid-flow-col md:auto-cols-[minmax(17rem,1fr)] md:overflow-x-auto md:snap-x md:pb-2 md:*:snap-start'
+    : 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(0,1fr))]';
+}
