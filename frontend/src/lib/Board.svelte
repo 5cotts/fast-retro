@@ -16,8 +16,6 @@
     moveCard,
     mergeCards,
     setBoardLabel,
-    setBoardAnonymous,
-    setBoardAutoSort,
     setBoardEnded,
     countCards,
     type SeedSource
@@ -57,10 +55,12 @@
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
+  import { setBoardSetting, type BoardSettingKey } from './settings';
+  import { isHidingCards } from './visibility';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, isWideBoard, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History } from 'lucide-svelte';
+  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     PHASES,
     PHASE_LABEL,
@@ -174,7 +174,7 @@
     const map = new Map<string, string[]>();
     for (const p of presenceDisambiguated) {
       if (p.typing && p.clientId !== conn.state.currentClientId) {
-        const label = conn.state.anonymous ? 'Someone' : p.name;
+        const label = conn.state.settings.anonymous ? 'Someone' : p.name;
         const list = map.get(p.typing) ?? [];
         if (!list.includes(label)) list.push(label);
         map.set(p.typing, list);
@@ -441,14 +441,9 @@
     setBoardLabel(conn.state.board.meta, next);
   }
 
-  function toggleAnonymous() {
+  function toggleSetting(key: BoardSettingKey) {
     if (!conn.state.board || !isLead) return;
-    setBoardAnonymous(conn.state.board.meta, !conn.state.anonymous);
-  }
-
-  function toggleAutoSort() {
-    if (!conn.state.board || !isLead) return;
-    setBoardAutoSort(conn.state.board.meta, !conn.state.autoSort);
+    setBoardSetting(conn.state.board.meta, key, !conn.state.settings[key]);
   }
 
   // Mirror the board label into this browser's recent-boards list so the
@@ -727,7 +722,7 @@
   // keep original array position via stable sort. Manual drag-to-reorder is
   // disabled whenever the sort is actually active, since a drag would just
   // get overridden by the next sort on re-render.
-  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.autoSort);
+  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.settings.autoSort);
   const canReorder = $derived(!sortActive);
   function sortedByVotes(cards: CardData[]): CardData[] {
     return cards
@@ -749,9 +744,10 @@
     downloadBoardFile(
       exportBoardFile({
         label: conn.state.label,
-        anonymous: conn.state.anonymous,
+        anonymous: conn.state.settings.anonymous,
         phase: conn.state.phase,
-        autoSort: conn.state.autoSort,
+        autoSort: conn.state.settings.autoSort,
+        hideCards: conn.state.settings.hideCards,
         columns: conn.state.columns,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
@@ -795,10 +791,11 @@
         {
           label: conn.state.label,
           cards: Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key)])),
-          names: conn.state.anonymous ? {} : conn.state.namesMap,
-          anonymous: conn.state.anonymous,
+          names: conn.state.settings.anonymous ? {} : conn.state.namesMap,
+          anonymous: conn.state.settings.anonymous,
           phase: conn.state.phase,
-          autoSort: conn.state.autoSort,
+          autoSort: conn.state.settings.autoSort,
+          hideCards: conn.state.settings.hideCards,
           // Classic boards send no list, so their archives look as they always have.
           columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns
         },
@@ -841,8 +838,9 @@
       label,
       anonymous: true,
       phase: 'brainstorm',
-      autoSort: conn.state.autoSort,
-      // The next retro keeps this board's columns.
+      autoSort: conn.state.settings.autoSort,
+      hideCards: conn.state.settings.hideCards,
+      // The next retro keeps this board's columns and settings.
       columns: conn.state.columns,
       cards: { [ACTIONS_COLUMN_KEY]: actions },
       namesMap: {}
@@ -863,7 +861,7 @@
       const carried = carryActions ? actionCount : 0;
       const seeded = carried > 0 && setPendingSeed(res.slug, carryOverFile(base), { kind: 'carryover', from: base });
       if (!seeded) {
-        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, columns: conn.state.columns }), { kind: 'new' });
+        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, hideCards: conn.state.settings.hideCards, columns: conn.state.columns }), { kind: 'new' });
       }
       track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);
@@ -903,8 +901,7 @@
       presence={presenceDisambiguated}
       currentClientId={conn.state.currentClientId}
       userName={userName || 'Guest'}
-      anonymous={conn.state.anonymous}
-      autoSort={conn.state.autoSort}
+      settings={conn.state.settings}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -915,8 +912,7 @@
       onCycleTheme={cycleTheme}
       onChangeName={changeName}
       onChangeLabel={changeLabel}
-      onToggleAnonymous={toggleAnonymous}
-      onToggleAutoSort={toggleAutoSort}
+      onToggleSetting={toggleSetting}
     />
 
     <div
@@ -1028,6 +1024,19 @@
       </div>
     {/if}
 
+    {#if isHidingCards({ hideCards: conn.state.settings.hideCards, phase: conn.state.phase, ended })}
+      <div
+        class="border-b border-slate-200 dark:border-slate-700 bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-200"
+        role="status"
+        data-testid="hidden-cards-banner"
+      >
+        <div class="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 text-xs flex items-center gap-2">
+          <Blinds size={13} aria-hidden="true" />
+          <span>Cards are hidden until the Group phase. You only see your own.</span>
+        </div>
+      </div>
+    {/if}
+
     {#if timerJustExpired}
       <div
         class="border-b border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-800 dark:text-rose-100 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200"
@@ -1118,10 +1127,11 @@
             isLead={effectiveLead}
             readOnly={ended}
             {canVote}
-            anonymous={conn.state.anonymous}
+            anonymous={conn.state.settings.anonymous}
             namesMap={namesMapDisambiguated}
             {mergeMode}
             {canReorder}
+            hideCards={conn.state.settings.hideCards}
             {dragCardId}
             {dragMergeTargetId}
             dropIndex={dragOverCol === col.key ? dragOverIndex : -1}

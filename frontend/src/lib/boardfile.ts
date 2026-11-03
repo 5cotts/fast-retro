@@ -25,6 +25,8 @@ export interface BoardFile {
     anonymous: boolean;
     phase: Phase;
     autoSort: boolean;
+    // Written only when on. Optional and ignorable, so no version bump.
+    hideCards?: boolean;
     // Absent for classic boards (the three default columns). See
     // boardFileColumns.
     columns?: ColumnDef[];
@@ -38,6 +40,7 @@ export interface BoardFileSource {
   anonymous: boolean;
   phase: Phase;
   autoSort: boolean;
+  hideCards?: boolean;
   // Only these columns' cards are exported. Defaults to the classic three;
   // a custom board must pass its own list or its cards are left out.
   columns?: ColumnDef[];
@@ -100,6 +103,7 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
       anonymous: src.anonymous,
       phase: src.phase,
       autoSort: src.autoSort,
+      ...(src.hideCards ? { hideCards: true } : {}),
       ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {})
     },
     cards
@@ -119,7 +123,7 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
 
 // The seed for a blank new board: no cards, Brainstorm, auto-sort on.
 export function newBoardSeed(
-  opts: { label: string; anonymous: boolean; columns?: ColumnDef[] },
+  opts: { label: string; anonymous: boolean; hideCards?: boolean; columns?: ColumnDef[] },
   now = Date.now()
 ): BoardFile {
   return exportBoardFile(
@@ -128,6 +132,7 @@ export function newBoardSeed(
       anonymous: opts.anonymous,
       phase: 'brainstorm',
       autoSort: true,
+      hideCards: opts.hideCards,
       columns: opts.columns ?? DEFAULT_COLUMNS,
       cards: {},
       namesMap: {}
@@ -178,6 +183,7 @@ export interface ArchiveLike {
   anonymous?: boolean;
   phase?: string;
   autoSort?: boolean;
+  hideCards?: boolean;
   columns?: unknown;
   endedAt: number;
 }
@@ -191,6 +197,7 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       anonymous: archive.anonymous ?? true,
       phase: isPhase(archive.phase) ? archive.phase : 'brainstorm',
       autoSort: archive.autoSort ?? true,
+      hideCards: archive.hideCards === true,
       columns: sanitizeColumns(archive.columns) ?? DEFAULT_COLUMNS,
       cards: Object.fromEntries(
         Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
@@ -317,6 +324,7 @@ export function parseBoardFile(text: string): ParseResult {
   if (isPhase(rawBoard.phase)) phase = rawBoard.phase;
   else if (rawBoard.phase !== undefined) warnings.push('Unknown phase; the board will start in Brainstorm.');
   const autoSort = rawBoard.autoSort !== false;
+  const hideCards = rawBoard.hideCards === true;
   let columns = DEFAULT_COLUMNS;
   if (rawBoard.columns !== undefined) {
     const clean = sanitizeColumns(rawBoard.columns);
@@ -389,7 +397,7 @@ export function parseBoardFile(text: string): ParseResult {
     format: BOARD_FILE_FORMAT,
     version: custom ? 2 : 1,
     exportedAt,
-    board: { label, anonymous, phase, autoSort, ...(custom ? { columns } : {}) },
+    board: { label, anonymous, phase, autoSort, ...(hideCards ? { hideCards } : {}), ...(custom ? { columns } : {}) },
     cards
   };
   // A hand-edited anonymous file can't smuggle names in.

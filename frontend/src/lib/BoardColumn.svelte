@@ -1,9 +1,11 @@
 <script lang="ts">
   import Card from './Card.svelte';
+  import HiddenCard from './HiddenCard.svelte';
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { COLUMN_PLACEHOLDER, COLUMN_STYLE, columnEmptyHint, isActionsColumn, type ColumnDef } from './columns';
+  import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
   import type { CardData } from './types';
 
@@ -25,6 +27,8 @@
     canReorder: boolean;
     dragCardId: string | null;
     dragMergeTargetId: string | null;
+    // The board's hide-cards setting (see visibility.ts).
+    hideCards: boolean;
     // Index of the drop indicator in this column, or -1 when not dragging here.
     dropIndex: number;
     typingByCard: Map<string, string[]>;
@@ -64,6 +68,7 @@
     namesMap,
     mergeMode,
     canReorder,
+    hideCards,
     dragCardId,
     dragMergeTargetId,
     dropIndex,
@@ -142,34 +147,38 @@
         {#if dropIndex === i && dragCardId !== card.id}
           <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
         {/if}
-        <Card
-          {card}
-          column={column.key}
-          {userId}
-          {userName}
-          {isLead}
-          {readOnly}
-          {canVote}
-          {anonymous}
-          {namesMap}
-          mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
-          isMergeTarget={dragMergeTargetId === card.id}
-          {canReorder}
-          {onEdit}
-          {onDelete}
-          {onToggleVote}
-          {onToggleReaction}
-          {onAddComment}
-          {onDeleteComment}
-          onTypingComment={(target) => onTyping(target)}
-          onKeydown={(e) => onCardKeydown(e, card.id)}
-          onFocusCard={() => onFocusCard(card.id)}
-          {onDragStart}
-          {onDragEnd}
-          onMergeDragOver={() => onMergeDragOver(card.id)}
-          onMergeDragLeave={() => onMergeDragLeave(card.id)}
-          onMergeDrop={() => onMergeDrop(card.id)}
-        />
+        {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, userId })}
+          <HiddenCard />
+        {:else}
+          <Card
+            {card}
+            column={column.key}
+            {userId}
+            {userName}
+            {isLead}
+            {readOnly}
+            {canVote}
+            {anonymous}
+            {namesMap}
+            mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
+            isMergeTarget={dragMergeTargetId === card.id}
+            {canReorder}
+            {onEdit}
+            {onDelete}
+            {onToggleVote}
+            {onToggleReaction}
+            {onAddComment}
+            {onDeleteComment}
+            onTypingComment={(target) => onTyping(target)}
+            onKeydown={(e) => onCardKeydown(e, card.id)}
+            onFocusCard={() => onFocusCard(card.id)}
+            {onDragStart}
+            {onDragEnd}
+            onMergeDragOver={() => onMergeDragOver(card.id)}
+            onMergeDragLeave={() => onMergeDragLeave(card.id)}
+            onMergeDrop={() => onMergeDrop(card.id)}
+          />
+        {/if}
         {#if typers.length > 0}
           <div
             class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"

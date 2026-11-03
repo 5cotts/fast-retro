@@ -234,6 +234,7 @@
           <h2 class="font-semibold text-lg mb-2">Lead-only controls</h2>
           <ul class="space-y-1 list-disc pl-5">
             <li><strong>Custom columns.</strong> In <em>Start a new retro</em>, pick <em>Custom</em> under <em>Columns</em> and name as many columns as you like, for example one per problem statement for a brainstorm. Everyone can add cards to every column during Brainstorm. <em>Action items</em> is always the last column, and <em>Start next retro</em> keeps the same columns. Columns can't be changed after the board is created.</li>
+            <li><strong>Hide cards.</strong> Tick <em>Hide others' cards while brainstorming</em> when you start a retro, or toggle <em>Hide cards</em> in the header. During Brainstorm everyone sees only their own cards (others show as placeholders); moving to Group reveals them all at once. Action items are never hidden. It stops people being influenced by each other's ideas, but it isn't a security feature: the board's data still reaches every browser.</li>
             <li><strong>Timer.</strong> Click the timer pill in the header — set minutes, Start, Pause, Reset. Engineers see the same countdown.</li>
             <li><strong>Next / Previous phase.</strong> Advance when the room is ready. The <em>← Previous</em> button is there for misclicks — phases don't lose data when you go back.</li>
             <li><strong>Merge cards</strong> (Group phase). Drag one card onto another to collapse duplicates; the combined votes, reactions, and comments carry over.</li>

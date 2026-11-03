@@ -82,6 +82,8 @@ pub struct ArchiveRequest {
     pub phase: Option<String>,
     #[serde(default)]
     pub auto_sort: Option<bool>,
+    #[serde(default)]
+    pub hide_cards: Option<bool>,
     // Absent for classic three-column boards.
     #[serde(default)]
     pub columns: Option<Vec<ColumnSnapshot>>,
@@ -128,6 +130,8 @@ pub struct Archive {
     pub phase: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_sort: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hide_cards: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<Vec<ColumnSnapshot>>,
 }
@@ -211,6 +215,7 @@ pub fn save(
         anonymous: req.anonymous,
         phase: req.phase,
         auto_sort: req.auto_sort,
+        hide_cards: req.hide_cards,
         columns: req.columns,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
@@ -300,6 +305,7 @@ mod tests {
         assert_eq!(a.anonymous, None);
         assert_eq!(a.phase, None);
         assert_eq!(a.auto_sort, None);
+        assert_eq!(a.hide_cards, None);
         let out = serde_json::to_value(&a).unwrap();
         assert!(out.get("anonymous").is_none());
         assert!(out.get("autoSort").is_none());
@@ -315,7 +321,8 @@ mod tests {
                 "names": { "u1": "Alice" },
                 "anonymous": false,
                 "phase": "discuss",
-                "autoSort": false
+                "autoSort": false,
+                "hideCards": true
             }"#,
         )
         .unwrap();
@@ -324,6 +331,7 @@ mod tests {
         assert_eq!(loaded.anonymous, Some(false));
         assert_eq!(loaded.phase.as_deref(), Some("discuss"));
         assert_eq!(loaded.auto_sort, Some(false));
+        assert_eq!(loaded.hide_cards, Some(true));
         assert_eq!(loaded.names.get("u1").and_then(|v| v.as_str()), Some("Alice"));
     }
 
