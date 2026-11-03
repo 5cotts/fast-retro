@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Timer, Play, Pause, RotateCcw, X, EyeOff, Eye, ArrowDownUp, Blinds } from 'lucide-svelte';
+  import { Timer, Play, Pause, RotateCcw, X, EyeOff, Eye, ArrowDownUp, Blinds, Settings2 } from 'lucide-svelte';
   import ExportMenu from './ExportMenu.svelte';
   import { formatMMSS } from './timer';
   import type { TimerState } from './types';
@@ -71,6 +71,7 @@
     onExportJSON,
     onEnd,
     onToggleSetting,
+    onEditBoard,
     mobile = false
   } = $props<{
     timerInputMin: string;
@@ -87,6 +88,7 @@
     onExportJSON: () => void;
     onEnd: () => void;
     onToggleSetting: (key: BoardSettingKey) => void;
+    onEditBoard: () => void;
     mobile?: boolean;
   }>();
 
@@ -165,6 +167,9 @@
       </button>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
+      <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onEditBoard}>
+        <Settings2 size={14} aria-hidden="true" /> Edit board
+      </button>
       {#each TOGGLES as t (t.key)}
         {@const on = settings[t.key]}
         {@const Icon = t.icon(on)}
@@ -251,6 +256,16 @@
       </div>
     {/if}
   </div>
+
+  <button
+    class="btn text-xs px-2 py-1 min-h-[32px]"
+    onclick={onEditBoard}
+    aria-label="Edit board"
+    title="Edit board: name, columns and options"
+  >
+    <Settings2 size={14} aria-hidden="true" />
+    <span class="hidden lg:inline">Edit</span>
+  </button>
 
   {#each TOGGLES as t (t.key)}
     {@const on = settings[t.key]}

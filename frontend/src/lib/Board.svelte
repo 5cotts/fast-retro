@@ -4,6 +4,7 @@
   import BoardHeader from './BoardHeader.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import NamePrompt from './NamePrompt.svelte';
+  import EditBoardModal from './EditBoardModal.svelte';
   import Onboarding from './Onboarding.svelte';
   import {
     addCard,
@@ -17,6 +18,8 @@
     mergeCards,
     setBoardLabel,
     setBoardEnded,
+    applyBoardEdit,
+    type BoardEdit,
     countCards,
     type SeedSource
   } from './yboard';
@@ -445,6 +448,67 @@
     if (!conn.state.board || !isLead) return;
     setBoardSetting(conn.state.board.meta, key, !conn.state.settings[key]);
   }
+
+  // Edit board: host only, until the board ends (the server drops writes to
+  // an ended board anyway).
+  let editingBoard = $state(false);
+  // Set while this client saves an edit, so it doesn't notify itself.
+  let ownColumnEdit = false;
+
+  function openEditBoard() {
+    if (!conn.state.board || !effectiveLead) return;
+    editingBoard = true;
+  }
+
+  function saveBoardEdit(edit: BoardEdit, source: 'dialog' | 'inline') {
+    editingBoard = false;
+    if (!conn.state.board || !effectiveLead) return;
+    const r = applyBoardEdit(conn.state.board, edit);
+    // The columns effect only reruns when the list changed.
+    ownColumnEdit = r.added.length + r.removed.length + r.renamed > 0 || r.reordered;
+    if (r.added.length + r.removed.length + r.renamed + r.settingsChanged === 0 && !r.reordered) return;
+    track({
+      name: 'board_edit',
+      params: {
+        source,
+        added: r.added.length,
+        removed: r.removed.length,
+        renamed: r.renamed,
+        reordered: r.reordered,
+        settings_changed: r.settingsChanged
+      }
+    });
+  }
+
+  const cardCounts = $derived(Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key).length])));
+
+  // Tell everyone else when the host removes a column: anything they were
+  // typing into it is gone with it.
+  let knownColumnKeys: Set<string> | null = null;
+  let columnsChangedNotice = $state(false);
+  let columnsNoticeHandle: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const keys = new Set(conn.state.columns.map((c) => c.key));
+    if (!conn.state.synced) {
+      knownColumnKeys = null;
+      return;
+    }
+    const prev = knownColumnKeys;
+    knownColumnKeys = keys;
+    if (ownColumnEdit) {
+      ownColumnEdit = false;
+      return;
+    }
+    if (!prev || ![...prev].some((k) => !keys.has(k))) return;
+    columnsChangedNotice = true;
+    if (columnsNoticeHandle) clearTimeout(columnsNoticeHandle);
+    columnsNoticeHandle = setTimeout(() => (columnsChangedNotice = false), 8000);
+  });
+
+  onDestroy(() => {
+    if (columnsNoticeHandle) clearTimeout(columnsNoticeHandle);
+  });
 
   // Mirror the board label into this browser's recent-boards list so the
   // homepage can show the human-readable name without re-opening the doc.
@@ -915,6 +979,7 @@
       onChangeName={changeName}
       onChangeLabel={changeLabel}
       onToggleSetting={toggleSetting}
+      onEditBoard={openEditBoard}
     />
 
     <div
@@ -1177,6 +1242,39 @@
 
   {#if showOnboarding}
     <Onboarding onDismiss={dismissOnboarding} />
+  {/if}
+
+  {#if editingBoard && effectiveLead}
+    <EditBoardModal
+      label={conn.state.label}
+      columns={conn.state.columns}
+      settings={conn.state.settings}
+      {cardCounts}
+      onClose={() => (editingBoard = false)}
+      onSave={(edit) => saveBoardEdit(edit, 'dialog')}
+    />
+  {/if}
+
+  {#if columnsChangedNotice}
+    <div
+      class="fixed inset-x-0 top-16 z-30 flex justify-center px-3 pointer-events-none"
+      role="status"
+      aria-live="polite"
+    >
+      <div
+        class="pointer-events-auto flex items-center gap-2.5 max-w-sm w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-4 py-2.5 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
+        data-testid="columns-changed-notice"
+      >
+        <span class="flex-1">The host changed the columns.</span>
+        <button
+          class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+          onclick={() => (columnsChangedNotice = false)}
+          aria-label="Dismiss"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+    </div>
   {/if}
 
   {#if showEndCelebration}

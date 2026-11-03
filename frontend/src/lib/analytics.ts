@@ -9,7 +9,18 @@ export type AnalyticsEvent =
   | { name: 'board_import'; params: { result: 'success'; origin: 'file' | 'carryover'; cards: number } }
   | { name: 'board_import'; params: { result: 'error'; reason: ImportErrorCode } }
   | { name: 'next_retro'; params: { carried_actions: number } }
-  | { name: 'board_create'; params: { template: 'retro' | 'custom'; columns: number; action_items: boolean } };
+  | { name: 'board_create'; params: { template: 'retro' | 'custom'; columns: number; action_items: boolean } }
+  | {
+      name: 'board_edit';
+      params: {
+        source: 'dialog' | 'inline';
+        added: number;
+        removed: number;
+        renamed: number;
+        reordered: boolean;
+        settings_changed: number;
+      };
+    };
 
 export function track(event: AnalyticsEvent): void {
   try {

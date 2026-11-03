@@ -35,3 +35,11 @@ export function setBoardSetting(meta: Y.Map<unknown>, key: BoardSettingKey, valu
 export function sameSettings(a: BoardSettings, b: BoardSettings): boolean {
   return BOARD_SETTING_KEYS.every((k) => a[k] === b[k]);
 }
+
+// How the Edit board dialog describes each setting. Keyed by the registry, so
+// a new setting won't type-check until it has a label.
+export const BOARD_SETTING_LABELS: Record<BoardSettingKey, { label: string; hint: string }> = {
+  anonymous: { label: 'Anonymous', hint: 'Hide author names on cards and comments.' },
+  autoSort: { label: 'Auto-sort by votes', hint: 'Cards reorder by vote count from Discuss onward.' },
+  hideCards: { label: "Hide others' cards while brainstorming", hint: 'Everyone sees only their own cards until the Group phase.' }
+};
