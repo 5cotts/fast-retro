@@ -2,7 +2,7 @@
 
 Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). Run every command from the `fast-retro/` repo root on the Zo box.
 
-> Status: the QA section is live (release PR 4). Prod still deploys the manual way until release PR 5 moves it to `make prod-deploy`; the rest of this runbook lands in PR 6.
+> Status: QA is live (release PR 4). `make prod-deploy` and `make rollback` exist (release PR 5) but only work after the one-time prod migration (`release-plan.md` §3 step 2), which is scheduled with Scott. Until then prod deploys the manual way. The rest of this runbook lands in PR 6.
 
 ## Environments
 
@@ -10,7 +10,7 @@ Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). 
 |---|---|---|
 | Service | `fast-retro-qa` (port 5103) | `fast-retro-prod` (port 5102) |
 | URL | https://fast-retro-qa-5cotts.zo.computer (**private**: Scott must be signed in to Zo) | https://fast-retro.scottschmidt.io |
-| Runs | `fast-retro-releases/qa/fast-retro` (symlink into `builds/`) | `fast-retro/target/release/fast-retro` (until PR 5) |
+| Runs | `fast-retro-releases/qa/fast-retro` (symlink into `builds/`) | `fast-retro/target/release/fast-retro` until the migration, then `fast-retro-releases/prod/fast-retro` |
 | DB | `fast-retro-releases/qa-data/fastretro-qa.db` (persistent) | `fast-retro/data/fastretro.db` |
 | Lead token | `fast-retro-releases/qa-lead.token` | Scott's notes |
 
@@ -38,6 +38,34 @@ make qa-deploy BUILD=<id> SEED=prod
 
 This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>` (kept), copies prod's DB in with SQLite's online backup (it only reads prod), runs `integrity_check`, then starts and verifies QA. This copies real user boards into QA, which is why it needs Scott's go-ahead.
 
+## Deploy to prod (Scott's go-ahead for every deploy)
+
+Prerequisites: the build was QA'd (`make qa-deploy`) and its commit's tree is what `main` has now (merge the PR first; a stack tip's build qualifies once the stack is merged).
+
+```sh
+make prod-deploy BUILD=<id> CONFIRM=<sha7> DRY_RUN=1   # read the plan it prints
+make prod-deploy BUILD=<id> CONFIRM=<sha7>
+```
+
+It refuses unless all four guards pass: `CONFIRM` matches, the build was QA'd, its tree equals a fresh `origin/main`, and it's a CI build whose attestation re-verifies now. Then it checks prod is healthy and nobody is on a board, takes a restore point (`data/fastretro.db.bak-<ts>-pre-<sha7>`), smokes the candidate and the rollback target, swaps `prod.prev` → current and `prod` → candidate, restarts and verifies (including the public URL). Any failure, or the script dying before verify passes, puts both links back and restarts the old build.
+
+Overrides, each needing Scott's explicit OK: `FORCE=1` (deploy with live participants; never allowed for `doc-model-change` releases), `SKIP_QA=1` (hotfix), `ALLOW_LOCAL_BUILD=1` (break-glass build).
+
+Report back: prod URL, build id and sha, the restore-point path, and the verify result.
+
+## Rollback (Scott's go-ahead)
+
+```sh
+make rollback                              # quick: prod <-> prod.prev, no DB backup
+make rollback BUILD=<id> CONFIRM=<sha7>    # deep: any build that was live in prod before (per release.log)
+```
+
+Rollback never restores the DB. Migrations are additive, so the old binary runs on the migrated DB (smoke checks that before every deploy).
+
+## Drills on QA
+
+`make qa-drill-deploy BUILD=<id> CONFIRM=<sha7>` and `make qa-drill-rollback [BUILD=<id> CONFIRM=<sha7>]` run the exact prod-deploy and rollback scripts against `fast-retro-qa` (`qa` / `qa.prev`, guard (c) skipped, restore points in `qa-data/`). Use them to try a change to the release scripts before it touches prod.
+
 ### Troubleshooting
 
 | Symptom | What to do |
@@ -47,5 +75,9 @@ This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>`
 | `service fast-retro-qa isn't registered` | One-time setup, see `release-plan.md` §3 step 1. |
 | `smoke failed; QA left unchanged` | The candidate failed a check against prod's data. Read the `FAIL` lines; don't deploy it. |
 | `QA verify FAILED` | QA was put back on the previous build. The log tail is in `fast-retro-releases/logs/`. |
+| `guard (c): … isn't origin/main's` | The build isn't what `main` has. Merge the PR, or `make release-fetch` the `main` build, QA it, and deploy that. |
+| `preflight: N live participant(s)` | Someone is on a board. Wait and retry; `FORCE=1` only with Scott's OK. |
+| `prod-deploy didn't verify; restoring …` | Auto-rollback fired. Check `make release-status` shows the old build running, and read the log tail in `logs/`. The release line says `restore_verify=ok` or `FAILED`; if `FAILED`, tell Scott immediately. |
+| `no prod link yet` | The one-time migration isn't done (`release-plan.md` §3 step 2). |
 
 Never stop processes with `pkill -f` (it has matched our own shell before). Use `supervisorctl` or the PID.
