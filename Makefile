@@ -6,14 +6,19 @@
 R := scripts/release
 # Pass only the variables a script reads, explicitly, so nothing else from
 # the caller's environment changes behavior.
-ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" DRY_RUN="$(DRY_RUN)"
+ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" DRY_RUN="$(DRY_RUN)" \
+       CONFIRM="$(CONFIRM)" FORCE="$(FORCE)" SKIP_QA="$(SKIP_QA)" ALLOW_LOCAL_BUILD="$(ALLOW_LOCAL_BUILD)"
 
-.PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy
+.PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy prod-deploy rollback release-seed-prod qa-drill-deploy qa-drill-rollback
 
 help:
 	@echo "make release-fetch [REF=origin/main | PR=<n> | SHA=<sha>]  download + verify a CI build"
 	@echo "make release-status                                        what prod/QA run, builds, restore points"
 	@echo "make qa-deploy [BUILD=<id> | PR=<n> | REF=...] [SEED=prod]  smoke, point QA at a build, restart, verify"
+	@echo "make prod-deploy BUILD=<id> CONFIRM=<sha7>                 guards, backup, smoke, swap, restart, verify (Scott's OK)"
+	@echo "make rollback [BUILD=<id>] [CONFIRM=<sha7>]                prod back to prod.prev, or to an older prod build"
+	@echo "make qa-drill-deploy / qa-drill-rollback ...               the same two sequences against QA (drills)"
+	@echo "make release-seed-prod                                     one-time: seed builds/ with prod's running binary"
 	@echo "make smoke BUILD=<id>                                      candidate + rollback target vs a copy of prod's DB"
 	@echo "make db-backup-check [DB=<path>]                           online backup + integrity_check + row counts"
 	@echo "make release-check [REF=... | PR=... | SHA=...]           CI's gates locally, in a clean worktree"
@@ -34,6 +39,21 @@ release-status:
 
 qa-deploy:
 	@$(ARGS) $(R)/qa-deploy.sh
+
+prod-deploy:
+	@$(ARGS) RELEASE_ENV=prod $(R)/prod-deploy.sh
+
+rollback:
+	@$(ARGS) RELEASE_ENV=prod $(R)/rollback.sh
+
+qa-drill-deploy:
+	@$(ARGS) RELEASE_ENV=qa $(R)/prod-deploy.sh
+
+qa-drill-rollback:
+	@$(ARGS) RELEASE_ENV=qa $(R)/rollback.sh
+
+release-seed-prod:
+	@$(ARGS) RELEASE_ENV=prod $(R)/seed.sh
 
 smoke:
 	@$(ARGS) $(R)/smoke.sh
