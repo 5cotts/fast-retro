@@ -187,8 +187,9 @@ keeps the columns.
 
 `brainstorm-scenario.spec.ts` — the problem-solving brainstorm that
 prompted custom columns, end to end with a host and two participants (no
-lead token): five problem-statement columns, no Action items, hidden
-cards; a 10-minute timer everyone sees; private ideas shown to others only
+lead token): problem-statement columns, no Action items, hidden cards;
+the host adds a forgotten fifth problem from Edit board after people have
+joined; a 10-minute timer everyone sees; private ideas shown to others only
 as placeholders; Group reveals them; the host merges a duplicate; voting;
 Discuss is the last phase, sorts by votes and takes comments; ending and
 exporting keep the columns. `docs/qa-brainstorm-scenario.md` is the same
@@ -210,7 +211,11 @@ host doesn't. Options change from the dialog, Cancel changes nothing, and
 the export has the edited columns. Also: turning Action items off in the
 Actions phase lands the board in Discuss (and back on gives an empty
 column); Save stays disabled with no named column; non-hosts and ended
-boards have no Edit button; the `board_edit` analytics counts.
+boards have no Edit button; the `board_edit` analytics counts. Another
+test covers inline rename: the host clicks a column title, Enter or
+clicking away saves and the guest sees it live, Escape cancels, a blank
+title keeps the old one, Action items can be renamed, and participants and
+ended boards get a plain heading.
 
 The frozen board files live in `frontend/src/lib/fixtures/`
 (`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`

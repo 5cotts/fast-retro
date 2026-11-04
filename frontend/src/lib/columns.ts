@@ -189,6 +189,16 @@ export function editColumns(
   return sanitizeColumns(opts.actionItems ? [...inputs, actions] : inputs);
 }
 
+// The column list with one column renamed, or null when there's nothing to
+// save (unknown key, blank title, or the same title). Any column can be
+// renamed, Action items included.
+export function renameColumn(columns: ColumnDef[], key: string, title: string): ColumnDef[] | null {
+  const t = title.trim().slice(0, MAX_COLUMN_TITLE_LEN);
+  const current = columns.find((c) => c.key === key);
+  if (!t || !current || current.title === t) return null;
+  return columns.map((c) => (c.key === key ? { ...c, title: t } : c));
+}
+
 export interface ColumnDiff {
   added: ColumnDef[];
   removed: ColumnDef[];

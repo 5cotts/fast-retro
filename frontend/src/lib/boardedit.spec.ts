@@ -8,6 +8,7 @@ import {
   editColumns,
   newCustomColumns,
   readColumns,
+  renameColumn,
   type ColumnDef
 } from './columns';
 import { readPhase, setPhase } from './phase';
@@ -193,5 +194,35 @@ describe('applyBoardEdit', () => {
     applyBoardEdit(state, { label: 'Only the name' });
     expect(readPhase(state.phase)).toBe('actions');
     expect(state.meta.has('columns')).toBe(false);
+  });
+});
+
+describe('renameColumn', () => {
+  it('renames one column and keeps everything else', () => {
+    const cols = newCustomColumns(['A', 'B']);
+    const next = renameColumn(cols, cols[1].key, '  B2 ')!;
+    expect(next.map((c) => c.title)).toEqual(['A', 'B2', 'Action items']);
+    expect(next[1]).toEqual({ ...cols[1], title: 'B2' });
+    expect(diffColumns(cols, next)).toEqual({ added: [], removed: [], renamed: 1, reordered: false });
+  });
+
+  it('can rename Action items, and caps the title length', () => {
+    expect(renameColumn(DEFAULT_COLUMNS, ACTIONS_COLUMN_KEY, 'Next steps')!.at(-1)!.title).toBe('Next steps');
+    expect(renameColumn(DEFAULT_COLUMNS, 'wentWell', 'x'.repeat(150))![0].title).toHaveLength(100);
+  });
+
+  it('returns null when there is nothing to save', () => {
+    expect(renameColumn(DEFAULT_COLUMNS, 'wentWell', '   ')).toBeNull();
+    expect(renameColumn(DEFAULT_COLUMNS, 'wentWell', 'What went well')).toBeNull();
+    expect(renameColumn(DEFAULT_COLUMNS, 'missing', 'X')).toBeNull();
+  });
+
+  it('applies as a rename through applyBoardEdit', () => {
+    const state = boardWith();
+    addCard(state.board, 'wentWell', 'kept', 'u1');
+    const r = applyBoardEdit(state, { columns: renameColumn(readColumns(state.meta), 'wentWell', 'Wins')! });
+    expect(r.renamed).toBe(1);
+    expect(readColumns(state.meta)[0].title).toBe('Wins');
+    expect(readCards(state.board, 'wentWell').map((c) => c.text)).toEqual(['kept']);
   });
 });

@@ -8,7 +8,9 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
  * group and do some discussion."
  *
  * A host creates a custom board with one column per problem statement, no
- * Action items column and hidden cards on, then starts a 10-minute timer.
+ * Action items column and hidden cards on. Once people have joined, the host
+ * realizes a problem statement is missing and adds it from Edit board. Then
+ * the host starts a 10-minute timer.
  * Two participants write ideas without seeing each other's. Group reveals
  * everything; the host merges a duplicate; the team votes; Discuss sorts by
  * votes, is the last phase, and takes comments. The board ends and exports.
@@ -94,8 +96,9 @@ test.describe('fast-retro problem-solving brainstorm', () => {
     const ben = await newPage(browser);
     const contexts = [host.ctx, ana.ctx, ben.ctx];
     try {
-      // 1. The host sets up the board: one column per problem statement, no
-      //    Action items, others' cards hidden while brainstorming.
+      // 1. The host sets up the board: one column per problem statement (but
+      //    forgets the last one), no Action items, others' cards hidden while
+      //    brainstorming.
       await host.page.addInitScript(() => {
         localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }]));
       });
@@ -105,7 +108,7 @@ test.describe('fast-retro problem-solving brainstorm', () => {
       await dialog.getByLabel('Retro name').fill(`Brainstorm ${suffix}`);
       await dialog.getByRole('radiogroup', { name: 'Columns' }).getByText('Custom', { exact: true }).click();
       await dialog.getByLabel('Column 1 name').fill(PROBLEMS[0]);
-      for (let i = 1; i < PROBLEMS.length; i++) {
+      for (let i = 1; i < PROBLEMS.length - 1; i++) {
         await dialog.getByRole('button', { name: 'Add column' }).click();
         await expect(dialog.getByLabel(`Column ${i + 1} name`)).toBeFocused();
         await host.page.keyboard.type(PROBLEMS[i]);
@@ -115,7 +118,7 @@ test.describe('fast-retro problem-solving brainstorm', () => {
       await dialog.getByRole('button', { name: 'Create retro' }).click();
       await host.page.waitForURL(/\/board\/brainstorm-/);
       await joinIfAsked(host.page, 'Valentina');
-      expect(await columnTitles(host.page)).toEqual(PROBLEMS);
+      expect(await columnTitles(host.page)).toEqual(PROBLEMS.slice(0, -1));
       await expect(host.page.getByRole('list', { name: 'Phases' }).getByRole('listitem')).toHaveText([
         /Brainstorm/,
         /Group/,
@@ -123,15 +126,27 @@ test.describe('fast-retro problem-solving brainstorm', () => {
         /Discuss/
       ]);
 
-      // 2. Participants join from the link and see the same five columns.
+      // 2. Participants join from the link and see the same four columns.
       for (const [p, name] of [
         [ana.page, 'Ana'],
         [ben.page, 'Ben']
       ] as const) {
         await p.goto(host.page.url());
         await joinIfAsked(p, name);
-        expect(await columnTitles(p)).toEqual(PROBLEMS);
+        expect(await columnTitles(p)).toEqual(PROBLEMS.slice(0, -1));
         await expect(p.getByTestId('hidden-cards-banner')).toBeVisible();
+      }
+
+      // 2b. The host notices the fifth problem statement is missing and adds
+      //     it from Edit board, without making a new board.
+      await host.page.getByRole('button', { name: 'Edit board' }).click();
+      const edit = host.page.getByRole('dialog', { name: 'Edit board' });
+      await edit.getByRole('button', { name: 'Add column' }).click();
+      await expect(edit.getByLabel(`Column ${PROBLEMS.length} name`)).toBeFocused();
+      await host.page.keyboard.type(PROBLEMS[PROBLEMS.length - 1]);
+      await edit.getByRole('button', { name: 'Save', exact: true }).click();
+      for (const p of [host.page, ana.page, ben.page]) {
+        await expect.poll(() => columnTitles(p), { timeout: 10_000 }).toEqual(PROBLEMS);
       }
 
       // 3. The host starts a 10-minute timer, which everyone sees.

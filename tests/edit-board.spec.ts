@@ -6,7 +6,8 @@ import { test, expect, type Browser, type Page } from '@playwright/test';
  * setup after creating it: adds, renames, reorders and removes columns,
  * turns Action items off, and changes options. A second browser sees each
  * change live, cards stay with their column, removing a column with cards
- * warns first, and only the host of a live board gets the button.
+ * warns first, and only the host of a live board gets the button. The host
+ * can also rename a column by clicking its title.
  *
  * Boards are created from the homepage dialog, so the creating browser is
  * host via its host key.
@@ -224,6 +225,67 @@ test.describe('fast-retro edit board', () => {
       await expect(page.getByRole('button', { name: 'Advance to Actions phase' })).toBeVisible();
     } finally {
       await ctx.close();
+    }
+  });
+
+  test('the host renames a column by clicking its title', async ({ browser }) => {
+    test.setTimeout(90_000);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const host = await newPage(browser);
+    const guest = await newPage(browser);
+    try {
+      await createRetro(host.page, `Inline ${suffix}`);
+      await guest.page.goto(host.page.url());
+      await joinIfAsked(guest.page, 'Guest');
+      await addCard(guest.page, 'What went well', `kept ${suffix}`);
+
+      // Participants get a plain heading, not a button.
+      await expect(column(guest.page, 'What went well').getByRole('heading', { level: 2 })).toHaveText('What went well');
+      await expect(column(guest.page, 'What went well').getByRole('button', { name: 'What went well', exact: true })).toHaveCount(0);
+
+      // Enter saves; the guest sees it live and the card stays.
+      const title = column(host.page, 'What went well').getByRole('button', { name: 'What went well', exact: true });
+      await title.click();
+      const input = host.page.getByRole('textbox', { name: 'Column name' });
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue('What went well');
+      await input.fill('Wins');
+      await input.press('Enter');
+      await expect.poll(() => columnTitles(guest.page), { timeout: 10_000 }).toEqual(['Wins', 'What to improve', 'Action items']);
+      await expect(card(guest.page, 'Wins', `kept ${suffix}`)).toBeVisible();
+      await expect(column(host.page, 'Wins').getByRole('button', { name: 'Wins', exact: true })).toBeFocused();
+
+      // Escape cancels, and a blank title keeps the old one.
+      await column(host.page, 'What to improve').getByRole('button', { name: 'What to improve', exact: true }).click();
+      await input.fill('Not saved');
+      await input.press('Escape');
+      await expect(input).toHaveCount(0);
+      await column(host.page, 'What to improve').getByRole('button', { name: 'What to improve', exact: true }).click();
+      await input.fill('   ');
+      await input.press('Enter');
+      expect(await columnTitles(host.page)).toEqual(['Wins', 'What to improve', 'Action items']);
+
+      // Clicking away saves too, and Action items can be renamed.
+      await column(host.page, 'Action items').getByRole('button', { name: 'Action items', exact: true }).click();
+      await input.fill('Next steps');
+      await host.page.getByTestId('board-columns').click({ position: { x: 5, y: 5 } });
+      await expect.poll(() => columnTitles(guest.page), { timeout: 10_000 }).toEqual(['Wins', 'What to improve', 'Next steps']);
+      // A rename removes nothing, so nobody gets the columns-changed notice.
+      expect(await guest.page.getByTestId('columns-changed-notice').count()).toBe(0);
+
+      expect(await gaEvents(host.page, 'board_edit')).toEqual([
+        ['event', 'board_edit', { source: 'inline', added: 0, removed: 0, renamed: 1, reordered: false, settings_changed: 0 }],
+        ['event', 'board_edit', { source: 'inline', added: 0, removed: 0, renamed: 1, reordered: false, settings_changed: 0 }]
+      ]);
+
+      // Ended boards show plain headings, even to the host.
+      await host.page.getByRole('button', { name: 'End retro' }).click();
+      await host.page.getByRole('alertdialog').getByRole('button', { name: 'Archive & end' }).click();
+      await expect(host.page.getByText('This retro has ended')).toBeVisible({ timeout: 15_000 });
+      await expect(column(host.page, 'Wins').getByRole('button', { name: 'Wins', exact: true })).toHaveCount(0);
+    } finally {
+      await host.ctx.close();
+      await guest.ctx.close();
     }
   });
 

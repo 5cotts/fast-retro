@@ -61,7 +61,7 @@
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
   import type { CardData } from './types';
-  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, sameColumns } from './columns';
+  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
@@ -478,6 +478,11 @@
         settings_changed: r.settingsChanged
       }
     });
+  }
+
+  function renameColumnInline(key: string, title: string) {
+    const columns = renameColumn(conn.state.columns, key, title);
+    if (columns) saveBoardEdit({ columns }, 'inline');
   }
 
   const cardCounts = $derived(Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key).length])));
@@ -1223,6 +1228,7 @@
             onSlotDragOver={(e, i) => onCardSlotDragOver(e, col.key, i)}
             onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
             onColumnDrop={(e) => onColumnDrop(e, col.key)}
+            onRename={(t) => renameColumnInline(col.key, t)}
           />
         {/each}
       </div>
