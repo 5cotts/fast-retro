@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import { track } from './analytics';
-  import { FileUp, Plus, Sparkles, X } from 'lucide-svelte';
+  import { FileUp, Sparkles, X } from 'lucide-svelte';
+  import ColumnEditor, { type ColumnRow } from './ColumnEditor.svelte';
   import { newSlug, slugifyLabel } from './boards';
   import {
     BOARD_FILE_EXTENSION,
@@ -12,7 +13,7 @@
     parseBoardFile,
     type ParseResult
   } from './boardfile';
-  import { BOARD_TEMPLATES, MAX_COLUMN_TITLE_LEN, MAX_INPUT_COLUMNS, isActionsColumn, newCustomColumns, type BoardTemplateId } from './columns';
+  import { BOARD_TEMPLATES, isActionsColumn, newCustomColumns, type BoardTemplateId } from './columns';
   import type { PendingSeed } from './yboard';
 
   let {
@@ -42,24 +43,9 @@
   let hideCards = $state(false);
   let actionItems = $state(true);
   // Each row has a stable id so removing one doesn't shift focus or values.
-  let columnRows = $state<{ id: number; title: string }[]>([{ id: 0, title: '' }]);
-  let nextRowId = 1;
+  let columnRows = $state<ColumnRow[]>([{ id: 0, title: '' }]);
   const customTitles = $derived(columnRows.map((r) => r.title.trim()).filter(Boolean));
   const needsColumns = $derived(!importing && template === 'custom' && customTitles.length === 0);
-
-  async function addColumnRow() {
-    if (columnRows.length >= MAX_INPUT_COLUMNS) return;
-    const id = nextRowId++;
-    columnRows.push({ id, title: '' });
-    await tick();
-    document.getElementById(`new-retro-column-${id}`)?.focus();
-  }
-
-  function removeColumnRow(id: number) {
-    if (columnRows.length <= 1) return;
-    columnRows = columnRows.filter((r) => r.id !== id);
-  }
-
 
   let dragging = $state(false);
 
@@ -267,46 +253,7 @@
           {#if template === 'retro'}
             <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">What went well · What to improve · Action items</p>
           {:else}
-            <ol class="mt-2 space-y-1.5 max-h-60 overflow-y-auto pr-1" aria-label="Custom columns">
-              {#each columnRows as row, i (row.id)}
-                <li class="flex items-center gap-1.5">
-                  <input
-                    id={`new-retro-column-${row.id}`}
-                    bind:value={row.title}
-                    type="text"
-                    maxlength={MAX_COLUMN_TITLE_LEN}
-                    autocomplete="off"
-                    placeholder={i === 0 ? 'e.g. How might we speed up onboarding?' : `Column ${i + 1}`}
-                    aria-label={`Column ${i + 1} name`}
-                    class="input flex-1 min-w-0 px-2.5 py-2 text-sm"
-                  />
-                  <button
-                    type="button"
-                    class="btn-ghost text-slate-500 dark:text-slate-400 min-h-[32px] min-w-[32px] px-1.5"
-                    onclick={() => removeColumnRow(row.id)}
-                    disabled={columnRows.length <= 1}
-                    aria-label={`Remove column ${i + 1}`}
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              {/each}
-              <li>
-                <label class="flex items-start gap-2 px-2.5 py-2 text-sm rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 cursor-pointer select-none">
-                  <input type="checkbox" bind:checked={actionItems} class="mt-0.5 rounded" />
-                  <span>
-                    Action items column
-                    <span class="block text-xs text-slate-500 dark:text-slate-400">Filled in during a final Actions phase. Leave it off to end at Discuss.</span>
-                  </span>
-                </label>
-              </li>
-            </ol>
-            {#if columnRows.length < MAX_INPUT_COLUMNS}
-              <button type="button" class="btn-ghost mt-1.5 text-xs px-2 py-1" onclick={addColumnRow}>
-                <Plus size={14} aria-hidden="true" />
-                Add column
-              </button>
-            {/if}
+            <ColumnEditor bind:rows={columnRows} bind:actionItems idPrefix="new-retro-column" />
             {#if needsColumns}
               <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Name at least one column.</p>
             {/if}
