@@ -71,3 +71,4 @@ promote "$env" "$dir" rollback
 local_info_update "$dir" ".rollbacks = ((.rollbacks // []) + [{at: \$at, env: \"${env}\", mode: \"${mode}\", from: \"$(basename "$cur")\"}])"
 audit rollback "env=${env} build=${id} from=$(basename "$cur") to_sha=${sha} mode=${mode} backup=${bak} result=ok"
 log "${env} is on ${id} (sha ${sha:0:7}); ${prevlink} is now $(basename "$cur")"
+gh_release_note_rollback "$env" "$(basename "$cur")" "$id"

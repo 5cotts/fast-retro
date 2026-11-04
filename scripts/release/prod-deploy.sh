@@ -12,6 +12,7 @@
 # Then: preflight (healthy, disk, no live participants unless FORCE=1), an
 # online DB backup, smoke, and promote (swap prev + link, restart, verify;
 # any failure puts the old build back).
+# After verify: a GitHub release prod-<build id> (best effort; NO_GH_RELEASE=1 skips).
 source "$(dirname "$0")/lib.sh"
 
 env="$(release_env)"
@@ -123,4 +124,5 @@ promote "$env" "$dir" "$action"
 local_info_update "$dir" ".${env}_deploys = ((.${env}_deploys // []) + [{at: \$at, from: \"$(basename "$cur")\", main: \"${main_sha}\", backup: \"${bak}\"}])"
 audit "$action" "env=${env} build=${BUILD} from=$(basename "$cur") from_sha=${cur_sha} to_sha=${sha} main=${main_sha} run=$(info_get "$dir" run_url || echo -) backup=${bak} ${counts} result=ok"
 log "${env} is on ${BUILD} (sha ${sha:0:7}); quick rollback target: $(basename "$cur")"
+gh_release_publish "$env" "$dir" "$main_sha" "$cur_sha"
 log "report: $(env_get "$env" url)  version ${sha:0:7}  backup ${bak}  verify ok"
