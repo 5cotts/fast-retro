@@ -423,3 +423,183 @@ prepare_worktree() {
   [[ "$(git -C "$WORKTREE" rev-parse HEAD)" == "$sha" ]] || die "worktree isn't at ${sha}"
   [[ -z "$(git -C "$WORKTREE" status --porcelain)" ]] || die "worktree at ${sha} isn't clean"
 }
+
+# ---------------------------------------------------------------- environments, swap, verify (§2.6, §2.7)
+
+# env_get <qa|prod> <field>: service, port, link, db, log, url.
+env_get() {
+  case "$1:$2" in
+    qa:service)   echo "$QA_SERVICE" ;;
+    qa:port)      echo "$QA_PORT" ;;
+    qa:link)      echo qa ;;
+    qa:db)        echo "$QA_DB" ;;
+    qa:log)       echo "/dev/shm/${QA_SERVICE}.log" ;;
+    qa:url)       echo "$QA_URL" ;;
+    prod:service) echo "$PROD_SERVICE" ;;
+    prod:port)    echo "$PROD_PORT" ;;
+    prod:link)    echo prod ;;
+    prod:db)      echo "$PROD_DB" ;;
+    prod:log)     echo "/dev/shm/${PROD_SERVICE}.log" ;;
+    prod:url)     echo "$PROD_URL" ;;
+    *) die "env_get: unknown '$1:$2'" ;;
+  esac
+}
+
+readonly QA_URL="https://fast-retro-qa-5cotts.zo.computer"
+readonly PROD_URL="https://fast-retro.scottschmidt.io"
+
+# Absolute build dir a symlink in RELEASE_ROOT points at, or empty.
+link_build() {
+  local l="${RELEASE_ROOT}/$1"
+  [[ -L "$l" ]] && realpath "$l" || true
+}
+
+# Atomically point RELEASE_ROOT/<link> at <build-dir> (relative target, so
+# the release root can be inspected from anywhere). rename(2) via mv -T.
+swap_link() {
+  local link="$1" dir="$2"
+  local rel
+  rel="builds/$(basename "$dir")"
+  [[ -d "${RELEASE_ROOT}/${rel}" ]] || die "swap_link: ${rel} doesn't exist"
+  run ln -sfn "$rel" "${RELEASE_ROOT}/.${link}.tmp"
+  run mv -T "${RELEASE_ROOT}/.${link}.tmp" "${RELEASE_ROOT}/${link}"
+}
+
+# Restore a link to what it was before a swap ("" = it didn't exist).
+restore_link() {
+  local link="$1" prev="$2"
+  if [[ -n "$prev" ]]; then
+    swap_link "$link" "$prev"
+  else
+    run rm -f "${RELEASE_ROOT}/${link}"
+  fi
+}
+
+# The service's lead token, read from its process env. Printed to stdout
+# for capture into a variable only; never log it.
+service_token() {
+  local pid="$1"
+  [[ -r "/proc/${pid}/environ" ]] || return 1
+  tr '\0' '\n' < "/proc/${pid}/environ" | sed -n 's/^RETRO_LEAD_TOKEN=//p' | head -n1
+}
+
+log_size() { stat -c %s "$1" 2>/dev/null || echo 0; }
+
+# New bytes of a service log since <offset> (from 0 if the log rotated).
+log_since() {
+  local file="$1" offset="$2"
+  [[ -f "$file" ]] || return 0
+  (( $(log_size "$file") >= offset )) || offset=0
+  tail -c +"$((offset + 1))" "$file" | strip_ansi
+}
+
+redact() { sed -E 's/(token|Bearer)[=: ]+[A-Za-z0-9._-]{8,}/\1 [redacted]/Ig'; }
+
+# supervisorctl restart, then wait until RUNNING with a PID. FATAL/BACKOFF or
+# a non-zero exit is a failure. Prints the new PID.
+restart_service() {
+  local service="$1" state pid uptime i
+  if is_true "${DRY_RUN:-}"; then
+    log "DRY_RUN: supervisorctl restart ${service}"
+    read -r state pid uptime < <(service_state "$service")
+    echo "$pid"
+    return 0
+  fi
+  local verb=restart
+  read -r state pid uptime < <(service_state "$service")
+  [[ "$state" == STOPPED || "$state" == EXITED || "$state" == FATAL ]] && verb=start
+  supervisorctl -c "$SUPERVISOR_CONF" "$verb" "$service" >&2 \
+    || { log "supervisorctl ${verb} ${service} failed"; return 1; }
+  for i in $(seq 1 30); do
+    read -r state pid uptime < <(service_state "$service")
+    case "$state" in
+      RUNNING) echo "$pid"; return 0 ;;
+      FATAL|BACKOFF|EXITED|ABSENT) log "${service} is ${state} after restart"; return 1 ;;
+    esac
+    sleep 1
+  done
+  log "${service} didn't reach RUNNING within 30s (state ${state})"
+  return 1
+}
+
+# verify_env <qa|prod> <build-dir> <log-offset> <action>
+# §2.7 verify: the shared checks on 127.0.0.1 (with the service's own lead
+# token), token-free checks on the public URL (prod only; QA's URL is private
+# and needs a signed-in browser), the startup log, the same PID for
+# VERIFY_STABLE_SECS (default 60), and no WARN/ERROR/panic in the new log
+# bytes. Saves a redacted log tail to logs/. Returns non-zero on failure.
+verify_env() {
+  local env="$1" dir="$2" offset="$3" action="$4"
+  local service port db logfile pid pid2 state uptime token newlog fails=0
+  service="$(env_get "$env" service)"; port="$(env_get "$env" port)"
+  db="$(env_get "$env" db)"; logfile="$(env_get "$env" log)"
+  local stable="${VERIFY_STABLE_SECS:-60}"
+
+  if is_true "${DRY_RUN:-}"; then
+    log "DRY_RUN: verify ${env} against $(basename "$dir")"
+    return 0
+  fi
+
+  read -r state pid uptime < <(service_state "$service")
+  [[ "$state" == RUNNING && "$pid" =~ ^[0-9]+$ ]] || { log "${service} is ${state}"; return 1; }
+
+  local i
+  for i in $(seq 1 60); do
+    curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" > /dev/null 2>&1 && break
+    sleep 0.5
+  done
+
+  newlog="$(mktemp /tmp/fast-retro-verify-XXXXXX)"
+  log_since "$logfile" "$offset" > "$newlog"
+  token="$(service_token "$pid" || true)"
+  [[ -n "$token" ]] || { log "can't read ${service}'s lead token from /proc/${pid}/environ"; fails=$((fails+1)); }
+
+  check_instance "${env} (127.0.0.1:${port})" "http://127.0.0.1:${port}" "$dir" \
+    "$token" "$pid" "$newlog" "$db" 0 || fails=$((fails+CHECK_FAILS))
+
+  if [[ "$env" == prod ]]; then
+    check_instance "${env} (public ${PROD_URL})" "$PROD_URL" "$dir" || fails=$((fails+CHECK_FAILS))
+  else
+    log "public URL checks skipped for ${env}: $(env_get "$env" url) is private (needs a signed-in browser)"
+  fi
+
+  log "watching ${service} for ${stable}s (same PID, no WARN/ERROR/panic)"
+  sleep "$stable"
+  read -r state pid2 uptime < <(service_state "$service")
+  if [[ "$state" == RUNNING && "$pid2" == "$pid" ]]; then
+    _pass "${service} still RUNNING as PID ${pid} after ${stable}s"
+  else
+    _fail "${service} is ${state} PID ${pid2} (was ${pid}): restart loop?"; fails=$((fails+1))
+  fi
+  log_since "$logfile" "$offset" > "$newlog"
+  if grep -E ' (WARN|ERROR) |panicked' "$newlog" | redact >&2; then
+    _fail "${service} logged the WARN/ERROR lines above"; fails=$((fails+1))
+  else
+    _pass "no WARN/ERROR/panic in ${service}'s new log output"
+  fi
+  local err_log="${logfile%.log}_err.log"
+  if [[ -f "$err_log" ]] && grep -q panicked "$err_log"; then
+    _fail "${err_log} contains a panic"; fails=$((fails+1))
+  fi
+
+  local saved
+  saved="${RELEASE_ROOT}/logs/$(now_ts)-${action}.log"
+  redact < "$newlog" | tail -n 200 > "$saved"
+  rm -f "$newlog"
+  log "log tail saved to ${saved}"
+  (( fails == 0 ))
+}
+
+# Append an entry to a build's LOCAL_INFO (the only file in a build dir the
+# box ever writes). jq filter gets $at.
+local_info_update() {
+  local dir="$1" filter="$2"
+  if is_true "${DRY_RUN:-}"; then
+    log "DRY_RUN: LOCAL_INFO update on $(basename "$dir"): ${filter}"
+    return 0
+  fi
+  local f="$dir/LOCAL_INFO" tmp
+  [[ -f "$f" ]] || echo '{}' > "$f"
+  tmp="$(mktemp "$dir/.LOCAL_INFO.XXXXXX")"
+  jq --arg at "$(now_iso)" "$filter" "$f" > "$tmp" && mv "$tmp" "$f"
+}
