@@ -732,3 +732,84 @@ release_env() {
   [[ "$env" == prod || "$env" == qa ]] || die "RELEASE_ENV must be prod or qa, got '${env}'"
   echo "$env"
 }
+
+# ---------------------------------------------------------------- GitHub releases (prod only)
+
+# A GitHub release records what went live: one per verified prod deploy,
+# tagged prod-<build id> at the origin/main commit whose tree the build is.
+# Best effort: prod is already live when these run, so a failure warns and
+# the deploy still succeeds. NO_GH_RELEASE=1 skips them.
+gh_release_tag() { printf 'prod-%s' "$1"; }
+
+gh_release_skip() {
+  [[ "$1" == prod ]] || return 0
+  is_true "${NO_GH_RELEASE:-}" && { log "NO_GH_RELEASE=1: no GitHub release"; return 0; }
+  return 1
+}
+
+# PRs merged into main between the last prod release (or <from-sha>) and <to-sha>.
+_gh_release_prs() {
+  local from="$1" to="$2" base
+  git -C "$REPO_DIR" fetch --quiet --tags origin >&2 2>/dev/null || true
+  base="$(git -C "$REPO_DIR" tag --list 'prod-*' --merged "$to" --sort=-creatordate | head -1)"
+  [[ -n "$base" ]] || base="$from"
+  git -C "$REPO_DIR" cat-file -e "${base}^{commit}" 2>/dev/null || { echo "- (no PR list: ${base:0:12} isn't in this checkout)"; return 0; }
+  git -C "$REPO_DIR" log --first-parent --merges --format='%s%x1f%b%x1e' "${base}..${to}" \
+    | awk -v RS='\x1e' -F'\x1f' 'match($1, /#[0-9]+/) { n = substr($1, RSTART, RLENGTH); split($2, b, "\n"); t = b[1]; if (t == "") t = b[2]; printf "- %s %s\n", n, t }'
+}
+
+# gh_release_publish <env> <build-dir> <main-sha> <from-sha>
+gh_release_publish() {
+  local env="$1" dir="$2" main_sha="$3" from_sha="$4"
+  gh_release_skip "$env" && return 0
+  local id tag sha src run_url notes stage url
+  id="$(basename "$dir")"; tag="$(gh_release_tag "$id")"
+  sha="$(info_get "$dir" sha)"; src="$(info_get "$dir" source)"
+  run_url="$(info_get "$dir" run_url || echo -)"
+  if is_true "${DRY_RUN:-}"; then
+    log "DRY_RUN: gh release create ${tag} --target ${main_sha:0:7} (binary + BUILD_INFO)"
+    return 0
+  fi
+  # shellcheck disable=SC2016  # backticks are Markdown, not command substitution
+  notes="$(printf 'Deployed to https://fast-retro.scottschmidt.io at %s.\n\n| | |\n|---|---|\n| Build | `%s` (source: %s) |\n| Commit | %s (build sha %s) |\n| CI run | %s |\n| Previous prod | %s |\n\n## Merged PRs\n\n%s\n\n## Verify the binary\n\n```sh\ngh attestation verify fast-retro-linux-x86_64 -R %s --signer-workflow %s\n```\n' \
+    "$(now_iso)" "$id" "$src" "$main_sha" "${sha:0:7}" "$run_url" "${from_sha:0:7}" \
+    "$(_gh_release_prs "$from_sha" "$main_sha")" "$REPO_SLUG" "$SIGNER_WORKFLOW")"
+  [[ "$src" == ci ]] || notes="> Break-glass ${src} build: not built or attested by CI."$'\n\n'"$notes"
+  stage="$(mktemp -d)"
+  cp "$dir/fast-retro" "$stage/fast-retro-linux-x86_64"
+  cp "$dir/BUILD_INFO" "$stage/BUILD_INFO.json"
+  if url="$(gh release create "$tag" -R "$REPO_SLUG" --target "$main_sha" \
+              --title "Prod $(date -u +%Y-%m-%d) · ${sha:0:7}" --notes "$notes" --latest \
+              "$stage/fast-retro-linux-x86_64" "$stage/BUILD_INFO.json" 2> "$stage/err")" \
+     && [[ "$url" == https://* ]]; then
+    log "GitHub release: ${url}"
+    audit gh-release "env=${env} build=${id} tag=${tag} url=${url} result=ok"
+  else
+    warn "couldn't create GitHub release ${tag} ($(tail -1 "$stage/err" | redact)); prod is fine. Retry by hand, see docs/RELEASING.md"
+    audit gh-release "env=${env} build=${id} tag=${tag} result=fail"
+  fi
+  rm -rf "$stage"
+}
+
+# gh_release_note_rollback <env> <from-build-id> <to-build-id>
+# Marks the rolled-away-from release (kept, not deleted) and makes the
+# rollback target's release Latest again if it has one (seeded builds don't).
+gh_release_note_rollback() {
+  local env="$1" from="$2" to="$3" ftag ttag body
+  gh_release_skip "$env" && return 0
+  ftag="$(gh_release_tag "$from")"; ttag="$(gh_release_tag "$to")"
+  if is_true "${DRY_RUN:-}"; then
+    log "DRY_RUN: note the rollback on GitHub release ${ftag}; mark ${ttag} Latest if it exists"
+    return 0
+  fi
+  if body="$(gh release view "$ftag" -R "$REPO_SLUG" --json body --jq .body 2>/dev/null)"; then
+    gh release edit "$ftag" -R "$REPO_SLUG" --latest=false \
+      --notes "> **Rolled back** at $(now_iso) to \`${to}\`."$'\n\n'"$body" > /dev/null \
+      && log "noted the rollback on GitHub release ${ftag}" \
+      || warn "couldn't edit GitHub release ${ftag}"
+  fi
+  if gh release view "$ttag" -R "$REPO_SLUG" > /dev/null 2>&1; then
+    gh release edit "$ttag" -R "$REPO_SLUG" --latest > /dev/null || warn "couldn't mark ${ttag} Latest"
+  fi
+  return 0
+}
