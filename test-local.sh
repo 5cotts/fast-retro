@@ -3,7 +3,18 @@
 # instance: its own port, its own scratch database, and cargo run (never
 # target/release/fast-retro). This is the only documented way to run e2e
 # tests locally — see tests/README.md for why isolation matters here.
+#
+# FASTRETRO_BIN=<path> runs that prebuilt binary instead of `cargo run`
+# (same scratch port, DB and env). CI uses it to run e2e against the exact
+# release binary it ships. Never point it at a port or DB that prod uses.
 set -euo pipefail
+
+BIN=""
+if [[ -n "${FASTRETRO_BIN:-}" ]]; then
+  BIN="$(realpath "$FASTRETRO_BIN")"
+  [[ -x "$BIN" ]] || { echo "FASTRETRO_BIN is not an executable file: $FASTRETRO_BIN" >&2; exit 1; }
+fi
+
 cd "$(dirname "$0")"
 
 export PATH="${HOME}/.cargo/bin:${PATH}"
@@ -23,9 +34,20 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "==> Starting isolated backend on :$PORT (scratch db: $DB)"
+if [[ "$PORT" == 5102 || "$PORT" == 5103 ]]; then
+  echo "Refusing to run e2e on :$PORT, which is a deployed fast-retro port." >&2
+  exit 1
+fi
+
+if [[ -n "$BIN" ]]; then
+  CMD=("$BIN")
+  echo "==> Starting isolated backend on :$PORT from $BIN (scratch db: $DB)"
+else
+  CMD=(cargo run)
+  echo "==> Starting isolated backend on :$PORT via cargo run (scratch db: $DB)"
+fi
 RETRO_LEAD_TOKEN="$LEAD_TOKEN" PORT="$PORT" FASTRETRO_DB="$DB" COOKIE_SECURE=false FASTRETRO_RATE_LIMIT=10000 \
-  cargo run > "$LOG" 2>&1 &
+  "${CMD[@]}" > "$LOG" 2>&1 &
 SERVER_PID=$!
 
 echo "==> Waiting for it to come up..."

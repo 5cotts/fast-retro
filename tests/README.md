@@ -35,6 +35,30 @@ deletes the scratch database on exit (success, failure, or Ctrl-C) — no
 env vars to remember, and no way to end up pointed at `target/release/fast-retro`
 or the app's default port/DB by omission.
 
+To run the suite against a prebuilt binary instead of `cargo run` (this is
+what CI does with the release binary it ships):
+
+```bash
+FASTRETRO_BIN=path/to/fast-retro ./test-local.sh
+```
+
+The binary embeds the frontend at compile time, so build it after the
+frontend (`bun run build`), or the suite tests a stale bundle. The script
+refuses ports 5102 and 5103 (prod and QA).
+
+### CI
+
+`.github/workflows/build.yml` runs on every PR and every push to `main`:
+frontend build, `bun run check`, `bun run test:unit`, `cargo test`, clippy
+(warning count reported, not gated), `cargo build --release`, then this e2e
+suite against that release binary (`FASTRETRO_BIN`). It uploads the binary,
+`index.html` and a `BUILD_INFO` file as the artifact `fast-retro-<sha>` (kept
+90 days), and a second job attests the binary's provenance. On failure, the
+Playwright report is uploaded as `e2e-report-<sha>`. The release scripts
+deploy only attested CI builds; see `docs/release-plan.md` §2.10.
+
+`cargo fmt --check` is not a gate yet (`main` isn't formatted).
+
 ### Manual (for iterating on a test — keeps the server up between runs)
 
 From the project root, start a **disposable** local instance — `cargo run`
