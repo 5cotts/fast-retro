@@ -124,6 +124,8 @@ Add a `Makefile` in `fast-retro/` (workspace convention). Targets are thin wrapp
 | `make rollback BUILD=<id> CONFIRM=<sha7>` | Deep path: roll back to **any retained build that was previously prod** (per `release.log`). Skips guards (b) and (c), and accepts `source: seeded` as well as `source: ci` builds (the binary's sha256 must still match its `BUILD_INFO`), but keeps CONFIRM, the pre-deploy backup, the swap trap and verify. This makes rollback more than one release deep. |
 | `make release-status` | For prod, prev and QA: symlink target, the binary **actually running** (`readlink /proc/<pid>/exe`), live `/api/version`, PID and uptime. Plus the latest 3 restore points with sizes and the last 10 `release.log` lines. |
 | `make smoke BUILD=<id>` | §2.7 smoke run against a scratch copy, including the rollback-compatibility check. |
+| `make db-backup-check [DB=<path>]` | Online `.backup` of a live DB (default prod's) into a scratch dir, `integrity_check`, and row counts compared with the live file. Read-only on the live DB; the copy is removed. Same `db_backup` helper `prod-deploy` uses for restore points. |
+| `make release-lint` | `shellcheck` on `scripts/release/` (also run in CI's quick tier). |
 
 `release-prune` is deferred (disk isn't a concern; see §7).
 
@@ -177,7 +179,7 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 
 1. `.backup` prod into the scratch dir + `integrity_check`.
 2. Start the **candidate** against the scratch copy; run the checks below. Its startup migrations now apply to the copy.
-3. Stop it, then start **`prod.prev`'s target binary** against **that same migrated copy** and run the checks again. This proves the quick-rollback target still works on a DB the new build has migrated. (Skipped, with a log line, on the very first deploy if `prod.prev` doesn't exist.)
+3. Stop it, then start the **rollback target** against **that same migrated copy** and run the checks again. The rollback target is the build a quick rollback would return to *after* this deploy: the current `prod` build (which the swap turns into `prod.prev`), or `prod.prev` if the candidate already is `prod`. This proves that build still works on a DB the new build has migrated. (Skipped, with a log line, while neither link exists, i.e. before the prod migration in §3.) *Implemented in PR 3; the first draft said `prod.prev`, which is the build two releases back by the time a rollback could happen.*
 4. Remove the scratch dir.
 
 **Checks** (shared by smoke and verify):
@@ -264,18 +266,26 @@ Accept an optional `FASTRETRO_BIN`. When set, start that binary instead of `carg
 
 ```
 1. resolve     REF → sha via git fetch; PR=<n> → gh pr view <n> --json headRefOid
-2. find run    gh run list --workflow build.yml --commit <sha> --json databaseId,status,conclusion,event
-               in_progress → gh run watch (max 30 min); failure/none → stop, print run URL
-3. repo check  gh api repos/5cotts/fast-retro/actions/runs/<id> → head_repository.full_name == 5cotts/fast-retro
-4. download    gh run download <id> -n fast-retro-<sha> -D builds/.tmp-<id>
-5. verify      BUILD_INFO.sha == sha; BUILD_INFO.source == ci; sha256(fast-retro) == BUILD_INFO.binary_sha256;
-               gh attestation verify fast-retro --repo 5cotts/fast-retro
-                 --signer-workflow 5cotts/fast-retro/.github/workflows/build.yml
+2. find run    the newest unexpired artifact named fast-retro-<sha> whose run is completed/success,
+               of .github/workflows/build.yml, with head_sha == sha (quick-tier runs upload nothing)
+               none, but a run for the commit is in progress → gh run watch (max 30 min), retry once;
+               still none → stop and list the commit's runs
+3. repo check  gh api repos/5cotts/fast-retro/actions/runs/<id> → head_repository.full_name and
+               repository.full_name == 5cotts/fast-retro (same call as step 2)
+4. download    gh run download <id> -n fast-retro-<sha> -D builds/.tmp-<id>-<pid>
+5. verify      BUILD_INFO.sha == sha, .source == ci, .run_id == <id>; sha256 of fast-retro and
+               index.html == BUILD_INFO; gh attestation verify fast-retro --repo 5cotts/fast-retro
+                 --signer-workflow 5cotts/fast-retro/.github/workflows/build.yml --deny-self-hosted-runners
+               and the certificate's runInvocationURI is run <id>. (Its sourceRepositoryDigest is
+               GitHub's synthetic merge commit on PR runs, so --source-digest <sha> can't be used;
+               the run id, whose head_sha step 2 checked, is the binding.)
 6. finish      chmod +x; write LOCAL_INFO (fetched_at, run_url, attestation: verified);
                mv builds/.tmp-<id> builds/<UTC-ts>-<sha7>
 ```
 
 `gh` on the box is 2.90 and already authenticated as `5cotts`, so `gh attestation` works with no new credentials. Artifacts expire after 90 days on GitHub, but the copy in `builds/` is permanent, so rollback never depends on GitHub.
+
+An existing build for the sha that fails `build_intact` (missing file, hash mismatch) or has no verified attestation in `LOCAL_INFO` is moved to `builds/.broken-<id>-<ts>` (never selected, kept for inspection) and fetched again.
 
 **QA → prod with CI builds:** add the `e2e` label to the PR (or stack tip) so CI builds an artifact, then QA it with `make qa-deploy PR=<n>`, which fetches that PR head's artifact. After Scott merges, `prod-deploy` promotes the **same** build: guard (c) checks its tree equals `origin/main`'s tree. If the branch wasn't up to date with `main` when merged, the trees differ and the guard stops; QA the `main` push build instead.
 

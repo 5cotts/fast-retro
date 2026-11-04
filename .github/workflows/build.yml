@@ -1,6 +1,6 @@
 # Two tiers (docs/release-plan.md §2.10):
 # - quick: every PR push runs the type check, unit tests, cargo test and
-#   clippy. No release build, no e2e.
+#   clippy, plus shellcheck on scripts/release. No release build, no e2e.
 # - full: pushes to main, manual runs, and PRs labelled `e2e` also build
 #   the release binary, run e2e against that exact binary, upload it and
 #   attest it. The Zo box pulls that artifact with `make release-fetch`.
@@ -81,6 +81,9 @@ jobs:
 
       - name: Frontend unit tests
         run: cd frontend && bun run test:unit
+
+      - name: shellcheck release scripts
+        run: cd scripts/release && shellcheck --version | head -2 && shellcheck *.sh lib.sh
 
       - name: Rust toolchain
         run: rustup show active-toolchain && rustc --version && cargo --version
