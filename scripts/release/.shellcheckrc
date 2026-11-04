@@ -1,0 +1,5 @@
+# _pass/_fail always return 0, so `A && _pass || _fail` is safe here.
+# Cleanup functions are registered with add_cleanup and called from the EXIT trap.
+disable=SC2015,SC2317
+external-sources=true
+source-path=SCRIPTDIR
