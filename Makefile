@@ -6,13 +6,14 @@
 R := scripts/release
 # Pass only the variables a script reads, explicitly, so nothing else from
 # the caller's environment changes behavior.
-ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" DRY_RUN="$(DRY_RUN)"
+ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" DRY_RUN="$(DRY_RUN)"
 
-.PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint
+.PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy
 
 help:
 	@echo "make release-fetch [REF=origin/main | PR=<n> | SHA=<sha>]  download + verify a CI build"
 	@echo "make release-status                                        what prod/QA run, builds, restore points"
+	@echo "make qa-deploy [BUILD=<id> | PR=<n> | REF=...] [SEED=prod]  smoke, point QA at a build, restart, verify"
 	@echo "make smoke BUILD=<id>                                      candidate + rollback target vs a copy of prod's DB"
 	@echo "make db-backup-check [DB=<path>]                           online backup + integrity_check + row counts"
 	@echo "make release-check [REF=... | PR=... | SHA=...]           CI's gates locally, in a clean worktree"
@@ -30,6 +31,9 @@ release-build-local:
 
 release-status:
 	@$(ARGS) $(R)/status.sh
+
+qa-deploy:
+	@$(ARGS) $(R)/qa-deploy.sh
 
 smoke:
 	@$(ARGS) $(R)/smoke.sh
