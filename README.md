@@ -109,7 +109,7 @@ running/deployed) before running the suite.
 | Variable           | Default                                | Description                                                                 |
 | ------------------ | -------------------------------------- | --------------------------------------------------------------------------- |
 | `RETRO_LEAD_TOKEN` | random 16-char string printed at start | Secret token gating the lead/host controls. Set this in production.         |
-| `PORT`             | `5102`                                 | HTTP port to bind.                                                          |
+| `PORT`             | `5102`                                 | HTTP port to bind. If set to anything that isn't a valid port, the server exits instead of falling back to 5102. |
 | `FASTRETRO_DB`     | `data/fastretro.db`                    | Path to the SQLite database file. Created automatically on first run.       |
 | `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
 | `GA_MEASUREMENT_ID` | unset (analytics disabled)            | Google Analytics 4 measurement ID. Optional — leave unset to disable GA4 tracking entirely. |
@@ -118,7 +118,7 @@ running/deployed) before running the suite.
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
 | `VITE_BACKEND_URL` | `http://localhost:5102`                | (dev only) Backend the Vite dev server proxies `/api` and `/ws` to.         |
 
-If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment.
+If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment. A token set through the environment is never printed; the banner only says it is set and how long it is.
 
 A `.env.example` listing all of these is checked in — copy it to `.env` and adjust for local use (`.env` itself is gitignored).
 
@@ -169,6 +169,8 @@ Because the binary embeds the frontend, deployment is just:
 3. Run behind a reverse proxy that terminates TLS and forwards both HTTP and websocket traffic to the port.
 
 Example reverse-proxy target URL (replace with your own host): `https://retro.example.com → http://127.0.0.1:5102`.
+
+`GET /api/version` returns the commit the binary was built from (`{"sha", "tree", "built_at"}`), as stamped by `build.sh`; unstamped builds such as `cargo run` report `"dev"`. `GET /api/health` returns `ok`.
 
 Board state, archives, and (if Google Sign-In is enabled) user accounts all persist to the SQLite database at `FASTRETRO_DB` (default `data/fastretro.db`), so the process restarts cleanly without losing data. Back up that file if you want durability beyond the server's disk.
 

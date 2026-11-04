@@ -296,6 +296,7 @@ fn build_router(state: AppState) -> Router {
             post(create_board).get(list_boards).route_layer(rl),
         )
         .route("/api/health", get(health))
+        .route("/api/version", get(version))
         .route("/api/config", get(config))
         // Accounts (Google SSO)
         .route("/api/auth/logout", post(auth_logout))
@@ -338,23 +339,40 @@ async fn main() {
         )
         .init();
 
-    let lead_token = std::env::var("RETRO_LEAD_TOKEN").unwrap_or_else(|_| {
-        use rand::Rng;
-        let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyz0123456789".chars().collect();
-        let mut rng = rand::thread_rng();
-        (0..16).map(|_| chars[rng.gen_range(0..chars.len())]).collect()
-    });
+    // Read before anything touches the DB, so a mangled PORT can't run
+    // migrations on the default DB and only then fail.
+    let port = match parse_port(std::env::var("PORT").ok().as_deref()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("fast-retro: {e}");
+            std::process::exit(2);
+        }
+    };
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(5102);
+    let (lead_token, lead_token_generated) = match std::env::var("RETRO_LEAD_TOKEN") {
+        Ok(t) => (t, false),
+        Err(_) => {
+            use rand::Rng;
+            let chars: Vec<char> = "abcdefghijklmnopqrstuvwxyz0123456789".chars().collect();
+            let mut rng = rand::thread_rng();
+            ((0..16).map(|_| chars[rng.gen_range(0..chars.len())]).collect(), true)
+        }
+    };
+
+    let version = BuildVersion::current();
+    info!(
+        "version: sha={} tree={} built_at={}",
+        version.sha, version.tree, version.built_at
+    );
 
     let db_path = std::env::var("FASTRETRO_DB").unwrap_or_else(|_| "data/fastretro.db".to_string());
     let db = Db::open(&db_path).unwrap_or_else(|e| {
         panic!("failed to open database at {}: {}", db_path, e);
     });
-    info!("database: {}", db_path);
+    let db_abs = std::fs::canonicalize(&db_path)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| db_path.clone());
+    info!("database: {}", db_abs);
 
     match archive::migrate_from_json(&db) {
         Ok(0) => {}
@@ -399,8 +417,14 @@ async fn main() {
     println!("=================================================");
     println!("Fast Retro starting");
     println!("Port: {}", port);
-    println!("Lead token: {}", lead_token);
-    println!("Lead URL path: /lead/{}", lead_token);
+    println!("Version: {}", version.sha);
+    if lead_token_generated {
+        // Random and not persisted: only useful for local runs, so show it.
+        println!("Lead token: generated, not persisted (set RETRO_LEAD_TOKEN for a stable one)");
+        println!("Lead URL path: /lead/{}", lead_token);
+    } else {
+        println!("Lead token: set from RETRO_LEAD_TOKEN ({} chars)", lead_token.chars().count());
+    }
     println!("=================================================");
 
     let app = build_router(state);
@@ -418,6 +442,55 @@ async fn main() {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+/// Default port when `PORT` is unset (keeps the self-host README working).
+const DEFAULT_PORT: u16 = 5102;
+
+/// `PORT` unset → the default. Set but not a valid non-zero port → an error,
+/// never a silent fallback to the default (which is prod's port).
+fn parse_port(raw: Option<&str>) -> Result<u16, String> {
+    match raw {
+        None => Ok(DEFAULT_PORT),
+        Some(s) => match s.trim().parse::<u16>() {
+            Ok(p) if p > 0 => Ok(p),
+            _ => Err(format!("invalid PORT {s:?}: expected a number from 1 to 65535")),
+        },
+    }
+}
+
+/// Build identity, stamped at compile time by build.sh / CI through
+/// FASTRETRO_GIT_SHA, FASTRETRO_GIT_TREE and FASTRETRO_BUILT_AT.
+/// Unstamped builds (plain `cargo run`) report "dev".
+#[derive(serde::Serialize, Clone, Copy)]
+struct BuildVersion {
+    sha: &'static str,
+    tree: &'static str,
+    built_at: &'static str,
+}
+
+impl BuildVersion {
+    fn current() -> Self {
+        fn stamp(v: Option<&'static str>) -> &'static str {
+            match v {
+                Some(s) if !s.trim().is_empty() => s,
+                _ => "dev",
+            }
+        }
+        BuildVersion {
+            sha: stamp(option_env!("FASTRETRO_GIT_SHA")),
+            tree: stamp(option_env!("FASTRETRO_GIT_TREE")),
+            built_at: stamp(option_env!("FASTRETRO_BUILT_AT")),
+        }
+    }
+}
+
+async fn version() -> Response {
+    (
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(BuildVersion::current()),
+    )
+        .into_response()
 }
 
 async fn lead_token_check(
@@ -1259,6 +1332,54 @@ mod tests {
             StatusCode::FORBIDDEN,
             "a different IP should have its own budget"
         );
+    }
+
+    #[test]
+    fn parse_port_defaults_only_when_unset() {
+        assert_eq!(parse_port(None), Ok(DEFAULT_PORT));
+        assert_eq!(parse_port(Some("5197")), Ok(5197));
+        assert_eq!(parse_port(Some(" 8080 ")), Ok(8080));
+        for bad in ["", "garbage", "0", "65536", "-1", "5102x", "PORT=5197 FASTRETRO_DB=/tmp/x"] {
+            assert!(parse_port(Some(bad)).is_err(), "{bad:?} should be rejected");
+        }
+    }
+
+    #[tokio::test]
+    async fn version_route_reports_build_identity() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/version")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.headers().get(header::CACHE_CONTROL).unwrap(), "no-store");
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let expected = BuildVersion::current();
+        assert_eq!(v["sha"], expected.sha);
+        assert_eq!(v["tree"], expected.tree);
+        assert_eq!(v["built_at"], expected.built_at);
+        for key in ["sha", "tree", "built_at"] {
+            assert!(!v[key].as_str().unwrap().is_empty(), "{key} must not be empty");
+        }
+    }
+
+    #[tokio::test]
+    async fn health_is_still_plain_ok() {
+        let app = build_router(test_state());
+        let req = with_peer(
+            Request::builder()
+                .uri("/api/health")
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&body[..], b"ok");
     }
 
     #[tokio::test]
