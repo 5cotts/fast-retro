@@ -170,6 +170,8 @@ Because the binary embeds the frontend, deployment is just:
 
 Example reverse-proxy target URL (replace with your own host): `https://retro.example.com → http://127.0.0.1:5102`.
 
+Those steps are for self-hosting. The hosted instance at fast-retro.scottschmidt.io ships only through the release scripts: see [`docs/RELEASING.md`](./docs/RELEASING.md).
+
 `GET /api/version` returns the commit the binary was built from (`{"sha", "tree", "built_at"}`), as stamped by `build.sh`; unstamped builds such as `cargo run` report `"dev"`. `GET /api/health` returns `ok`.
 
 Board state, archives, and (if Google Sign-In is enabled) user accounts all persist to the SQLite database at `FASTRETRO_DB` (default `data/fastretro.db`), so the process restarts cleanly without losing data. Back up that file if you want durability beyond the server's disk.

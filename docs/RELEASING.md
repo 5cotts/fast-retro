@@ -2,9 +2,25 @@
 
 Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). Run every command from the `fast-retro/` repo root on the Zo box.
 
-> Status: QA is live (release PR 4). The one-time prod migration (`release-plan.md` §3 step 2) was done 2026-11-04: prod runs `fast-retro-releases/prod/fast-retro`, a symlink into `builds/`. The next prod deploy uses `make prod-deploy` and `make rollback`. The rest of this runbook lands in PR 6.
->
-> Idle tab or active person? `boards.last_active_at` doesn't track edits, and an open tab keeps writing an identical no-op to `doc_updates` about every 15 s, so neither shows activity by itself. Timestamps there are milliseconds. A board is idle when `count(distinct update_bin)` over its recent `doc_updates` is 1 and its `board_docs` snapshot is unchanged.
+## The normal flow
+
+1. Quick CI goes green on the PR.
+2. Add the `e2e` label (`gh pr edit <n> --add-label e2e`) and wait for the full CI tier. It builds and attests the binary. For a stack, label the tip.
+3. `make qa-deploy PR=<n>`, then send Scott the QA URL.
+4. Scott QAs it and merges the PR.
+5. With Scott's go-ahead, deploy to prod. Reuse the QA'd build if its tree matches `main`. If `main` has moved, use `REF=origin/main` to fetch and QA the `main` build first.
+
+## What needs Scott's explicit go-ahead
+
+Approval for one deploy doesn't carry over to the next.
+
+- Any `make prod-deploy` or `make rollback`
+- `FORCE=1`, `SKIP_QA=1` or `ALLOW_LOCAL_BUILD=1`
+- `make qa-deploy SEED=prod`, which copies real user boards into QA
+- `make release-build-local`
+- A manual DB restore
+
+`make qa-deploy` without `SEED=prod`, `make release-status`, `make release-fetch` and QA drills don't need it.
 
 ## Environments
 
@@ -12,13 +28,23 @@ Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). 
 |---|---|---|
 | Service | `fast-retro-qa` (port 5103) | `fast-retro-prod` (port 5102) |
 | URL | https://fast-retro-qa-5cotts.zo.computer (**private**: Scott must be signed in to Zo) | https://fast-retro.scottschmidt.io |
-| Runs | `fast-retro-releases/qa/fast-retro` (symlink into `builds/`) | `fast-retro/target/release/fast-retro` until the migration, then `fast-retro-releases/prod/fast-retro` |
+| Runs | `fast-retro-releases/qa/fast-retro` (symlink into `builds/`) | `fast-retro-releases/prod/fast-retro` (symlink into `builds/`) |
 | DB | `fast-retro-releases/qa-data/fastretro-qa.db` (persistent) | `fast-retro/data/fastretro.db` |
 | Lead token | `fast-retro-releases/qa-lead.token` | Scott's notes |
 
 Google sign-in and GA4 are off on QA.
 
 `make release-status` shows what each environment runs, the retained builds and the last `release.log` lines. It's read-only and safe any time.
+
+## Finding a build's CI run
+
+```sh
+gh run list --commit <full sha> --workflow build.yml
+```
+
+- **Still running:** `make qa-deploy` and `make release-fetch` wait up to 30 min for it.
+- **Red:** don't deploy it. `gh run view <id> --log-failed` shows why, and a failed e2e run uploads its Playwright report as `e2e-report-<sha>`. Fix it on the branch. Rerun with `gh run rerun <id> --failed` only if the failure is clearly a flake.
+- **Quick tier only:** it has no artifact. Add the `e2e` label on a PR. A `main` push always runs the full tier.
 
 ## Deploy to QA
 
@@ -41,6 +67,8 @@ make qa-deploy BUILD=<id> SEED=prod
 This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>` (kept), copies prod's DB in with SQLite's online backup (it only reads prod), runs `integrity_check`, then starts and verifies QA. This copies real user boards into QA, which is why it needs Scott's go-ahead.
 
 ## Deploy to prod (Scott's go-ahead for every deploy)
+
+The first scripted prod deploy hasn't happened yet, and `prod.prev` won't exist until it does. Do it with Scott watching: dry run, deploy, a deliberate `make rollback`, then redeploy (`release-plan.md` §5, PR 5). Delete this paragraph once that's done.
 
 Prerequisites: the build was QA'd (`make qa-deploy`) and its commit's tree is what `main` has now (merge the PR first; a stack tip's build qualifies once the stack is merged).
 
@@ -68,6 +96,64 @@ A prod rollback adds a "Rolled back" note to the release it rolled away from (it
 
 Rollback never restores the DB. Migrations are additive, so the old binary runs on the migrated DB (smoke checks that before every deploy).
 
+## Schema and client-compatibility rules
+
+- **Migrations are additive only:** new tables, or `ADD COLUMN` that's nullable or has a default. No `NOT NULL` without a default, and no drops or renames, so the previous binary still works on a migrated DB. Smoke runs the rollback target against the migrated copy to check this.
+- **Doc-model changes:** label a PR `doc-model-change` if it changes the Yjs board shape. Open tabs reconnect still running the old JS and keep writing the old shape, so `prod-deploy` for such a release needs zero live participants, and `FORCE=1` doesn't override that.
+
+## Is anyone actually on a board?
+
+The preflight counts connections, so an idle open tab blocks a deploy the same as someone working. To tell them apart:
+
+- `boards.last_active_at` doesn't track edits, and its timestamps are in milliseconds.
+- An open tab writes an identical no-op to `doc_updates` about every 15 s, so writes alone don't show activity.
+- A board is idle when `count(distinct update_bin)` over its recent `doc_updates` is 1 and its `board_docs` snapshot isn't changing.
+
+Report what you found to Scott. Whether to wait or use `FORCE=1` is Scott's call.
+
+## Manual DB restore (Scott only)
+
+**This loses data.** Everything written since the restore point is gone. A bad deploy normally needs a rollback, not this.
+
+```sh
+supervisorctl -c /etc/zo/supervisord-user.conf stop fast-retro-prod
+cd /home/workspace/fast-retro/data
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+for f in fastretro.db fastretro.db-wal fastretro.db-shm; do [ -e "$f" ] && mv "$f" "$f.pre-restore-$ts"; done
+cp fastretro.db.bak-<restore point> fastretro.db
+supervisorctl -c /etc/zo/supervisord-user.conf start fast-retro-prod
+```
+
+Move the DB and its `-wal` and `-shm` files together, and keep what you moved aside. Then check `curl -s localhost:5102/api/health` and `make release-status`.
+
+## Break-glass local build (Scott's OK only)
+
+Only for when GitHub is down and a deploy can't wait. These builds have no attestation.
+
+```sh
+make release-build-local REF=origin/main       # runs CI's gates locally, then builds in a clean worktree
+make qa-deploy BUILD=<id>
+make prod-deploy BUILD=<id> CONFIRM=<sha7> ALLOW_LOCAL_BUILD=1
+```
+
+## Manual fallback (the scripts themselves are broken)
+
+Use this only with Scott's OK. It has no guards, smoke test or auto-rollback, so check each step yourself. Pick a build that's already in `builds/` and known to work; for a rollback, that's whatever `prod` pointed at before.
+
+```sh
+cd /home/workspace/fast-retro-releases
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+sqlite3 -readonly ../fast-retro/data/fastretro.db ".backup '../fast-retro/data/fastretro.db.bak-$ts-manual'"
+sqlite3 -readonly "../fast-retro/data/fastretro.db.bak-$ts-manual" 'PRAGMA integrity_check;'   # must print ok
+ln -sfn "$(readlink prod)" .prod.prev.tmp && mv -T .prod.prev.tmp prod.prev   # only if you're changing builds
+ln -sfn builds/<id> .prod.tmp && mv -T .prod.tmp prod
+supervisorctl -c /etc/zo/supervisord-user.conf restart fast-retro-prod
+curl -s localhost:5102/api/version                     # the sha you expect
+curl -s -o /dev/null -w '%{http_code}\n' https://fast-retro.scottschmidt.io/api/health
+```
+
+Then append a line to `release.log` saying what you did, and tell Scott which build is live. Run `make release-status` to confirm both links.
+
 ## Drills on QA
 
 `make qa-drill-deploy BUILD=<id> CONFIRM=<sha7>` and `make qa-drill-rollback [BUILD=<id> CONFIRM=<sha7>]` run the exact prod-deploy and rollback scripts against `fast-retro-qa` (`qa` / `qa.prev`, guard (c) skipped, restore points in `qa-data/`). Use them to try a change to the release scripts before it touches prod.
@@ -84,6 +170,7 @@ Rollback never restores the DB. Migrations are additive, so the old binary runs 
 | `guard (c): … isn't origin/main's` | The build isn't what `main` has. Merge the PR, or `make release-fetch` the `main` build, QA it, and deploy that. |
 | `preflight: N live participant(s)` | Someone is on a board. Wait and retry; `FORCE=1` only with Scott's OK. |
 | `prod-deploy didn't verify; restoring …` | Auto-rollback fired. Check `make release-status` shows the old build running, and read the log tail in `logs/`. The release line says `restore_verify=ok` or `FAILED`; if `FAILED`, tell Scott immediately. |
+| `fast-retro-prod is FATAL after restart` (or `BACKOFF`) | The new binary won't stay up. `prod-deploy` restores the old build by itself. Read `/dev/shm/fast-retro-prod_err.log` and `logs/`, and confirm with `make release-status`. |
 | `no prod link yet` | The one-time migration isn't done (`release-plan.md` §3 step 2). |
 
 Never stop processes with `pkill -f` (it has matched our own shell before). Use `supervisorctl` or the PID.
