@@ -1,10 +1,12 @@
 # Release tooling plan: QA and prod for fast-retro
 
-Status: **accepted (Q1–Q4), revised after SRE review on PR #42** · 2026-11-04 · author: Claude (SRE view)
+Status: **accepted (Q1–Q5), revised after SRE review on PR #42, then for CI-built artifacts (Q5)** · 2026-11-04 · author: Claude (SRE view)
 
 Goal: one scripted, repeatable path for an agent to ship fast-retro to **QA** and then **prod**. Each step should be safe to rerun, roll back in one command, and leave an audit trail. Agents should follow a runbook instead of rebuilding the process from chat history each time.
 
 This doc is written for the agent that implements it. Read "Current state" first; the design is shaped by what went wrong on 2026-11-02 and 2026-11-03. Appendix A maps every review comment on PR #42 to the section that addresses it.
+
+**In one line:** GitHub Actions runs the gates and builds the release binary; the Zo box pulls that exact artifact, verifies it came from our workflow, and deploys it with the scripts below. GitHub never gets credentials into the box (§2.10, §2.11).
 
 ---
 
@@ -42,6 +44,7 @@ This doc is written for the agent that implements it. Read "Current state" first
 7. **Scratch servers can touch prod.** Because the binary's defaults are prod's port and DB path, a scratch launch from the checkout with mangled env (the zsh env-splitting slip) would run the candidate's migrations on the live DB before failing to bind.
 8. **The lead token leaks into logs** every restart, which every debugging agent tails.
 9. **Steps live in chat history**, so every release rediscovers them.
+10. **Gates are run by hand.** An agent can skip one, or run them against a different tree than the one that ships (e2e also tests a debug build, not the release binary).
 
 ---
 
@@ -49,7 +52,8 @@ This doc is written for the agent that implements it. Read "Current state" first
 
 ### 2.1 Principles
 
-- **Build once, promote the same bytes.** QA and prod run the identical release binary. Prod never rebuilds what QA approved.
+- **Build once, in CI, and promote the same bytes.** GitHub Actions runs every gate and builds the release binary from a clean checkout (§2.10). QA and prod run that identical binary. Nothing is compiled on the Zo box in the normal flow.
+- **Deploys are pulled, not pushed.** The box downloads the CI artifact with `gh` and verifies its build attestation before using it. GitHub holds no SSH key, token or other credential for the box, and the workflow uses no secrets at all (§2.11).
 - **Artifacts are immutable and live outside the dev checkout.** Nothing an agent does in `fast-retro/` (branch switch, `./build.sh`, `./test-local.sh`) can change QA or prod.
 - **No scratch process can resolve to prod's port or DB** (§2.8). This is enforced by the scripts and, from PR 1, by the binary itself.
 - **Switch with a symlink and roll back with a symlink.** Releases are atomic `rename(2)` swaps followed by a supervisor restart. A half-finished deploy restores the symlinks on exit.
@@ -61,17 +65,18 @@ This doc is written for the agent that implements it. Read "Current state" first
 
 ```
 /home/workspace/fast-retro-releases/          # not a git repo, never committed
-  builds/<UTC-ts>-<sha7>/                     # complete builds only (renamed in from .tmp-*)
-      fast-retro                              # release binary (frontend embedded)
+  builds/<UTC-ts>-<sha7>/                     # complete, verified builds only (renamed in from .tmp-*)
+      fast-retro                              # release binary from CI (frontend embedded)
       index.html                              # this build's expected served HTML (for verify)
-      BUILD_INFO                              # written last; see 2.5
-  builds/.tmp-<id>/                           # in-progress build; ignored and cleaned on next build
+      BUILD_INFO                              # written by CI; never edited on the box (2.10)
+      LOCAL_INFO                              # box-side record: fetch, attestation, QA'd, prod history
+  builds/.tmp-<id>/                           # in-progress fetch; ignored and cleaned on next fetch
   prod      -> builds/<…>                     # symlink: what fast-retro-prod runs
   prod.prev -> builds/<…>                     # symlink: previous prod (quick rollback target)
   qa        -> builds/<…>                     # symlink: what fast-retro-qa runs
   qa-data/fastretro-qa.db                     # QA's own persistent DB (+ -wal/-shm)
-  worktree/                                   # git worktree the builds use (detached HEAD)
-  cargo-target/                               # shared CARGO_TARGET_DIR (not the dev checkout's target/)
+  worktree/                                   # break-glass local builds only (created on first use)
+  cargo-target/                               # break-glass local builds only (CARGO_TARGET_DIR)
   release.log                                 # append-only audit log, one line per action
   logs/<ts>-<action>.log                      # token-redacted log tail saved per deploy/rollback
   .lock                                       # flock: one release operation at a time
@@ -110,12 +115,13 @@ Add a `Makefile` in `fast-retro/` (workspace convention). Targets are thin wrapp
 
 | Command | What it does |
 |---|---|
-| `make release-check [REF=…]` | Runs every gate against the exact commit: `cargo test`, `bun run check`, `bun run test:unit`, `./test-local.sh`. Clippy runs and its warning **count is printed, not gated** (fix the one warning and switch to `-D warnings` when convenient). Writes results into `BUILD_INFO` if a build for that sha exists. |
-| `make release-build [REF=origin/main]` | `git fetch`, resolve REF to a sha, check out the worktree there (detached, clean). `bun install --frozen-lockfile`, `bun run build`, `cargo build --release` with the version env vars and `CARGO_TARGET_DIR=cargo-target`. Builds into `builds/.tmp-<id>/`: copies the binary (with `cp`, never a hardlink), copies `frontend/build/index.html`, then writes `BUILD_INFO` **last** (sha, tree, ref, built_at, rustc/bun versions, binary sha256). Finally `mv` to `builds/<id>/`. "Already built" means `BUILD_INFO` exists **and** the binary's sha256 matches it; otherwise the directory is treated as broken and rebuilt. |
-| `make qa-deploy [BUILD=<id> \| REF=…] [SEED=prod]` | Builds if needed, runs `smoke`, swaps the `qa` symlink, restarts `fast-retro-qa`, runs `verify qa`, records "QA'd" in `BUILD_INFO` and `release.log`. `SEED=prod` uses the reseed sequence in §2.6.2. |
-| `make prod-deploy BUILD=<id> CONFIRM=<sha7>` | The sequence in §2.6.1. Refuses unless (a) `CONFIRM` matches the build's sha, (b) the build was QA'd, (c) the build's git tree equals the tree of a **freshly fetched** `origin/main` (the fetched sha is logged). (c) lets us QA a PR stack tip, merge it, and promote the same binary. |
+| `make release-check [REF=…]` | Runs the same gates as CI locally, against the exact commit: `cargo test`, `bun run check`, `bun run test:unit`, `./test-local.sh`. Clippy runs and its warning **count is printed, not gated** (fix the one warning and switch to `-D warnings` when convenient). For agents before pushing, and the required first step of a break-glass build. **CI is the source of truth**; this target never marks a build as passing. |
+| `make release-fetch [REF=origin/main \| PR=<n> \| SHA=…]` | Downloads and verifies the CI build for a commit. Sequence in §2.10.3. "Already fetched" means `BUILD_INFO` exists **and** the binary's sha256 matches it; otherwise the directory is treated as broken and fetched again. |
+| `make release-build-local REF=…` | **Break-glass only** (GitHub down, Scott's explicit OK). Runs `release-check` on the commit, then builds in `worktree/` with `CARGO_TARGET_DIR=cargo-target` and the version env vars, into `builds/.tmp-<id>/` (binary copied with `cp`, never a hardlink), writing `BUILD_INFO` last with `source: local`. `prod-deploy` refuses `source: local` builds unless `ALLOW_LOCAL_BUILD=1`. |
+| `make qa-deploy [BUILD=<id> \| REF=… \| PR=<n>] [SEED=prod]` | Fetches if needed, runs `smoke`, swaps the `qa` symlink, restarts `fast-retro-qa`, runs `verify qa`, records "QA'd" in `LOCAL_INFO` and `release.log`. `SEED=prod` uses the reseed sequence in §2.6.2. |
+| `make prod-deploy BUILD=<id> CONFIRM=<sha7>` | The sequence in §2.6.1. Refuses unless (a) `CONFIRM` matches the build's sha, (b) the build was QA'd, (c) the build's git tree equals the tree of a **freshly fetched** `origin/main` (the fetched sha is logged), and (d) the build is `source: ci` and its attestation **re-verifies now** and its sha256 still matches `BUILD_INFO` (catches on-disk changes since the fetch). (c) lets us QA a PR stack tip's CI artifact, merge it, and promote the same binary. |
 | `make rollback [CONFIRM=<sha7>]` | Quick path: points `prod` at `prod.prev` (and `prod.prev` at what was `prod`), restarts, runs `verify prod`. Never touches the DB. |
-| `make rollback BUILD=<id> CONFIRM=<sha7>` | Deep path: roll back to **any retained build that was previously prod** (per `release.log`). Skips guards (b) and (c) but keeps CONFIRM, the pre-deploy backup, the swap trap and verify. This makes rollback more than one release deep. |
+| `make rollback BUILD=<id> CONFIRM=<sha7>` | Deep path: roll back to **any retained build that was previously prod** (per `release.log`). Skips guards (b) and (c), and accepts `source: seeded` as well as `source: ci` builds (the binary's sha256 must still match its `BUILD_INFO`), but keeps CONFIRM, the pre-deploy backup, the swap trap and verify. This makes rollback more than one release deep. |
 | `make release-status` | For prod, prev and QA: symlink target, the binary **actually running** (`readlink /proc/<pid>/exe`), live `/api/version`, PID and uptime. Plus the latest 3 restore points with sizes and the last 10 `release.log` lines. |
 | `make smoke BUILD=<id>` | §2.7 smoke run against a scratch copy, including the rollback-compatibility check. |
 
@@ -127,7 +133,8 @@ Add a `Makefile` in `fast-retro/` (workspace convention). Targets are thin wrapp
 
 ```
 1. lock          exec 9>.lock; flock -n 9 (fail fast if held)
-2. guard         CONFIRM, QA'd, git fetch origin main + tree == origin/main tree (2.5)
+2. guard         CONFIRM, QA'd, git fetch origin main + tree == origin/main tree,
+                 source: ci + gh attestation verify + sha256 == BUILD_INFO (2.5 guard d)
 3. preflight     prod healthy (health + version on 127.0.0.1:5102); disk free > 1 GB;
                  activity: GET http://127.0.0.1:5102/api/boards with Authorization: Bearer
                  → sum(participant_count) must be 0, else stop and print slugs + counts.
@@ -147,7 +154,7 @@ Add a `Makefile` in `fast-retro/` (workspace convention). Targets are thin wrapp
 9. on failure    restore both symlinks, restart, verify the old build, save a redacted log
                  tail to logs/, exit non-zero
 10. record       release.log line: ts, actor, from_sha → to_sha, fetched main sha,
-                 backup path, row counts, result
+                 CI run URL, backup path, row counts, result
 ```
 
 The EXIT trap covers the case where the script dies between step 6 and a passed verify (session drop, a `set -e` on a curl, OOM). Without it, `prod` would point at an unverified build while the old process keeps running, and the next crash or reboot would start the untested binary (problem #2 again).
@@ -201,6 +208,8 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 - Stop processes only by PID file or `supervisorctl`, **never `pkill -f`**.
 - **Secrets:** never read or print `/etc/zo/supervisord-user.conf` env lines, `list_user_services` output, or token values. The scripts take the lead token from `/proc/<pid>/environ` of the service process and pass it to curl via a header from a variable, never on a command line that gets logged. When checking env, print key **names** only.
 - Never write to `/home/workspace/fast-retro/target/` or the prod DB, except through `.backup` (which only reads it).
+- After a build directory is renamed into `builds/`, only `LOCAL_INFO` in it is ever written. `BUILD_INFO`, `fast-retro` and `index.html` are what CI produced.
+- **Artifact provenance:** a build is only used if its CI run's head repository is `5cotts/fast-retro` and `gh attestation verify --repo 5cotts/fast-retro --signer-workflow 5cotts/fast-retro/.github/workflows/build.yml` passes. Fork PR runs never qualify (§2.10.1).
 - `set -euo pipefail`, plus an EXIT trap that releases the lock, kills scratch servers, and (after a swap) restores symlinks unless `VERIFIED=1`.
 - Every destructive step (symlink swap, restart, QA reseed) goes through a single `run` helper that honors `DRY_RUN` and logs.
 
@@ -210,15 +219,76 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 - **Doc-model changes:** a PR that changes the Yjs board shape (as the custom-columns and edit-board work did) gets a `doc-model-change` label. Open tabs reconnect still running the old JS and would keep writing the old shape, so `prod-deploy` for such a release requires zero live participants with no `FORCE`. The script reads the label via `gh` for the PRs between `prod` and the candidate.
 - **Manual DB restore** (data-losing, Scott-only, not scripted): stop the service; move `fastretro.db`, `-wal` and `-shm` aside **together**; copy the chosen restore point in; start; verify. Everything written since the backup is lost, so RELEASING.md must say so up front.
 
+### 2.10 CI: gates and builds in GitHub Actions
+
+The repo is public, so Actions minutes are free. Today `.github/` doesn't exist.
+
+#### 2.10.1 Workflow `.github/workflows/build.yml`
+
+Triggers: `pull_request`, `push` to `main`, and `workflow_dispatch`. A `concurrency` group per ref cancels superseded PR runs (never `main` runs).
+
+Two jobs, so test code and npm/cargo dependencies never run with the signing token:
+
+| Job | Permissions | Does |
+|---|---|---|
+| **`gates`** (`ubuntu-22.04`) | `contents: read` | Checks out the **PR head sha** (`github.event.pull_request.head.sha \|\| github.sha`), not GitHub's synthetic merge commit, so the artifact's sha is a real branch commit. Rust from the existing `rust-toolchain.toml` via the runner's preinstalled `rustup`; Bun pinned to 1.4.4 via a new `.bun-version`. Then: `bun install --frozen-lockfile`, `bun run check`, `bun run test:unit`, `cargo test`, clippy (count printed, not gated), the release build with the §2.4 stamping env vars, then **e2e against that release binary**: `FASTRETRO_BIN=target/release/fast-retro ./test-local.sh` (Playwright Chromium installed in the job). Packs `dist/` = `fast-retro`, `frontend/build/index.html`, `BUILD_INFO`, and uploads it as artifact `fast-retro-<sha>` (`retention-days: 90`). |
+| **`attest`** (needs `gates`) | `contents: read`, `id-token: write`, `attestations: write` | Runs only when the head repo is `5cotts/fast-retro` (`github.event.pull_request.head.repo.full_name == github.repository`, or a non-PR event). Downloads `dist/`, checks the binary's sha256 against `BUILD_INFO`, then `actions/attest-build-provenance` on `fast-retro`. Runs no repo code. |
+
+`BUILD_INFO` (JSON, written by `gates`): `source: "ci"`, `sha`, `tree`, `ref`, `event`, `run_id`, `run_url`, `built_at`, runner image, `rustc` and `bun` versions, `binary_sha256`.
+
+Fork PRs still get the `gates` job, but GitHub gives them a read-only token and no OIDC token, and `attest` is skipped. A fork build therefore never carries a valid attestation and can't be fetched (§2.8).
+
+**Hardening:**
+
+- Every `uses:` is pinned to a full commit sha (with the version in a comment). Only GitHub-owned actions plus `oven-sh/setup-bun`. No third-party Rust or cache actions: caching uses `actions/cache` on `~/.cargo/registry`, `~/.cargo/git` and `target/`, keyed on `Cargo.lock` + `rust-toolchain.toml` + `bun.lock`.
+- Top-level `permissions: contents: read`; jobs only add what's listed above.
+- No `pull_request_target`, no secrets, no repo/environment variables. The binary needs none at build time (`GA_MEASUREMENT_ID` etc. are runtime env on the service).
+- **glibc:** `ubuntu-22.04` ships glibc 2.35; the Zo box is Debian 12 with 2.36. A binary built against the older glibc runs on the newer one. Smoke (§2.7) proves it on every deploy anyway. Don't move the runner to a newer image than the box without rechecking.
+
+**Branch protection** (Scott, in repo settings; the agent's token can't change repo settings): require the `gates` check on `main`.
+
+#### 2.10.2 Change to `test-local.sh`
+
+Accept an optional `FASTRETRO_BIN`. When set, start that binary instead of `cargo run` (same scratch port, DB and env). Unset keeps today's behavior. This is how CI runs e2e against the exact bytes it ships, which closes problem #3 at the source.
+
+#### 2.10.3 `release-fetch` sequence (on the box)
+
+```
+1. resolve     REF → sha via git fetch; PR=<n> → gh pr view <n> --json headRefOid
+2. find run    gh run list --workflow build.yml --commit <sha> --json databaseId,status,conclusion,event
+               in_progress → gh run watch (max 30 min); failure/none → stop, print run URL
+3. repo check  gh api repos/5cotts/fast-retro/actions/runs/<id> → head_repository.full_name == 5cotts/fast-retro
+4. download    gh run download <id> -n fast-retro-<sha> -D builds/.tmp-<id>
+5. verify      BUILD_INFO.sha == sha; BUILD_INFO.source == ci; sha256(fast-retro) == BUILD_INFO.binary_sha256;
+               gh attestation verify fast-retro --repo 5cotts/fast-retro
+                 --signer-workflow 5cotts/fast-retro/.github/workflows/build.yml
+6. finish      chmod +x; write LOCAL_INFO (fetched_at, run_url, attestation: verified);
+               mv builds/.tmp-<id> builds/<UTC-ts>-<sha7>
+```
+
+`gh` on the box is 2.90 and already authenticated as `5cotts`, so `gh attestation` works with no new credentials. Artifacts expire after 90 days on GitHub, but the copy in `builds/` is permanent, so rollback never depends on GitHub.
+
+**QA → prod with CI builds:** QA a PR (or stack tip) with `make qa-deploy PR=<n>`, which fetches that PR head's artifact. After Scott merges, `prod-deploy` promotes the **same** build: guard (c) checks its tree equals `origin/main`'s tree. If the branch wasn't up to date with `main` when merged, the trees differ and the guard stops; QA the `main` push build instead.
+
+### 2.11 Why the deploy is pulled, not pushed from Actions
+
+- Prod is a supervised process on the Zo box, not a cloud host. GitHub's only way in would be the public `sshd` user service (key-only **root**). That key would sit in GitHub secrets and unlock the whole box, not just fast-retro: the VPN registry, health data and trading keys. A compromised action or a bad workflow change would be enough to use it.
+- A self-hosted runner on the box is ruled out: the repo is public (GitHub advises against self-hosted runners on public repos, since fork PRs can run code on them), and it would run as root.
+- The backup, swap, restart, smoke, verify and rollback must run on the box either way, so these scripts are needed regardless.
+- **What a compromised GitHub side can still do:** produce a bad artifact for a commit in our repo. Mitigations: attestation ties the binary to our repo and workflow file; guard (c) means prod only gets code whose tree is on `main`; Scott QAs every build before prod (Q4); action pinning limits supply-chain drift.
+- The trigger stays human: an agent runs `qa-deploy` / `prod-deploy` after Scott's go-ahead. A push-triggered deploy is a follow-up (§7).
+
 ---
 
 ## 3. One-time setup steps (agent, via Zo tools, not scripts)
 
 Zo owns the supervisor config, so service changes go through Zo's service tools. Nobody edits `/etc/zo/supervisord-user.conf` directly.
 
+0. **Branch protection (Scott):** after the CI PR merges, require the `gates` check on `main` in the repo settings (§2.10.1).
+
 1. **Create QA:** `register_user_service(label="fast-retro-qa", mode="http", local_port=5103, public="false", entrypoint="/home/workspace/fast-retro-releases/qa/fast-retro", workdir="/home/workspace/fast-retro-releases", env_vars={RETRO_LEAD_TOKEN: <new random>, FASTRETRO_DB: "/home/workspace/fast-retro-releases/qa-data/fastretro-qa.db"})`. `PORT` comes from `local_port`. Then create the QA canary board `zz-release-canary`.
 2. **Migrate prod's entrypoint** (scheduled with Scott, in a quiet window, after PR 1 is deployed):
-   - Seed `builds/` with the binary prod is **then** running (the PR 1 manual deploy). Copy it with `cp`, not a hardlink. Take the sha from `/api/version`, not from notes. Write its `BUILD_INFO` with `seeded: true` and no QA'd or tree-check record. Point `prod` at it (`prod.prev` stays absent until the first scripted deploy).
+   - Seed `builds/` with the binary prod is **then** running (the PR 1 manual deploy). Copy it with `cp`, not a hardlink. Take the sha from `/api/version`, not from notes. Write its `BUILD_INFO` with `source: seeded`, its `binary_sha256`, and no QA'd or tree-check record. A seeded build is a valid **rollback** target but never a `prod-deploy` candidate (guard d). Point `prod` at it (`prod.prev` stays absent until the first scripted deploy).
    - Run `update_user_service(svc_OeivC8ngdHY, entrypoint="/home/workspace/fast-retro-releases/prod/fast-retro")`. **Change only `entrypoint`.** Don't pass `env_vars` (merge vs. replace isn't documented, and re-sending them means handling secrets). Leave workdir unchanged, so the relative DB default still resolves to the same file. An absolute `FASTRETRO_DB` for prod can be a separate, explicitly approved change later.
    - Verify: `/proc/<pid>/exe` is the seeded build; `/proc/<pid>/fd` includes `/home/workspace/fast-retro/data/fastretro.db`; `/proc/<pid>/environ` still has the `RETRO_LEAD_TOKEN`, `GOOGLE_CLIENT_ID` and `GA_MEASUREMENT_ID` key names (names only); `/`, the WebSocket and `/api/version` respond.
    - Create the prod canary board `zz-release-canary`.
@@ -230,8 +300,10 @@ Zo owns the supervisor config, so service changes go through Zo's service tools.
 ## 4. Documentation deliverables
 
 - **`docs/RELEASING.md`**, the runbook agents follow:
-  - the normal flow: QA a PR branch, Scott QAs, merge, promote to prod;
-  - what needs Scott's explicit go-ahead (any `prod-deploy`, `rollback`, `FORCE=1`, `SEED=prod`, `SKIP_QA=1`, manual DB restore);
+  - the normal flow: CI goes green on the PR, `make qa-deploy PR=<n>`, Scott QAs, merge, `make prod-deploy` with the same build;
+  - how to find a build's CI run and what to do when CI is red or still running;
+  - the break-glass local build (`release-build-local`, `ALLOW_LOCAL_BUILD=1`) and that it needs Scott's OK;
+  - what needs Scott's explicit go-ahead (any `prod-deploy`, `rollback`, `FORCE=1`, `SEED=prod`, `SKIP_QA=1`, `release-build-local`, `ALLOW_LOCAL_BUILD=1`, manual DB restore);
   - the schema and doc-model rules in §2.9, and the manual DB-restore procedure;
   - what to report back (QA URL, version, backup path, verify result);
   - a troubleshooting table (lock held, live participants, verify failure, auto-rollback fired, restart FATAL);
@@ -250,12 +322,13 @@ Each PR is small, keeps prod working on its own, and is merged and verified befo
 | PR | Scope | Prod impact | How it's tested |
 |---|---|---|---|
 | **1. Version + startup safety** | §2.4: `/api/version`, build stamping in `build.sh`, fatal bad `PORT`, absolute DB path and version in the startup log, lead token removed from the banner. | One deploy, done the **current manual way** (with a `.backup` instead of `cp`). Afterwards prod reports its sha and no longer logs its token. | `cargo test` (new tests for the route and `PORT` parsing); e2e suite unchanged; after deploy, grep the new log bytes to confirm no token. |
-| **2. Release lib, build, backup, status, smoke** | `Makefile`, `scripts/release/{lib,build,check,smoke,status,backup}.sh`, `fast-retro-releases/` bootstrap. | None, because nothing points at `fast-retro-releases/` yet. | `shellcheck`. `cargo fmt --check` fails on `main` today: either format in this PR or leave fmt out of `release-check`. Build twice (idempotent); kill a build mid-copy and confirm the next run rebuilds it. Run `smoke`. Negative test of §2.8: launch with `PORT=garbage` and with `FASTRETRO_DB` unset and confirm `lib.sh` refuses before exec (and the PR 1 binary exits on the bad `PORT`). Backup `integrity_check` is ok and row counts match live. |
-| **3. QA environment** | `qa-deploy`, reseed (§2.6.2), `fast-retro-qa` service and canary (setup step 1), QA section of the runbook. | None. | Deploy `main` to QA. Scott clicks through it. Reseed with `SEED=prod` and confirm no stale `-wal` remains. `supervisorctl restart` QA and confirm it comes back on the same build. |
-| **4. Prod migration + `prod-deploy` / `rollback`** | Setup step 2, `prod-deploy.sh`, `rollback.sh` (quick and `BUILD=` paths), swap trap, auto-rollback. | **Yes**: one restart for the migration, scheduled with Scott. | Drills on QA first: deploy A → B → quick rollback → A; then `rollback BUILD=` two releases back; then kill the script between swap and verify and confirm the trap restores the links. First real prod deploy with Scott watching, `DRY_RUN=1` first, then a deliberate `make rollback` and redeploy. |
-| **5. Docs + skill** | `RELEASING.md`, README, `tests/README.md`, workspace `AGENTS.md`, `Skills/fast-retro-release/`, `doc-model-change` label on the repo. | None. | A fresh agent session, given only "deploy main to QA", finds and follows the runbook. |
+| **2. CI** | §2.10: `.github/workflows/build.yml` (`gates` + `attest`), `.bun-version`, `FASTRETRO_BIN` in `test-local.sh`, CI section in `tests/README.md`. `cargo fmt --check` fails on `main` today: either format in this PR or leave fmt out of the gates. | None. | The PR's own run must go green. On the box: `gh run download` the artifact, `gh attestation verify` it, and run the binary on a scratch port (proves glibc compatibility). On a throwaway branch, break one unit test and confirm `gates` fails and no artifact is uploaded. Confirm a run's `BUILD_INFO` sha is the PR head sha, not a merge commit. Then Scott enables branch protection (§3 step 0). |
+| **3. Release lib, fetch, backup, status, smoke** | `Makefile`, `scripts/release/{lib,fetch,build-local,check,smoke,status,backup}.sh`, `fast-retro-releases/` bootstrap. | None, because nothing points at `fast-retro-releases/` yet. | `shellcheck`. Fetch twice (idempotent); kill a fetch mid-download and confirm the next run fetches again. Tamper tests: flip a byte in a fetched binary and confirm the sha256 check fails; point `release-fetch` at a commit with no successful run and confirm it stops. Run `smoke` on a CI build. Negative test of §2.8: launch with `PORT=garbage` and with `FASTRETRO_DB` unset and confirm `lib.sh` refuses before exec (and the PR 1 binary exits on the bad `PORT`). Backup `integrity_check` is ok and row counts match live. |
+| **4. QA environment** | `qa-deploy` (`PR=`, `REF=`, `BUILD=`), reseed (§2.6.2), `fast-retro-qa` service and canary (setup step 1), QA section of the runbook. | None. | Deploy an open PR's CI build to QA. Scott clicks through it. Reseed with `SEED=prod` and confirm no stale `-wal` remains. `supervisorctl restart` QA and confirm it comes back on the same build. |
+| **5. Prod migration + `prod-deploy` / `rollback`** | Setup step 2, `prod-deploy.sh` (guards a–d), `rollback.sh` (quick and `BUILD=` paths), swap trap, auto-rollback. | **Yes**: one restart for the migration, scheduled with Scott. | Drills on QA first: deploy A → B → quick rollback → A; then `rollback BUILD=` two releases back; then kill the script between swap and verify and confirm the trap restores the links. Confirm `prod-deploy` refuses a `source: local` build without `ALLOW_LOCAL_BUILD=1` and a `source: seeded` one outright. First real prod deploy with Scott watching, `DRY_RUN=1` first, then a deliberate `make rollback` and redeploy. |
+| **6. Docs + skill** | `RELEASING.md`, README, `tests/README.md`, workspace `AGENTS.md`, `Skills/fast-retro-release/`, `doc-model-change` label on the repo. | None. | A fresh agent session, given only "deploy main to QA", finds and follows the runbook. |
 
-Estimate: PRs 1–3 are about one working session. PR 4 needs a scheduled window with Scott.
+Estimate: PRs 1–4 are about one working session (PR 2's first CI run is the slow part, a cold cargo + Playwright cache). PR 5 needs a scheduled window with Scott.
 
 ---
 
@@ -267,8 +340,9 @@ Estimate: PRs 1–3 are about one working session. PR 4 needs a scheduled window
 | Q2 | QA data | **Persistent QA DB, reseed on request** (`SEED=prod`). |
 | Q3 | Google sign-in on QA | **Off** at first. Turn it on only when a release changes the auth flow. |
 | Q4 | Every prod deploy through QA? | **Yes.** The only escape is `SKIP_QA=1` for an urgent hotfix, with Scott's explicit OK. |
+| Q5 | Where do builds happen, and who triggers deploys? | **CI builds and gates; the box pulls and deploys** (§2.10, §2.11). Push-triggered deploys from Actions are a follow-up (§7). |
 
-The SRE review found no operational risk in these.
+The SRE review found no operational risk in Q1–Q4. Q5 was added after the review.
 
 ## 7. Out of scope (worth a follow-up)
 
@@ -276,7 +350,8 @@ The SRE review found no operational risk in these.
 - **Graceful shutdown:** a SIGTERM handler that compacts boards and closes sockets cleanly, and raise `stopwaitsecs`. Restarts are safe today, so this is polish.
 - **"New version, reload" banner:** the frontend polls `/api/version` and prompts open tabs to reload after a release. Reduces the old-JS-after-restart window in §2.9.
 - **`release-prune`:** each build is ~10 MB and the disk has ~510 GB free. Add it if `builds/` ever passes a few GB. It must never delete DB backups.
-- **CI:** a GitHub Actions run of `release-check` on PRs.
+- **Push-triggered deploy from Actions:** a "Deploy" button (`workflow_dispatch`) behind a GitHub environment that needs Scott's approval, using an SSH key restricted in `authorized_keys` to one forced command (`command="/usr/local/bin/fast-retro-deploy",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding`) that only accepts a sha and calls `make prod-deploy`. The key can then do nothing else on the box.
+- **Dependabot for pinned actions**, so the sha pins in §2.10.1 get update PRs.
 - **Off-box backups:** restore points currently sit on the same disk as the DB.
 
 ---
@@ -292,7 +367,7 @@ The SRE review found no operational risk in these.
 | should | Swap mechanics and half-finished-deploy window | §2.6.1 steps 6–9, `release-status` in §2.5, §2.7 `/proc/<pid>/exe` check |
 | should | `_err.log` stays empty when the app is failing | §1 (logging), §2.7 verify-only checks |
 | should | Startup banner prints the lead token | §1, problem #8, §2.4, PR 1 |
-| should | Crash-safe builds; per-build expected `index.html`; PATH | §2.2, §2.5 `release-build`, §2.7, §2.8 PATH |
+| should | Crash-safe builds; per-build expected `index.html`; PATH | §2.2, §2.5 `release-fetch` / `release-build-local`, §2.10.3, §2.7, §2.8 PATH |
 | should | `SEED=prod`: stop QA first, move WAL/SHM | §2.6.2 |
 | nit | WS check is not read-only | §1 (compaction), §2.7 canary board, §3 |
 | nit | Token-bearing checks on `127.0.0.1` | §2.6.1 step 3, §2.7 |
@@ -300,7 +375,7 @@ The SRE review found no operational risk in these.
 | nit | Problem #6 not actually fixed | §2.5 `rollback BUILD=` |
 | nit | Guard (c) needs a fresh `origin/main` | §2.5 `prod-deploy`, §2.6.1 steps 2 and 10 |
 | nit | `PORT` isn't a service env var | §1, §2.3, §3 step 1 |
-| nit | "Current prod" will be the PR 1 build by PR 4 | §3 step 2 (cp, `/api/version`, `seeded: true`) |
+| nit | "Current prod" will be the PR 1 build by PR 4 | §3 step 2 (cp, `/api/version`, `source: seeded`) |
 | nit | Keep smoke's scratch backups out of `data/` | §2.2, §2.7 smoke |
 | nit | Connected clients and version skew | §1 (restart), §2.9 doc-model rule, §7 reload banner |
 | nit | Trim clippy baseline and `release-prune` | §2.5 `release-check`, §7 |
