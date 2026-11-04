@@ -37,7 +37,8 @@
     onCycleTheme,
     onChangeName,
     onChangeLabel,
-    onToggleSetting
+    onToggleSetting,
+    onEditBoard
   } = $props<{
     isLead: boolean;
     connected: boolean;
@@ -66,6 +67,7 @@
     onChangeName: (newName: string) => void;
     onChangeLabel: (next: string) => void;
     onToggleSetting: (key: BoardSettingKey) => void;
+    onEditBoard: () => void;
   }>();
 
   const anonymous = $derived(settings.anonymous);
@@ -214,6 +216,7 @@
             {onExportJSON}
             onEnd={onEndBoard}
             {onToggleSetting}
+            {onEditBoard}
           />
         {/if}
 
@@ -258,6 +261,7 @@
           {onExportJSON}
           onEnd={onEndBoard}
           {onToggleSetting}
+          {onEditBoard}
           mobile
         />
       {/if}
