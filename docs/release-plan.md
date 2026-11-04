@@ -379,3 +379,59 @@ The SRE review found no operational risk in Q1–Q4. Q5 was added after the revi
 | nit | Keep smoke's scratch backups out of `data/` | §2.2, §2.7 smoke |
 | nit | Connected clients and version skew | §1 (restart), §2.9 doc-model rule, §7 reload banner |
 | nit | Trim clippy baseline and `release-prune` | §2.5 `release-check`, §7 |
+
+---
+
+## Appendix B: Release flow diagrams
+
+### B.1 End to end: PR → CI → QA → prod
+
+```mermaid
+flowchart TD
+    A["Agent pushes PR branch"] --> B["CI: gates job<br/>check, unit, cargo test, clippy count,<br/>release build, e2e on that binary"]
+    B -->|fail| B1["CI red: fix and push again"]
+    B1 --> A
+    B -->|pass| C["CI: attest job<br/>sha256 check + build attestation<br/>same-repo runs only"]
+    C --> D["Artifact fast-retro-&lt;sha&gt;<br/>binary, index.html, BUILD_INFO"]
+
+    D --> E["make qa-deploy PR=&lt;n&gt;"]
+    E --> F["release-fetch on the box<br/>find run, repo check, gh run download,<br/>sha256 + gh attestation verify"]
+    F -->|verify fails| X1["Stop: report to Scott"]
+    F -->|ok| G["builds/&lt;ts&gt;-&lt;sha7&gt;/"]
+    G --> H["smoke on :5197<br/>scratch copy of prod DB<br/>candidate, then prod.prev on migrated copy"]
+    H -->|fail| X1
+    H -->|pass| I["Swap qa symlink, restart fast-retro-qa,<br/>verify qa, record QA'd in LOCAL_INFO"]
+    I --> J{"Scott QAs on<br/>private QA URL"}
+    J -->|issues| A
+    J -->|approved| K["Scott merges PR to main"]
+    K --> L{"Build tree ==<br/>origin/main tree?"}
+    L -->|no, branch was behind main| M["QA the main push build instead"]
+    M --> E
+    L -->|yes| N{"Scott's go-ahead<br/>for this sha?"}
+    N -->|yes| O["make prod-deploy BUILD=&lt;id&gt; CONFIRM=&lt;sha7&gt;<br/>see B.2"]
+    O --> P["Report: version, backup path,<br/>verify result, CI run URL"]
+```
+
+### B.2 Inside `prod-deploy`
+
+```mermaid
+flowchart TD
+    S["Start"] --> L1["1. Take .lock with flock<br/>fail fast if held"]
+    L1 --> G1{"2. Guards<br/>a. CONFIRM matches sha<br/>b. QA'd<br/>c. tree == fresh origin/main tree<br/>d. source ci, attestation + sha256 re-verify"}
+    G1 -->|any fail| R0["Refuse, prod untouched"]
+    G1 -->|all pass| P1{"3. Preflight<br/>prod healthy, disk &gt; 1 GB,<br/>zero live participants"}
+    P1 -->|participants &gt; 0<br/>and no FORCE| R0
+    P1 -->|doc-model-change<br/>and participants &gt; 0| R0
+    P1 -->|ok| B1["4. sqlite3 .backup to<br/>data/fastretro.db.bak-&lt;ts&gt;-pre-&lt;sha7&gt;<br/>integrity_check, row counts logged"]
+    B1 -->|integrity fail| R0
+    B1 --> SM["5. Smoke: candidate, then prod.prev,<br/>on a migrated scratch copy"]
+    SM -->|fail| R0
+    SM -->|pass| SW["6. Swap symlinks with mv -T<br/>prod.prev = old prod, prod = candidate<br/>EXIT trap armed"]
+    SW --> RS["7. supervisorctl restart fast-retro-prod"]
+    RS -->|FATAL / BACKOFF| RB
+    RS --> V{"8. Verify<br/>version, /proc exe, bundle, asset,<br/>canary WS 101, public URL,<br/>log scan, stable PID 60 s"}
+    V -->|fail| RB["9. Auto-rollback<br/>restore both symlinks, restart,<br/>verify old build, save redacted log"]
+    RB --> X["Exit non-zero, tell Scott"]
+    V -->|pass| OK["VERIFIED=1<br/>10. Append release.log line"]
+    OK --> D["Done. make rollback is available if needed"]
+```
