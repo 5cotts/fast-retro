@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs the full e2e suite against a fully isolated, disposable local
-# instance: its own port, its own scratch database, and cargo run (never
-# target/release/fast-retro). This is the only documented way to run e2e
-# tests locally — see tests/README.md for why isolation matters here.
+# instance: its own port, its own scratch database, and cargo run. This is
+# the only documented way to run e2e tests locally — see tests/README.md for
+# why isolation matters here.
 #
 # FASTRETRO_BIN=<path> runs that prebuilt binary instead of `cargo run`
 # (same scratch port, DB and env). CI uses it to run e2e against the exact
