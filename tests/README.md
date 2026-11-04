@@ -48,14 +48,22 @@ refuses ports 5102 and 5103 (prod and QA).
 
 ### CI
 
-`.github/workflows/build.yml` runs on every PR and every push to `main`:
-frontend build, `bun run check`, `bun run test:unit`, `cargo test`, clippy
-(warning count reported, not gated), `cargo build --release`, then this e2e
-suite against that release binary (`FASTRETRO_BIN`). It uploads the binary,
-`index.html` and a `BUILD_INFO` file as the artifact `fast-retro-<sha>` (kept
-90 days), and a second job attests the binary's provenance. On failure, the
-Playwright report is uploaded as `e2e-report-<sha>`. The release scripts
-deploy only attested CI builds; see `docs/release-plan.md` §2.10.
+`.github/workflows/build.yml` has two tiers:
+
+- **Quick** (every PR push): frontend build, `bun run check`,
+  `bun run test:unit`, `cargo test`, clippy (warning count reported, not
+  gated). No e2e.
+- **Full** (pushes to `main`, manual runs, and PRs with the `e2e` label):
+  the quick checks, then `cargo build --release` and this e2e suite against
+  that release binary (`FASTRETRO_BIN`). It uploads the binary, `index.html`
+  and a `BUILD_INFO` file as the artifact `fast-retro-<sha>` (kept 90 days),
+  and a second job attests the binary's provenance. On failure, the
+  Playwright report is uploaded as `e2e-report-<sha>`.
+
+To run e2e on a PR, add the label: `gh pr edit <n> --add-label e2e`. While
+the label stays on, every push to that PR runs the full tier. The release
+scripts deploy only attested CI builds, so QA'ing a PR needs the label; see
+`docs/release-plan.md` §2.10.
 
 `cargo fmt --check` is not a gate yet (`main` isn't formatted).
 

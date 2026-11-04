@@ -225,14 +225,23 @@ The repo is public, so Actions minutes are free. Today `.github/` doesn't exist.
 
 #### 2.10.1 Workflow `.github/workflows/build.yml`
 
-Triggers: `pull_request`, `push` to `main`, and `workflow_dispatch`. A `concurrency` group per ref cancels superseded PR runs (never `main` runs).
+Triggers: `pull_request` (`opened`, `synchronize`, `reopened`, `labeled`), `push` to `main`, and `workflow_dispatch`. A `concurrency` group per ref cancels superseded PR runs (never `main` runs). Adding a label other than `e2e` gets its own group, so it can't cancel a PR's in-progress run.
+
+**Two tiers**, so routine PR pushes stay fast:
+
+| Tier | When | Runs |
+|---|---|---|
+| **Quick** | Every PR push | Frontend build, `bun run check`, `bun run test:unit`, `cargo test`, clippy count. No release build, no e2e, no artifact. |
+| **Full** | Push to `main`, `workflow_dispatch`, or a PR with the **`e2e` label** | Quick, then release build, e2e on that binary, artifact upload, `attest`. |
+
+The label is sticky: while it's on a PR, every push to it runs the full tier. Add it with `gh pr edit <n> --add-label e2e` when a PR (or stack tip) is ready for QA. A PR can merge without e2e having run, but the `main` push always runs the full tier, and `prod-deploy` only promotes a build that passed it.
 
 Two jobs, so test code and npm/cargo dependencies never run with the signing token:
 
 | Job | Permissions | Does |
 |---|---|---|
-| **`gates`** (`ubuntu-22.04`) | `contents: read` | Checks out the **PR head sha** (`github.event.pull_request.head.sha \|\| github.sha`), not GitHub's synthetic merge commit, so the artifact's sha is a real branch commit. Rust from the existing `rust-toolchain.toml` via the runner's preinstalled `rustup`; Bun pinned to 1.4.4 via a new `.bun-version`. Then: `bun install --frozen-lockfile`, `bun run check`, `bun run test:unit`, `cargo test`, clippy (count printed, not gated), the release build with the §2.4 stamping env vars, then **e2e against that release binary**: `FASTRETRO_BIN=target/release/fast-retro ./test-local.sh` (Playwright Chromium installed in the job). Packs `dist/` = `fast-retro`, `frontend/build/index.html`, `BUILD_INFO`, and uploads it as artifact `fast-retro-<sha>` (`retention-days: 90`). |
-| **`attest`** (needs `gates`) | `contents: read`, `id-token: write`, `attestations: write` | Runs only when the head repo is `5cotts/fast-retro` (`github.event.pull_request.head.repo.full_name == github.repository`, or a non-PR event). Downloads `dist/`, checks the binary's sha256 against `BUILD_INFO`, then `actions/attest-build-provenance` on `fast-retro`. Runs no repo code. |
+| **`gates`** (`ubuntu-22.04`) | `contents: read` | Skipped for `labeled` events unless the label is `e2e`. Checks out the **PR head sha** (`github.event.pull_request.head.sha \|\| github.sha`), not GitHub's synthetic merge commit, so the artifact's sha is a real branch commit. Rust from the existing `rust-toolchain.toml` via the runner's preinstalled `rustup`; Bun pinned to 1.4.4 via a new `.bun-version`. Then: `bun install --frozen-lockfile`, `bun run check`, `bun run test:unit`, `cargo test`, clippy (count printed, not gated). **Full tier only:** the release build with the §2.4 stamping env vars, then **e2e against that release binary**: `FASTRETRO_BIN=target/release/fast-retro ./test-local.sh` (Playwright Chromium installed in the job). Packs `dist/` = `fast-retro`, `frontend/build/index.html`, `BUILD_INFO`, and uploads it as artifact `fast-retro-<sha>` (`retention-days: 90`). |
+| **`attest`** (needs `gates`) | `contents: read`, `id-token: write`, `attestations: write` | Full tier only. Runs only when the head repo is `5cotts/fast-retro` (`github.event.pull_request.head.repo.full_name == github.repository`, or a non-PR event). Downloads `dist/`, checks the binary's sha256 against `BUILD_INFO`, then `actions/attest-build-provenance` on `fast-retro`. Runs no repo code. |
 
 `BUILD_INFO` (JSON, written by `gates`): `source: "ci"`, `sha`, `tree`, `ref`, `event`, `run_id`, `run_url`, `built_at`, runner image, `rustc` and `bun` versions, `binary_sha256`.
 
@@ -268,7 +277,7 @@ Accept an optional `FASTRETRO_BIN`. When set, start that binary instead of `carg
 
 `gh` on the box is 2.90 and already authenticated as `5cotts`, so `gh attestation` works with no new credentials. Artifacts expire after 90 days on GitHub, but the copy in `builds/` is permanent, so rollback never depends on GitHub.
 
-**QA → prod with CI builds:** QA a PR (or stack tip) with `make qa-deploy PR=<n>`, which fetches that PR head's artifact. After Scott merges, `prod-deploy` promotes the **same** build: guard (c) checks its tree equals `origin/main`'s tree. If the branch wasn't up to date with `main` when merged, the trees differ and the guard stops; QA the `main` push build instead.
+**QA → prod with CI builds:** add the `e2e` label to the PR (or stack tip) so CI builds an artifact, then QA it with `make qa-deploy PR=<n>`, which fetches that PR head's artifact. After Scott merges, `prod-deploy` promotes the **same** build: guard (c) checks its tree equals `origin/main`'s tree. If the branch wasn't up to date with `main` when merged, the trees differ and the guard stops; QA the `main` push build instead.
 
 ### 2.11 Why the deploy is pulled, not pushed from Actions
 
@@ -300,7 +309,7 @@ Zo owns the supervisor config, so service changes go through Zo's service tools.
 ## 4. Documentation deliverables
 
 - **`docs/RELEASING.md`**, the runbook agents follow:
-  - the normal flow: CI goes green on the PR, `make qa-deploy PR=<n>`, Scott QAs, merge, `make prod-deploy` with the same build;
+  - the normal flow: quick CI goes green on the PR, add the `e2e` label, full CI goes green, `make qa-deploy PR=<n>`, Scott QAs, merge, `make prod-deploy` with the same build;
   - how to find a build's CI run and what to do when CI is red or still running;
   - the break-glass local build (`release-build-local`, `ALLOW_LOCAL_BUILD=1`) and that it needs Scott's OK;
   - what needs Scott's explicit go-ahead (any `prod-deploy`, `rollback`, `FORCE=1`, `SEED=prod`, `SKIP_QA=1`, `release-build-local`, `ALLOW_LOCAL_BUILD=1`, manual DB restore);
@@ -322,7 +331,7 @@ Each PR is small, keeps prod working on its own, and is merged and verified befo
 | PR | Scope | Prod impact | How it's tested |
 |---|---|---|---|
 | **1. Version + startup safety** | §2.4: `/api/version`, build stamping in `build.sh`, fatal bad `PORT`, absolute DB path and version in the startup log, lead token removed from the banner. | One deploy, done the **current manual way** (with a `.backup` instead of `cp`). Afterwards prod reports its sha and no longer logs its token. | `cargo test` (new tests for the route and `PORT` parsing); e2e suite unchanged; after deploy, grep the new log bytes to confirm no token. |
-| **2. CI** | §2.10: `.github/workflows/build.yml` (`gates` + `attest`), `.bun-version`, `FASTRETRO_BIN` in `test-local.sh`, CI section in `tests/README.md`. `cargo fmt --check` fails on `main` today: either format in this PR or leave fmt out of the gates. | None. | The PR's own run must go green. On the box: `gh run download` the artifact, `gh attestation verify` it, and run the binary on a scratch port (proves glibc compatibility). On a throwaway branch, break one unit test and confirm `gates` fails and no artifact is uploaded. Confirm a run's `BUILD_INFO` sha is the PR head sha, not a merge commit. Then Scott enables branch protection (§3 step 0). |
+| **2. CI** | §2.10: `.github/workflows/build.yml` (`gates` + `attest`), `.bun-version`, `FASTRETRO_BIN` in `test-local.sh`, CI section in `tests/README.md`. `cargo fmt --check` fails on `main` today: either format in this PR or leave fmt out of the gates. | None. | The PR's own run must go green on both tiers (quick on push, full after adding the `e2e` label). Confirm an unrelated label doesn't cancel or start a run. On the box: `gh run download` the artifact, `gh attestation verify` it, and run the binary on a scratch port (proves glibc compatibility). On a throwaway branch, break one unit test and confirm `gates` fails and no artifact is uploaded. Confirm a run's `BUILD_INFO` sha is the PR head sha, not a merge commit. Then Scott enables branch protection (§3 step 0). |
 | **3. Release lib, fetch, backup, status, smoke** | `Makefile`, `scripts/release/{lib,fetch,build-local,check,smoke,status,backup}.sh`, `fast-retro-releases/` bootstrap. | None, because nothing points at `fast-retro-releases/` yet. | `shellcheck`. Fetch twice (idempotent); kill a fetch mid-download and confirm the next run fetches again. Tamper tests: flip a byte in a fetched binary and confirm the sha256 check fails; point `release-fetch` at a commit with no successful run and confirm it stops. Run `smoke` on a CI build. Negative test of §2.8: launch with `PORT=garbage` and with `FASTRETRO_DB` unset and confirm `lib.sh` refuses before exec (and the PR 1 binary exits on the bad `PORT`). Backup `integrity_check` is ok and row counts match live. |
 | **4. QA environment** | `qa-deploy` (`PR=`, `REF=`, `BUILD=`), reseed (§2.6.2), `fast-retro-qa` service and canary (setup step 1), QA section of the runbook. | None. | Deploy an open PR's CI build to QA. Scott clicks through it. Reseed with `SEED=prod` and confirm no stale `-wal` remains. `supervisorctl restart` QA and confirm it comes back on the same build. |
 | **5. Prod migration + `prod-deploy` / `rollback`** | Setup step 2, `prod-deploy.sh` (guards a–d), `rollback.sh` (quick and `BUILD=` paths), swap trap, auto-rollback. | **Yes**: one restart for the migration, scheduled with Scott. | Drills on QA first: deploy A → B → quick rollback → A; then `rollback BUILD=` two releases back; then kill the script between swap and verify and confirm the trap restores the links. Confirm `prod-deploy` refuses a `source: local` build without `ALLOW_LOCAL_BUILD=1` and a `source: seeded` one outright. First real prod deploy with Scott watching, `DRY_RUN=1` first, then a deliberate `make rollback` and redeploy. |
@@ -388,9 +397,12 @@ The SRE review found no operational risk in Q1–Q4. Q5 was added after the revi
 
 ```mermaid
 flowchart TD
-    A["Agent pushes PR branch"] --> B["CI: gates job<br/>check, unit, cargo test, clippy count,<br/>release build, e2e on that binary"]
-    B -->|fail| B1["CI red: fix and push again"]
+    A["Agent pushes PR branch"] --> Q["CI quick tier<br/>check, unit, cargo test, clippy count"]
+    Q -->|fail| B1["CI red: fix and push again"]
     B1 --> A
+    Q -->|pass| R["Ready for QA:<br/>gh pr edit &lt;n&gt; --add-label e2e"]
+    R --> B["CI full tier: gates job<br/>quick checks, release build,<br/>e2e on that binary"]
+    B -->|fail| B1
     B -->|pass| C["CI: attest job<br/>sha256 check + build attestation<br/>same-repo runs only"]
     C --> D["Artifact fast-retro-&lt;sha&gt;<br/>binary, index.html, BUILD_INFO"]
 
