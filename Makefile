@@ -1,5 +1,5 @@
 # Release tooling for the Zo box. Thin wrappers over scripts/release/*.sh;
-# see docs/release-plan.md (and docs/RELEASING.md once it exists).
+# see docs/RELEASING.md (design: docs/release-plan.md).
 # Every target is safe to rerun. DRY_RUN=1 prints destructive steps
 # instead of running them.
 

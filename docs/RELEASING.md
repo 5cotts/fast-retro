@@ -1,6 +1,6 @@
 # Releasing fast-retro
 
-Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). Run every command from the `fast-retro/` repo root on the Zo box.
+Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). Run every command from the `fast-retro/` repo root on the Zo box, on an up-to-date `main`: this runbook and the release scripts both come from whatever branch is checked out.
 
 ## The normal flow
 
@@ -52,7 +52,10 @@ gh run list --commit <full sha> --workflow build.yml
 2. Deploy:
 
    ```sh
-   make qa-deploy PR=<n>          # or REF=origin/main, SHA=<sha>, or BUILD=<id> for a build already fetched
+   make qa-deploy PR=<n>            # a PR, or the tip of a stack
+   make qa-deploy REF=origin/main   # main
+   make qa-deploy SHA=<sha>         # a specific commit
+   make qa-deploy BUILD=<id>        # a build already fetched
    ```
 
    This fetches and verifies the CI build (waits up to 30 min if the run is still going), smokes it against a copy of prod's DB on :5197, points `qa` at it, restarts `fast-retro-qa`, and verifies it (local checks with the lead token, then 60 s of the same PID and no `WARN`/`ERROR`/panic in the new log output). On success it records the QA deploy in the build's `LOCAL_INFO` and in `release.log`. If verify fails, it puts QA back on the previous build and exits non-zero.
@@ -157,6 +160,8 @@ Then append a line to `release.log` saying what you did, and tell Scott which bu
 ## Drills on QA
 
 `make qa-drill-deploy BUILD=<id> CONFIRM=<sha7>` and `make qa-drill-rollback [BUILD=<id> CONFIRM=<sha7>]` run the exact prod-deploy and rollback scripts against `fast-retro-qa` (`qa` / `qa.prev`, guard (c) skipped, restore points in `qa-data/`). Use them to try a change to the release scripts before it touches prod.
+
+Only drills set `qa.prev`. `make qa-deploy` leaves it alone, so it may not be the build QA ran before, and `make qa-drill-rollback` goes to `qa.prev`, not to that build.
 
 ### Troubleshooting
 

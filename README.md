@@ -170,7 +170,7 @@ Because the binary embeds the frontend, deployment is just:
 
 Example reverse-proxy target URL (replace with your own host): `https://retro.example.com → http://127.0.0.1:5102`.
 
-Those steps are for self-hosting. The hosted instance at fast-retro.scottschmidt.io ships only through the release scripts: see [`docs/RELEASING.md`](./docs/RELEASING.md).
+Those steps are for self-hosting. The hosted instance at fast-retro.scottschmidt.io ships through QA and then prod using the release scripts: see [`docs/RELEASING.md`](./docs/RELEASING.md).
 
 `GET /api/version` returns the commit the binary was built from (`{"sha", "tree", "built_at"}`), as stamped by `build.sh`; unstamped builds such as `cargo run` report `"dev"`. `GET /api/health` returns `ok`.
 
