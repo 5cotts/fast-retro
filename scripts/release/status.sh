@@ -18,9 +18,7 @@ show_env() {
   read -r state pid uptime < <(service_state "$service")
   echo "${name}  (service ${service}, :${port})"
   echo "  symlink ${link}:  $(link_target "$link")"
-  if [[ "$link" == prod ]]; then
-    echo "  symlink prod.prev:  $(link_target prod.prev)"
-  fi
+  echo "  symlink ${link}.prev:  $(link_target "${link}.prev")"
   echo "  service:  ${state}  pid ${pid}  uptime ${uptime//_/ }"
   if [[ "$pid" =~ ^[0-9]+$ ]]; then
     exe="$(readlink "/proc/${pid}/exe" 2>/dev/null || echo '?')"

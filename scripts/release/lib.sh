@@ -90,6 +90,11 @@ _on_exit() {
   exit "$rc"
 }
 trap _on_exit EXIT
+# A signal (Ctrl-C, kill, a dropped session's SIGHUP) becomes a normal exit,
+# so the EXIT trap still runs: it's what restores symlinks after a swap.
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # One release operation at a time. Held on fd 9 for the life of the script;
 # the kernel drops it on exit. Child scripts inherit RELEASE_LOCK_HELD and
@@ -213,6 +218,10 @@ db_backup() {
   [[ ! -e "$dest" && ! -e "$dest-wal" ]] || die "refusing to overwrite $dest"
   [[ "$dest" != *"'"* ]] || die "backup path can't contain a single quote"
   sqlite3 -readonly "$src" ".backup '$dest'"
+  # The copy keeps the source's WAL mode, so opening it would leave -wal and
+  # -shm files beside it. Switch the copy (only the copy) to rollback-journal
+  # mode; the server sets WAL again when it opens a restored file.
+  [[ "$(sqlite3 "$dest" 'PRAGMA journal_mode=DELETE;')" == delete ]] || die "couldn't set journal_mode on $dest"
   result="$(sqlite3 -readonly "$dest" 'PRAGMA integrity_check;')"
   [[ "$result" == ok ]] || die "integrity_check on $dest returned: $result"
 }
@@ -432,12 +441,14 @@ env_get() {
     qa:service)   echo "$QA_SERVICE" ;;
     qa:port)      echo "$QA_PORT" ;;
     qa:link)      echo qa ;;
+    qa:prev)      echo qa.prev ;;
     qa:db)        echo "$QA_DB" ;;
     qa:log)       echo "/dev/shm/${QA_SERVICE}.log" ;;
     qa:url)       echo "$QA_URL" ;;
     prod:service) echo "$PROD_SERVICE" ;;
     prod:port)    echo "$PROD_PORT" ;;
     prod:link)    echo prod ;;
+    prod:prev)    echo prod.prev ;;
     prod:db)      echo "$PROD_DB" ;;
     prod:log)     echo "/dev/shm/${PROD_SERVICE}.log" ;;
     prod:url)     echo "$PROD_URL" ;;
@@ -564,7 +575,11 @@ verify_env() {
   fi
 
   log "watching ${service} for ${stable}s (same PID, no WARN/ERROR/panic)"
-  sleep "$stable"
+  # Backgrounded + wait, so a signal is handled now rather than after the sleep.
+  # 9>&-: the sleep mustn't inherit the lock fd, or a killed script's lock
+  # would stay held until the sleep ends.
+  sleep "$stable" 9>&- &
+  wait $!
   read -r state pid2 uptime < <(service_state "$service")
   if [[ "$state" == RUNNING && "$pid2" == "$pid" ]]; then
     _pass "${service} still RUNNING as PID ${pid} after ${stable}s"
@@ -602,4 +617,118 @@ local_info_update() {
   [[ -f "$f" ]] || echo '{}' > "$f"
   tmp="$(mktemp "$dir/.LOCAL_INFO.XXXXXX")"
   jq --arg at "$(now_iso)" "$filter" "$f" > "$tmp" && mv "$tmp" "$f"
+}
+
+# ---------------------------------------------------------------- promote (prod-deploy, rollback; §2.6.1 steps 6-9)
+
+# Read by the EXIT-trap restore below.
+PROMOTE_ENV="" PROMOTE_ACTION="" PROMOTE_TARGET="" PROMOTE_OLD="" PROMOTE_OLD_PREV=""
+PROMOTE_SWAPPED=0 PROMOTE_VERIFIED=0
+
+# Until verify passes, any exit (an error, a signal, a dropped session)
+# points both links back where they were, restarts the old build and
+# verifies it. Without this, the link would name an unverified build while
+# the old process kept running, and the next crash or reboot would start it.
+_promote_restore() {
+  [[ "$PROMOTE_SWAPPED" == 1 && "$PROMOTE_VERIFIED" != 1 ]] || return 0
+  local env="$PROMOTE_ENV" link prevlink service logfile o restored=FAILED
+  link="$(env_get "$env" link)"; prevlink="$(env_get "$env" prev)"
+  service="$(env_get "$env" service)"; logfile="$(env_get "$env" log)"
+  warn "${PROMOTE_ACTION} didn't verify; restoring ${link} -> $(basename "$PROMOTE_OLD") and ${prevlink} -> $(basename "${PROMOTE_OLD_PREV:-(none)}")"
+  restore_link "$link" "$PROMOTE_OLD"
+  restore_link "$prevlink" "$PROMOTE_OLD_PREV"
+  o="$(log_size "$logfile")"
+  if restart_service "$service" > /dev/null \
+     && VERIFY_STABLE_SECS=10 verify_env "$env" "$PROMOTE_OLD" "$o" "${PROMOTE_ACTION}-restore"; then
+    restored=ok
+    log "${env} is back on $(basename "$PROMOTE_OLD")"
+  else
+    warn "${env} didn't come back cleanly on $(basename "$PROMOTE_OLD"); run make release-status NOW"
+  fi
+  audit "$PROMOTE_ACTION" "env=${env} build=$(basename "$PROMOTE_TARGET") from=$(basename "$PROMOTE_OLD") result=fail restored=$(basename "$PROMOTE_OLD") restore_verify=${restored}"
+}
+
+# promote <qa|prod> <build-dir> <action>
+# Point <env>.prev at the current build and <env> at <build-dir> (two
+# rename(2) swaps), restart the service and verify. Dies on failure, after
+# the EXIT trap has put the old build back.
+promote() {
+  local env="$1" dir="$2" action="$3"
+  local link prevlink service logfile offset new_pid
+  link="$(env_get "$env" link)"; prevlink="$(env_get "$env" prev)"
+  service="$(env_get "$env" service)"; logfile="$(env_get "$env" log)"
+  PROMOTE_ENV="$env" PROMOTE_ACTION="$action" PROMOTE_TARGET="$dir"
+  PROMOTE_OLD="$(link_build "$link")"
+  PROMOTE_OLD_PREV="$(link_build "$prevlink")"
+  [[ -n "$PROMOTE_OLD" ]] || die "no ${link} link to swap from"
+  [[ "$(realpath "$dir")" != "$PROMOTE_OLD" ]] || die "${env} is already on $(basename "$dir")"
+  add_cleanup _promote_restore
+
+  offset="$(log_size "$logfile")"
+  log "swap: ${prevlink} -> $(basename "$PROMOTE_OLD"), ${link} -> $(basename "$dir")"
+  PROMOTE_SWAPPED=1
+  swap_link "$prevlink" "$PROMOTE_OLD"
+  swap_link "$link" "$dir"
+  new_pid="$(restart_service "$service")" || die "${service} didn't restart"
+  log "${service} restarted as PID ${new_pid}"
+  if is_true "${PROMOTE_DRILL_FAIL_VERIFY:-}"; then
+    [[ "$env" == qa ]] || die "PROMOTE_DRILL_FAIL_VERIFY is for QA drills only"
+    die "drill: failing verify on purpose"
+  fi
+  verify_env "$env" "$dir" "$offset" "$action" || die "${env} verify FAILED for $(basename "$dir")"
+  PROMOTE_VERIFIED=1
+}
+
+# Live participants on <env>, as "<sum> <slug:n,...>". Needs the service's
+# lead token (read from its process env, never printed).
+live_participants() {
+  local env="$1" port service state pid uptime token body
+  port="$(env_get "$env" port)"; service="$(env_get "$env" service)"
+  read -r state pid uptime < <(service_state "$service")
+  token="$(service_token "$pid" || true)"
+  [[ -n "$token" ]] || die "can't read ${service}'s lead token from /proc/${pid}/environ"
+  body="$(_curl_auth "$token" -f "http://127.0.0.1:${port}/api/boards")" \
+    || die "GET /api/boards on :${port} failed"
+  jq -r '"\([.[].participantCount] | add // 0) \([.[] | select(.participantCount > 0) | "\(.slug):\(.participantCount)"] | join(","))"' <<<"$body"
+}
+
+# Merged PRs labeled doc-model-change whose merge commit is in <to> but not
+# <from> (§2.9). Prints PR numbers. Fails closed if gh can't answer.
+doc_model_prs() {
+  local from="$1" to="$2" list n oid
+  list="$(gh pr list -R "$REPO_SLUG" --state merged --label doc-model-change --limit 200 \
+            --json number,mergeCommit -q '.[] | "\(.number) \(.mergeCommit.oid // "")"')" \
+    || die "gh couldn't list doc-model-change PRs; refusing to FORCE past live participants"
+  while read -r n oid; do
+    [[ -n "$oid" ]] || continue
+    git -C "$REPO_DIR" cat-file -e "${oid}^{commit}" 2>/dev/null || git -C "$REPO_DIR" fetch --quiet origin >&2
+    if git -C "$REPO_DIR" merge-base --is-ancestor "$oid" "$to" 2>/dev/null \
+       && ! git -C "$REPO_DIR" merge-base --is-ancestor "$oid" "$from" 2>/dev/null; then
+      echo "$n"
+    fi
+  done <<<"$list"
+}
+
+# Was <build-id> ever live (verified) in <env>, per release.log? Deep
+# rollback only goes to builds that were.
+was_live_in() {
+  local env="$1" id="$2"
+  [[ -f "$RELEASE_LOG" ]] || return 1
+  grep -qP "\t(prod-deploy|rollback|seed)\tenv=${env} build=${id} .*result=ok" "$RELEASE_LOG" && return 0
+  [[ "$env" == qa ]] && grep -qP "\tqa-deploy\tbuild=${id} .*result=ok" "$RELEASE_LOG"
+}
+
+# CONFIRM=<sha7+> must be a prefix of <sha>.
+check_confirm() {
+  local sha="$1" confirm="${CONFIRM:-}"
+  [[ -n "$confirm" ]] || die "CONFIRM=<sha7> is required (the target build's sha is ${sha:0:7})"
+  [[ "$confirm" =~ ^[0-9a-f]{7,40}$ ]] || die "CONFIRM must be 7-40 hex chars, got '${confirm}'"
+  [[ "$sha" == "$confirm"* ]] || die "CONFIRM=${confirm} doesn't match the target build's sha ${sha:0:7}"
+}
+
+# RELEASE_ENV for prod-deploy/rollback: prod, or qa for drills.
+release_env() {
+  local env="${RELEASE_ENV:-prod}"
+  [[ "$env" == prod || "$env" == qa ]] || die "RELEASE_ENV must be prod or qa, got '${env}'"
+  echo "$env"
 }

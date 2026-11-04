@@ -17,8 +17,11 @@ src_db="${DB:-$PROD_DB}"
 
 # The build that a quick rollback would return to after deploying this
 # candidate: today's prod, or prod.prev when the candidate already is prod.
+# SMOKE_ENV=qa (QA drills) uses qa / qa.prev instead.
+smoke_env="${SMOKE_ENV:-prod}"
+[[ "$smoke_env" == prod || "$smoke_env" == qa ]] || die "SMOKE_ENV must be prod or qa"
 rollback_dir=""
-for link in prod prod.prev; do
+for link in "$(env_get "$smoke_env" link)" "$(env_get "$smoke_env" prev)"; do
   [[ -L "${RELEASE_ROOT}/${link}" ]] || continue
   target="$(realpath "${RELEASE_ROOT}/${link}")"
   if [[ "$target" != "$(realpath "$cand_dir")" ]]; then
@@ -51,7 +54,7 @@ if strip_ansi < "$scratch/candidate.log" | grep -E ' (WARN|ERROR) |panicked' >&2
   result=fail
 fi
 
-rollback_note="skipped (no prod or prod.prev build to roll back to yet)"
+rollback_note="skipped (no ${smoke_env} or ${smoke_env}.prev build to roll back to yet)"
 if [[ "$result" == ok && -n "$rollback_dir" ]]; then
   if build_intact "$rollback_dir"; then
     start_scratch "$rollback_dir/fast-retro" "$scratch/run" "$db" "$token" "$scratch/rollback.log"
