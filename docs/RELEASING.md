@@ -2,7 +2,9 @@
 
 Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). Run every command from the `fast-retro/` repo root on the Zo box.
 
-> Status: QA is live (release PR 4). `make prod-deploy` and `make rollback` exist (release PR 5) but only work after the one-time prod migration (`release-plan.md` §3 step 2), which is scheduled with Scott. Until then prod deploys the manual way. The rest of this runbook lands in PR 6.
+> Status: QA is live (release PR 4). The one-time prod migration (`release-plan.md` §3 step 2) was done 2026-11-04: prod runs `fast-retro-releases/prod/fast-retro`, a symlink into `builds/`. The next prod deploy uses `make prod-deploy` and `make rollback`. The rest of this runbook lands in PR 6.
+>
+> Idle tab or active person? `boards.last_active_at` doesn't track edits, and an open tab keeps writing an identical no-op to `doc_updates` about every 15 s, so neither shows activity by itself. Timestamps there are milliseconds. A board is idle when `count(distinct update_bin)` over its recent `doc_updates` is 1 and its `board_docs` snapshot is unchanged.
 
 ## Environments
 
