@@ -173,6 +173,8 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 
 `qa-data/*.bak-*` files are kept (no auto-prune), but they never land in prod's `data/`.
 
+*Implemented in PR 4.* Opening the fresh copy for `integrity_check` gives it its own empty `-wal`, so the script fails only on a **non-empty** `-wal` after the reseed. Once QA is stopped (or its link swapped), any exit before a passed verify puts the previous build back and starts QA on it, so a failed reseed can't leave QA down.
+
 ### 2.7 Smoke and verify checks
 
 **Smoke** (on :5197, in a `mktemp -d` scratch dir, launched per §2.8):
@@ -190,12 +192,12 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 - `readlink /proc/<pid>/exe` equals `builds/<id>/fast-retro` (verify only; for smoke, the PID the script started).
 - `GET /` → 200, and the `<script type="module">` entry matches **`builds/<id>/index.html`** (the copy taken at build time, not the shared worktree, which a later build overwrites).
 - One hashed JS asset from that HTML → 200 with the right content type.
-- WebSocket upgrade on the **canary board** `zz-release-canary` → `101`, then close without sending updates. This still triggers a compaction write (§1), which is why it uses a dedicated board rather than a real user's. Create the canary once per environment during setup (§3), with a label so it isn't evicted as a stale room.
+- WebSocket upgrade on the **canary board** `zz-release-canary` → `101`, then close without sending updates. This still triggers a compaction write (§1), which is why it uses a dedicated board rather than a real user's. ~~Create the canary once per environment during setup (§3), with a label so it isn't evicted as a stale room.~~ *PR 4: no setup needed.* A WebSocket connect auto-creates the room (`get_or_create_room`). An unlabeled, empty room is hidden from the host dashboard and evicted from memory harmlessly, and it's recreated on the next connect. A label would make the canary show up on the dashboard.
 - Lead-token checks, **always on `127.0.0.1:<port>`**, never through the public proxy: `GET /api/archives` and `GET /api/boards` with `Authorization: Bearer` → 200 (archive row count ≥ the backup's); without it → 403. `/api/lead-token-check/<token>` is not used, because it puts the secret in a URL path.
 
 **Verify only** (after a prod or QA restart):
 
-- Token-free checks (health, `/`, asset, WS 101) also run against the **public URL**, since those exercise the proxy path.
+- Token-free checks (health, `/`, asset, WS 101) also run against the **public URL**, since those exercise the proxy path. *Prod only (PR 4):* QA's URL is private, so a script can't get past the sign-in; QA's proxy path is what Scott's click-through covers.
 - Before the restart, record the byte offset of `/dev/shm/<service>.log`. After 60 s, strip ANSI codes from the new bytes and fail on ` WARN `, ` ERROR ` or `panicked`. `_err.log` is also checked, but only catches panics.
 - `supervisorctl status` shows the **same PID** for ≥ 60 s (catches a restart loop under `startretries=20`).
 - Save a token-redacted tail of the new log bytes to `logs/<ts>-<action>.log` (the `/dev/shm` copy is lost on reboot).
@@ -305,12 +307,11 @@ Zo owns the supervisor config, so service changes go through Zo's service tools.
 
 0. **Branch protection (Scott):** after the CI PR merges, require the `gates` check on `main` in the repo settings (§2.10.1).
 
-1. **Create QA:** `register_user_service(label="fast-retro-qa", mode="http", local_port=5103, public="false", entrypoint="/home/workspace/fast-retro-releases/qa/fast-retro", workdir="/home/workspace/fast-retro-releases", env_vars={RETRO_LEAD_TOKEN: <new random>, FASTRETRO_DB: "/home/workspace/fast-retro-releases/qa-data/fastretro-qa.db"})`. `PORT` comes from `local_port`. Then create the QA canary board `zz-release-canary`.
+1. **Create QA:** `register_user_service(label="fast-retro-qa", mode="http", local_port=5103, public="false", entrypoint="/home/workspace/fast-retro-releases/qa/fast-retro", workdir="/home/workspace/fast-retro-releases", env_vars={RETRO_LEAD_TOKEN: <new random>, FASTRETRO_DB: "/home/workspace/fast-retro-releases/qa-data/fastretro-qa.db"})`. `PORT` comes from `local_port`. *Done 2026-11-04 (PR 4): `svc_2CDUDNWHHkA`, URL `https://fast-retro-qa-5cotts.zo.computer`.* The Basic plan allows 5 hosted services and all were taken, so Scott had `wat-dev-web` deleted to free a slot (recreate it with: private http, port 5173, workdir `wat/web`, `bunx vite --host 0.0.0.0 --port %(ENV_PORT)s`). The `qa` link must exist before registering (the first `make qa-deploy` creates it and then stops, asking for this step). The QA lead token is in `fast-retro-releases/qa-lead.token` (mode 600, never committed). `supervisorctl restart fast-retro-qa` works alongside Zo's management (step 3 confirmed for QA).
 2. **Migrate prod's entrypoint** (scheduled with Scott, in a quiet window, after PR 1 is deployed):
    - Seed `builds/` with the binary prod is **then** running (the PR 1 manual deploy). Copy it with `cp`, not a hardlink. Take the sha from `/api/version`, not from notes. Write its `BUILD_INFO` with `source: seeded`, its `binary_sha256`, and no QA'd or tree-check record. A seeded build is a valid **rollback** target but never a `prod-deploy` candidate (guard d). Point `prod` at it (`prod.prev` stays absent until the first scripted deploy).
    - Run `update_user_service(svc_OeivC8ngdHY, entrypoint="/home/workspace/fast-retro-releases/prod/fast-retro")`. **Change only `entrypoint`.** Don't pass `env_vars` (merge vs. replace isn't documented, and re-sending them means handling secrets). Leave workdir unchanged, so the relative DB default still resolves to the same file. An absolute `FASTRETRO_DB` for prod can be a separate, explicitly approved change later.
    - Verify: `/proc/<pid>/exe` is the seeded build; `/proc/<pid>/fd` includes `/home/workspace/fast-retro/data/fastretro.db`; `/proc/<pid>/environ` still has the `RETRO_LEAD_TOKEN`, `GOOGLE_CLIENT_ID` and `GA_MEASUREMENT_ID` key names (names only); `/`, the WebSocket and `/api/version` respond.
-   - Create the prod canary board `zz-release-canary`.
    - **Rollback for the migration itself:** set the entrypoint back to `target/release/fast-retro`, which stays in place until the first scripted deploy succeeds.
 3. Confirm `supervisorctl restart fast-retro-prod` doesn't conflict with Zo's own management. If it does, the script falls back to the `update_user_service(service_id)` restart and tells the agent to run it.
 

@@ -53,11 +53,14 @@ logfile="$(env_get qa log)"
 offset="$(log_size "$logfile")"
 
 # ---- swap (+ reseed with the service stopped)
-SWAPPED=0 VERIFIED=0
+# Once QA is stopped (reseed) or its link swapped, any exit before a passed
+# verify puts the previous build back and starts QA on it.
+STOPPED=0 SWAPPED=0 VERIFIED=0
 on_fail_restore() {
-  [[ "$SWAPPED" == 1 && "$VERIFIED" != 1 ]] || return 0
-  warn "QA verify didn't pass; restoring qa -> ${prev:-(none)}"
-  restore_link qa "$prev"
+  [[ "$STOPPED" == 1 || "$SWAPPED" == 1 ]] || return 0
+  [[ "$VERIFIED" != 1 ]] || return 0
+  warn "QA deploy didn't finish; putting QA back on ${prev:-(none)}"
+  [[ "$SWAPPED" != 1 ]] || restore_link qa "$prev"
   if [[ -n "$prev" ]]; then
     local o; o="$(log_size "$logfile")"
     restart_service "$QA_SERVICE" > /dev/null \
@@ -72,6 +75,7 @@ add_cleanup on_fail_restore
 if [[ "$seed" == prod ]]; then
   ts="$(now_ts)"
   log "reseeding QA from prod (old QA DB files kept as *.bak-${ts})"
+  STOPPED=1
   run supervisorctl -c "$SUPERVISOR_CONF" stop "$QA_SERVICE" >&2
   # The -wal and -shm move together with the main file: a leftover WAL next
   # to a new DB file could be replayed into it.
@@ -84,7 +88,9 @@ if [[ "$seed" == prod ]]; then
     log "DRY_RUN: sqlite3 ${PROD_DB} .backup ${QA_DB} + integrity_check"
   else
     db_backup "$PROD_DB" "$QA_DB"
-    [[ ! -e "${QA_DB}-wal" ]] || die "unexpected ${QA_DB}-wal after reseed"
+    # Opening the copy for integrity_check creates its own empty -wal; only
+    # a non-empty one would mean something else wrote to it.
+    [[ ! -s "${QA_DB}-wal" ]] || die "unexpected non-empty ${QA_DB}-wal after reseed"
     log "QA DB reseeded: $(db_counts "$QA_DB")"
   fi
 fi

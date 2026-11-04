@@ -505,8 +505,11 @@ restart_service() {
     echo "$pid"
     return 0
   fi
-  supervisorctl -c "$SUPERVISOR_CONF" restart "$service" >&2 \
-    || { log "supervisorctl restart ${service} failed"; return 1; }
+  local verb=restart
+  read -r state pid uptime < <(service_state "$service")
+  [[ "$state" == STOPPED || "$state" == EXITED || "$state" == FATAL ]] && verb=start
+  supervisorctl -c "$SUPERVISOR_CONF" "$verb" "$service" >&2 \
+    || { log "supervisorctl ${verb} ${service} failed"; return 1; }
   for i in $(seq 1 30); do
     read -r state pid uptime < <(service_state "$service")
     case "$state" in
