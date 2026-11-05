@@ -1,6 +1,6 @@
 # Plan: group related cards across columns
 
-Status: proposed, four decisions open (see below) · 2026-11-04 · checked against `main` at `2e97998`
+Status: approved, building · decisions recorded 2026-11-05 · checked against `main` at `2e97998`
 
 ## Goal
 
@@ -70,13 +70,13 @@ The UI says **group**, which matches the Group phase. The code says **cluster**,
 
 **No per-group colors, collapsing or group-level comments** in this version. Each adds UI without being needed for the request.
 
-### Open decisions
+### Decisions
 
-These need your call. The rest of the plan assumes the recommendations.
+Scott accepted the recommendations on 2026-11-05. Valentina's response to the mockup was "I think this works", which settles D1.
 
-| # | Question | Recommendation | Why |
+| # | Question | Decision | Why |
 | --- | --- | --- | --- |
-| **D1** | Aligned rows, or just group blocks inside each column? | **Aligned rows** on desktop | It's the only option that shows both "together" and "separate columns". Worth confirming with Valentina using the mockup, because she's describing a canvas tool. If she only cares that cards keep their column identity, PR 5 can be dropped. |
+| **D1** | Aligned rows, or just group blocks inside each column? | **Aligned rows** on desktop | It's the only option that shows both "together" and "separate columns". Valentina confirmed it from the mockup. |
 | **D2** | What should dropping a card on a card do? | **Group**, and move Merge to the group row | The easy gesture should be the safe one. Only 3 cards were merged in 2 of the 32 archives on prod, so few habits break. That sample is small (only 3 archives have 5+ cards) and it can't show whether people want merge, so Merge stays. |
 | **D3** | Who can group? | **Everyone in the Group phase.** Merge stays host-only. | Retrium and Parabol both do this. Merge is host-only because it's destructive, and grouping isn't. It's one `canCluster` derived value if you'd rather start host-only. The cost is that rows can shift while someone else is dragging. |
 | **D4** | Can people vote on a group itself? | **No, only on cards**, with the row showing distinct voters | No schema change or second kind of vote. Counting distinct people stops a five-card group outranking a two-card group just for having more cards, and it matches how merge already unions votes. |
