@@ -66,6 +66,14 @@ export function sortedByVotes(cards: CardData[]): CardData[] {
   return [...cards].sort((a, b) => b.votes.length - a.votes.length);
 }
 
+export interface ClusterActions {
+  join: (column: string, cardId: string, clusterId: string) => void;
+  create: (column: string, cardId: string, label: string) => void;
+  leave: (column: string, cardId: string) => void;
+  rename: (clusterId: string, label: string) => void;
+  dissolve: (clusterId: string) => void;
+}
+
 export interface ClusterLane {
   cluster: ClusterDef;
   // Keyed by column key. Every input column has an entry, possibly empty.
@@ -74,6 +82,10 @@ export interface ClusterLane {
   // Different people who voted on any card here. Counting people stops a
   // five-card group outranking a two-card group just for having more cards.
   voters: number;
+}
+
+export function clusterDisplayName(cluster: Pick<ClusterDef, 'label'>): string {
+  return cluster.label || UNNAMED_CLUSTER_LABEL;
 }
 
 export interface BoardLayout {
@@ -143,6 +155,16 @@ export function layoutBoard(
     loose[col.key] = sortByVotes ? sortedByVotes(rest) : rest;
   }
   return { lanes, loose };
+}
+
+// The cards a given card moves among with Shift+Up/Down: its lane's cell, or
+// the loose area.
+export function sectionOf(layout: BoardLayout, columnKey: string, cardId: string): CardData[] {
+  for (const lane of layout.lanes) {
+    const cell = lane.cards[columnKey];
+    if (cell?.some((c) => c.id === cardId)) return cell;
+  }
+  return layout.loose[columnKey] ?? [];
 }
 
 export interface ReorderTarget {

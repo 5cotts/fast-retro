@@ -4,7 +4,8 @@
   import Wordmark from '$lib/Wordmark.svelte';
   import type { CardData } from '$lib/types';
   import { COLUMN_STYLE, DEFAULT_COLUMNS, boardGridClass, sanitizeColumns } from '$lib/columns';
-  import { boardFileFromArchive, downloadBoardFile } from '$lib/boardfile';
+  import { boardFileFromArchive, downloadBoardFile, sanitizeFileClusters } from '$lib/boardfile';
+  import { clusterDisplayName, layoutBoard } from '$lib/clusters';
   import { FileJson } from 'lucide-svelte';
   import { track } from '$lib/analytics';
 
@@ -28,6 +29,14 @@
   let loadError = $state<string>('');
 
   const columns = $derived(sanitizeColumns(archive?.columns) ?? DEFAULT_COLUMNS);
+  const layout = $derived(
+    layoutBoard(
+      columns,
+      archive?.cards ?? {},
+      sanitizeFileClusters(archive?.clusters).map((c, createdAt) => ({ ...c, createdAt })),
+      { showClusters: true, sortByVotes: false }
+    )
+  );
   const token = $derived(page.params.token ?? '');
   const id = $derived(page.params.id ?? '');
 
@@ -79,6 +88,41 @@
     return archive.names[authorId] || 'someone';
   }
 </script>
+
+{#snippet archiveCard(card: CardData)}
+  <li
+    class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm shadow-sm"
+    data-testid="archive-card"
+  >
+    <div class="whitespace-pre-wrap break-words">{card.text}</div>
+    <div class="mt-2 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+      <span>by {authorLabel(card.authorId)}</span>
+      {#if card.votes.length > 0}
+        <span class="tabular-nums">👍 {card.votes.length}</span>
+      {/if}
+      {#each Object.entries(card.reactions) as [emoji, users] (emoji)}
+        {#if users.length > 0}
+          <span class="tabular-nums">{emoji} {users.length}</span>
+        {/if}
+      {/each}
+      {#if card.comments.length > 0}
+        <span>💬 {card.comments.length}</span>
+      {/if}
+    </div>
+    {#if card.comments.length > 0}
+      <ul class="mt-2 space-y-1 border-t border-slate-100 dark:border-slate-700 pt-2">
+        {#each card.comments as c (c.id)}
+          <li class="text-xs text-slate-600 dark:text-slate-300">
+            <span class="font-medium text-slate-700 dark:text-slate-200">
+              {authorLabel(c.authorId)}:
+            </span>
+            {c.text}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+  </li>
+{/snippet}
 
 <svelte:head>
   <title
@@ -160,43 +204,34 @@
                 <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cards.length}</span>
               </header>
               <ul class="p-3 space-y-2">
-                {#each cards as card (card.id)}
-                  <li
-                    class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm shadow-sm"
-                    data-testid="archive-card"
-                  >
-                    <div class="whitespace-pre-wrap break-words">{card.text}</div>
-                    <div class="mt-2 flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                      <span>by {authorLabel(card.authorId)}</span>
-                      {#if card.votes.length > 0}
-                        <span class="tabular-nums">👍 {card.votes.length}</span>
-                      {/if}
-                      {#each Object.entries(card.reactions) as [emoji, users] (emoji)}
-                        {#if users.length > 0}
-                          <span class="tabular-nums">{emoji} {users.length}</span>
-                        {/if}
-                      {/each}
-                      {#if card.comments.length > 0}
-                        <span>💬 {card.comments.length}</span>
-                      {/if}
-                    </div>
-                    {#if card.comments.length > 0}
-                      <ul class="mt-2 space-y-1 border-t border-slate-100 dark:border-slate-700 pt-2">
-                        {#each card.comments as c (c.id)}
-                          <li class="text-xs text-slate-600 dark:text-slate-300">
-                            <span class="font-medium text-slate-700 dark:text-slate-200">
-                              {authorLabel(c.authorId)}:
-                            </span>
-                            {c.text}
-                          </li>
+                {#each layout.lanes as lane (lane.cluster.id)}
+                  {#if (lane.cards[col.key]?.length ?? 0) > 0}
+                    <li
+                      class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-slate-800/30 p-2"
+                      data-testid="archive-group"
+                    >
+                      <div class="px-1 pb-2 text-xs font-semibold text-slate-700 dark:text-slate-200 break-words">
+                        {clusterDisplayName(lane.cluster)}
+                        <span class="font-normal text-slate-500 dark:text-slate-400 tabular-nums">
+                          · {lane.count} {lane.count === 1 ? 'card' : 'cards'}{#if lane.voters > 0}&nbsp;· {lane.voters} {lane.voters === 1 ? 'voter' : 'voters'}{/if}
+                        </span>
+                      </div>
+                      <ul class="space-y-2" aria-label={`Group: ${clusterDisplayName(lane.cluster)}`}>
+                        {#each lane.cards[col.key] as card (card.id)}
+                          {@render archiveCard(card)}
                         {/each}
                       </ul>
-                    {/if}
-                  </li>
+                    </li>
+                  {/if}
+                {/each}
+                {#each layout.loose[col.key] ?? [] as card (card.id)}
+                  {@render archiveCard(card)}
                 {:else}
-                  <li class="text-xs text-slate-500 dark:text-slate-400 italic px-1 py-3">
-                    No cards in this column.
-                  </li>
+                  {#if cards.length === 0}
+                    <li class="text-xs text-slate-500 dark:text-slate-400 italic px-1 py-3">
+                      No cards in this column.
+                    </li>
+                  {/if}
                 {/each}
               </ul>
             </section>

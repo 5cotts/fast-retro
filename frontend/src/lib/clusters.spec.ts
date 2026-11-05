@@ -8,6 +8,7 @@ import {
   MAX_CLUSTER_LABEL_LEN,
   readClusters,
   reorderTarget,
+  sectionOf,
   sortedByVotes,
   type ClusterDef,
   type ClusterMap,
@@ -258,6 +259,20 @@ describe('reorderTarget', () => {
     expect(reorderTarget(section, 'a', -1)).toBeNull();
     expect(reorderTarget(section, 'c', 1)).toBeNull();
     expect(reorderTarget(section, 'missing', 1)).toBeNull();
+  });
+});
+
+describe('sectionOf', () => {
+  it("returns a card's lane cell, or the loose area", () => {
+    const layout = layoutBoard(
+      COLUMNS,
+      { a: [card('1', { clusterId: 'c' }), card('2', { clusterId: 'c' }), card('3')] },
+      [cluster('c', 'G')],
+      ON
+    );
+    expect(ids(sectionOf(layout, 'a', '2'))).toEqual(['1', '2']);
+    expect(ids(sectionOf(layout, 'a', '3'))).toEqual(['3']);
+    expect(sectionOf(layout, 'unknown', '3')).toEqual([]);
   });
 });
 

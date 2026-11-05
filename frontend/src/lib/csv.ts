@@ -1,6 +1,6 @@
 import type { CardData } from './types';
 import { DEFAULT_COLUMNS, type ColumnDef } from './columns';
-import { layoutBoard, UNNAMED_CLUSTER_LABEL, type ClusterDef } from './clusters';
+import { clusterDisplayName, layoutBoard, type ClusterDef } from './clusters';
 
 // Neutralize CSV/formula injection: a cell starting with =, +, -, @, tab, or
 // CR is interpreted as a formula by Excel/Sheets when the file is opened.
@@ -25,7 +25,7 @@ export function exportCSV(
   const { lanes } = layoutBoard(columns, boardSnapshot, clusters, { showClusters: true, sortByVotes: false });
   for (const lane of lanes) {
     for (const list of Object.values(lane.cards)) {
-      for (const card of list) groupOf.set(card.id, lane.cluster.label || UNNAMED_CLUSTER_LABEL);
+      for (const card of list) groupOf.set(card.id, clusterDisplayName(lane.cluster));
     }
   }
   const rows: string[][] = [['column', 'card_text', 'votes', 'reactions', 'comments', 'group']];
