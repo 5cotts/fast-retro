@@ -574,7 +574,7 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
 
     room.clients.write().await.insert(client_id, out_tx.clone());
 
-    let mut bcast_rx = room.broadcast.subscribe();
+    let bcast_rx = room.broadcast.subscribe();
 
     // Send initial sync step 1 to client (request their state)
     {
@@ -627,29 +627,7 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
     });
 
     // broadcast: forward broadcasts to this client (except own messages)
-    let bcast_tx = out_tx.clone();
-    let bcast_task = tokio::spawn(async move {
-        while let Ok(msg) = bcast_rx.recv().await {
-            match msg {
-                BroadcastMsg::DocUpdate { from, update } => {
-                    if from != client_id {
-                        let m = sync::encode_sync_update(&update);
-                        if bcast_tx.send(Message::Binary(m)).is_err() {
-                            break;
-                        }
-                    }
-                }
-                BroadcastMsg::AwarenessUpdate { from, update } => {
-                    if from != client_id {
-                        let m = sync::encode_awareness(&update);
-                        if bcast_tx.send(Message::Binary(m)).is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    });
+    let bcast_task = tokio::spawn(forward_broadcasts(bcast_rx, client_id, out_tx.clone()));
 
     // inbound: handle messages from this client
     while let Some(msg) = ws_rx.next().await {
@@ -688,6 +666,36 @@ async fn handle_socket(socket: WebSocket, room: Arc<Room>) {
     bcast_task.abort();
     keepalive_task.abort();
     outbound.abort();
+}
+
+/// Sends a room's broadcasts to one client until the client goes away.
+///
+/// If this client falls more than the channel's buffer behind, it has missed
+/// updates that nothing will resend: the keepalive only asks the client for what
+/// the server lacks. Stopping here alone would leave the socket open and the
+/// keepalive running, so the client would stay connected and silently stop seeing
+/// changes until it reloaded. Closing the socket makes it reconnect and fully
+/// resync.
+async fn forward_broadcasts(
+    mut rx: broadcast::Receiver<BroadcastMsg>,
+    client_id: ClientId,
+    out_tx: ClientSink,
+) {
+    loop {
+        let (from, encoded) = match rx.recv().await {
+            Ok(BroadcastMsg::DocUpdate { from, update }) => (from, sync::encode_sync_update(&update)),
+            Ok(BroadcastMsg::AwarenessUpdate { from, update }) => (from, sync::encode_awareness(&update)),
+            Err(broadcast::error::RecvError::Lagged(missed)) => {
+                warn!("client {} missed {} broadcasts; closing so it resyncs", client_id, missed);
+                let _ = out_tx.send(Message::Close(None));
+                return;
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        };
+        if from != client_id && out_tx.send(Message::Binary(encoded)).is_err() {
+            return;
+        }
+    }
 }
 
 async fn process_message(
@@ -1219,6 +1227,39 @@ async fn static_handler(uri: Uri) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use super::{forward_broadcasts, BroadcastMsg};
+    use axum::extract::ws::Message;
+    use tokio::sync::{broadcast, mpsc};
+
+    fn doc_update(from: u64) -> BroadcastMsg {
+        BroadcastMsg::DocUpdate { from, update: vec![] }
+    }
+
+    #[tokio::test]
+    async fn a_lagged_client_is_closed_so_it_resyncs() {
+        let (tx, rx) = broadcast::channel(2);
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+        // More than the buffer holds, before the receiver has read anything.
+        for _ in 0..5 {
+            assert!(tx.send(doc_update(1)).is_ok());
+        }
+        forward_broadcasts(rx, 2, out_tx).await;
+        assert!(matches!(out_rx.recv().await, Some(Message::Close(None))));
+        assert!(out_rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn broadcasts_reach_other_clients_but_not_their_sender() {
+        let (tx, rx) = broadcast::channel(8);
+        let (out_tx, mut out_rx) = mpsc::unbounded_channel();
+        assert!(tx.send(doc_update(2)).is_ok());
+        assert!(tx.send(doc_update(1)).is_ok());
+        drop(tx);
+        forward_broadcasts(rx, 2, out_tx).await;
+        assert!(matches!(out_rx.recv().await, Some(Message::Binary(_))));
+        assert!(out_rx.recv().await.is_none());
+    }
+
     use super::*;
     use axum::body::Body;
     use axum::extract::connect_info::ConnectInfo;
