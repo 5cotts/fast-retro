@@ -33,6 +33,7 @@ async function joinAs(page: Page, path: string, name: string) {
 const column = (page: Page, title: string) => page.getByRole('list', { name: title, exact: true });
 const card = (page: Page, title: string, text: string) => column(page, title).getByRole('group', { name: `Card: ${text}` });
 const groupIn = (page: Page, title: string, name: string) => column(page, title).getByRole('list', { name: new RegExp(`^Group: ${name}`) });
+const groupRow = (page: Page, name: string) => page.getByTestId('group-row').filter({ has: page.getByRole('heading', { name, exact: true }) });
 const groupCard = (page: Page, title: string, name: string, text: string) =>
   groupIn(page, title, name).getByRole('group', { name: `Card: ${text}` });
 
@@ -69,7 +70,9 @@ async function vote(page: Page, title: string, text: string) {
 }
 
 async function newPage(browser: Browser) {
-  const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  // Reduced motion turns off the card animations, so a drag starts on the card
+  // that's really there and not on one animating through that spot.
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 1000 }, reducedMotion: 'reduce' });
   return { ctx, page: await ctx.newPage() };
 }
 
@@ -161,7 +164,7 @@ test.describe('fast-retro card groups', () => {
 
       // Onto a group's name: joins it.
       await startDrag(page, card(page, WELL, c));
-      await dropOn(page, groupIn(page, IMPROVE, 'Untitled group').locator('h3'));
+      await dropOn(page, groupRow(page, 'Untitled group').locator('h3'));
       await expect(groupCard(page, WELL, 'Untitled group, 3 cards', c)).toBeVisible();
 
       // Dragging out the second-last card leaves a normal card, not a group of one.
@@ -169,7 +172,7 @@ test.describe('fast-retro card groups', () => {
         await startDrag(page, card(page, WELL, text));
         await dropOn(page, column(page, WELL).getByTestId('ungroup-zone'));
       }
-      await expect(page.getByTestId('group-block')).toHaveCount(0);
+      await expect(page.getByTestId('group-row')).toHaveCount(0);
       await expect(card(page, IMPROVE, b)).toBeVisible();
 
       // Into another column's loose area: moves it there. That's the way to
@@ -255,6 +258,132 @@ test.describe('fast-retro card groups', () => {
     }
   });
 
+  test('group rows line up across columns on desktop and stack on a phone', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const well = `a card long enough that it wraps onto a second line here ${suffix}`;
+    const improve = `short ${suffix}`;
+    const looseWell = `loose well ${suffix}`;
+    const looseImprove = `loose improve ${suffix}`;
+    const lead = await newPage(browser);
+    try {
+      const { page } = lead;
+      const slug = `pw-groups-rows-${suffix}`;
+      await joinAs(page, `/lead/${LEAD_TOKEN}/${slug}`, `Lead ${suffix}`);
+      await addCard(page, WELL, well);
+      await addCard(page, IMPROVE, improve);
+      await addCard(page, WELL, looseWell);
+      await addCard(page, IMPROVE, looseImprove);
+      await goTo(page, 'Advance to', 'Group');
+      await newGroup(page, WELL, well, 'Row');
+      await joinGroup(page, IMPROVE, improve, 'Row');
+
+      const top = async (locator: ReturnType<Page['getByRole']>) => (await locator.boundingBox())!.y;
+      const settled = async () => {
+        await card(page, WELL, well).hover();
+        await card(page, IMPROVE, improve).hover();
+      };
+      await settled();
+
+      // A card in a group starts level with its partner in the next column.
+      await expect.poll(async () => Math.abs((await top(card(page, WELL, well))) - (await top(card(page, IMPROVE, improve))))).toBeLessThan(2);
+      // The loose cards sit below the row, level with each other.
+      await expect.poll(async () => Math.abs((await top(card(page, WELL, looseWell))) - (await top(card(page, IMPROVE, looseImprove))))).toBeLessThan(2);
+      expect(await top(card(page, IMPROVE, looseImprove))).toBeGreaterThan(await top(card(page, IMPROVE, improve)));
+
+      // One name across the columns, spanning both but not Action items.
+      await expect(page.getByTestId('group-row')).toHaveCount(1);
+      const row = (await groupRow(page, 'Row').boundingBox())!;
+      const wellBox = (await column(page, WELL).boundingBox())!;
+      const improveBox = (await column(page, IMPROVE).boundingBox())!;
+      const actionsBox = (await column(page, 'Action items').boundingBox())!;
+      expect(row.x).toBeLessThanOrEqual(wellBox.x + 1);
+      expect(row.x + row.width).toBeGreaterThanOrEqual(improveBox.x + improveBox.width - 1);
+      expect(row.x + row.width).toBeLessThan(actionsBox.x);
+
+      // Every column stays one tall panel with its composer at the bottom.
+      expect(Math.abs(wellBox.height - actionsBox.height)).toBeLessThan(2);
+
+      // An empty cell in the row accepts a drop while dragging.
+      await column(page, WELL).getByRole('list', { name: /^Group: / }).getByRole('button', { name: 'Group this card' }).click();
+      await page.keyboard.press('Escape');
+      await card(page, IMPROVE, improve).getByRole('button', { name: 'Group this card' }).click();
+      await card(page, IMPROVE, improve).getByRole('menuitem', { name: 'Remove from group' }).click();
+      await expect(groupRow(page, 'Row')).toBeVisible();
+      await startDrag(page, card(page, IMPROVE, looseImprove));
+      const placeholder = column(page, IMPROVE).getByTestId('group-cell').getByText('Drop to add to this group');
+      await expect(placeholder).toBeVisible();
+      await dropOn(page, placeholder);
+      await expect(groupCard(page, IMPROVE, 'Row, 2 cards', looseImprove)).toBeVisible();
+
+      // On a phone: no shared rows, a block with the name in each column.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByTestId('group-row')).toHaveCount(0);
+      await expect(page.getByTestId('group-block')).toHaveCount(2);
+      await expect(groupIn(page, WELL, 'Row').getByRole('heading', { name: 'Row' })).toBeVisible();
+      await expect(groupIn(page, IMPROVE, 'Row').getByRole('button', { name: 'Ungroup Row' })).toBeVisible();
+    } finally {
+      await lead.ctx.close();
+    }
+  });
+
+  test('on a wide board the group name stays on screen while scrolling sideways', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const file = {
+      format: 'fast-retro',
+      version: 3,
+      exportedAt: 1,
+      board: {
+        label: `Wide ${suffix}`,
+        anonymous: true,
+        phase: 'group',
+        autoSort: true,
+        clusters: [{ id: 'g', label: 'Across' }],
+        columns: ['One', 'Two', 'Three', 'Four', 'Five', 'Six'].map((title, i) => ({
+          key: `c-${i}`,
+          title,
+          color: ['emerald', 'amber', 'violet', 'rose', 'teal', 'orange'][i]
+        }))
+      },
+      cards: {
+        'c-0': [{ id: 'a', text: `first ${suffix}`, clusterId: 'g' }],
+        'c-5': [{ id: 'b', text: `last ${suffix}`, clusterId: 'g' }]
+      }
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1000, height: 800 } });
+    const page = await ctx.newPage();
+    try {
+      await page.addInitScript(() => {
+        localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }]));
+      });
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Start a new retro' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+      const [chooser] = await Promise.all([page.waitForEvent('filechooser'), dialog.getByRole('button', { name: 'Import from file…' }).click()]);
+      await chooser.setFiles({ name: 'wide.fastretro.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+      await dialog.getByRole('button', { name: 'Import retro' }).click();
+      await page.waitForURL(/\/board\//);
+      const nameInput = page.getByLabel('Your display name');
+      await expect(nameInput).toBeVisible();
+      await nameInput.fill(`Host ${suffix}`);
+      await page.getByRole('button', { name: 'Join the retro' }).click();
+      await dismissOnboardingIfPresent(page);
+
+      const grid = page.getByTestId('board-columns');
+      const name = groupRow(page, 'Across').getByRole('heading', { name: 'Across' });
+      await expect(name).toBeInViewport();
+      // The row spans every column, including the sixth, which needs scrolling.
+      await expect(groupCard(page, 'Six', 'Across', `last ${suffix}`)).toBeAttached();
+      await grid.evaluate((el) => (el.scrollLeft = el.scrollWidth));
+      await expect(groupCard(page, 'Six', 'Across', `last ${suffix}`)).toBeInViewport();
+      await expect(name).toBeInViewport();
+      await expect(card(page, 'One', `first ${suffix}`)).not.toBeInViewport();
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('rename, leave and Ungroup all work, survive a reload and never move a card', async ({ browser }) => {
     test.setTimeout(120_000);
     const suffix = Math.random().toString(36).slice(2, 6);
@@ -275,7 +404,7 @@ test.describe('fast-retro card groups', () => {
       await expect(groupIn(page, WELL, 'Old name, 3 cards')).toBeVisible();
 
       // Rename from any block.
-      await groupIn(page, IMPROVE, 'Old name').getByRole('button', { name: 'Old name', exact: true }).click();
+      await groupRow(page, 'Old name').getByRole('button', { name: 'Old name', exact: true }).click();
       await page.getByLabel('Group name').fill('New name');
       await page.keyboard.press('Enter');
       await expect(groupIn(page, WELL, 'New name')).toBeVisible();
@@ -292,14 +421,14 @@ test.describe('fast-retro card groups', () => {
       await expect(groupIn(page, WELL, 'New name, 2 cards')).toBeVisible();
 
       // Clearing the name of a two-card group shows it as untitled.
-      await groupIn(page, WELL, 'New name').getByRole('button', { name: 'New name', exact: true }).click();
+      await groupRow(page, 'New name').getByRole('button', { name: 'New name', exact: true }).click();
       await page.getByLabel('Group name').fill('');
       await page.keyboard.press('Enter');
       await expect(groupIn(page, WELL, 'Untitled group, 2 cards')).toBeVisible();
 
       // Ungroup: no blocks left, every card where it was.
-      await groupIn(page, WELL, 'Untitled group').getByRole('button', { name: 'Ungroup Untitled group' }).click();
-      await expect(page.getByTestId('group-block')).toHaveCount(0);
+      await groupRow(page, 'Untitled group').getByRole('button', { name: 'Ungroup Untitled group' }).click();
+      await expect(page.getByTestId('group-row')).toHaveCount(0);
       await expect(card(page, WELL, one)).toBeVisible();
       await expect(card(page, WELL, three)).toBeVisible();
       await expect(card(page, IMPROVE, two)).toBeVisible();
@@ -378,6 +507,7 @@ test.describe('fast-retro card groups', () => {
       await lead.page.getByRole('button', { name: "Hide others' cards" }).click();
       await goTo(lead.page, 'Go back to', 'Brainstorm');
       await expect(guest.page.getByTestId('hidden-card')).toHaveCount(1);
+      await expect(guest.page.getByTestId('group-row')).toHaveCount(0);
       await expect(guest.page.getByTestId('group-block')).toHaveCount(0);
       expect(await guest.page.content()).not.toContain(secret);
 
@@ -415,10 +545,10 @@ test.describe('fast-retro card groups', () => {
       await vote(lead.page, WELL, quiet2);
       await vote(lead.page, WELL, popular1);
       await vote(guest.page, WELL, popular2);
-      await expect(groupIn(lead.page, WELL, 'Quiet')).toContainText('1 voter');
-      await expect(groupIn(lead.page, WELL, 'Popular')).toContainText('2 voters');
+      await expect(groupRow(lead.page, 'Quiet')).toContainText('1 voter');
+      await expect(groupRow(lead.page, 'Popular')).toContainText('2 voters');
 
-      const names = () => column(lead.page, WELL).getByTestId('group-block').locator('h3').allInnerTexts();
+      const names = () => lead.page.getByTestId('group-row').locator('h3').allInnerTexts();
       await expect.poll(names).toEqual(['Quiet', 'Popular']);
       await goTo(lead.page, 'Advance to', 'Discuss');
       await expect.poll(names).toEqual(['Popular', 'Quiet']);
@@ -490,7 +620,7 @@ test.describe('fast-retro card groups', () => {
       await expect(page.getByText('This retro has ended')).toBeVisible();
       await expect(groupCard(page, WELL, 'Deploys', one)).toBeVisible();
       await expect(card(page, WELL, one).getByRole('button', { name: 'Group this card' })).toHaveCount(0);
-      await expect(groupIn(page, WELL, 'Deploys').getByRole('button', { name: /^Ungroup/ })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: /^Ungroup/ })).toHaveCount(0);
 
       await page.goto(`/lead/${LEAD_TOKEN}/archives`);
       const item = page.getByTestId('archive-item').filter({ hasText: slug }).first();

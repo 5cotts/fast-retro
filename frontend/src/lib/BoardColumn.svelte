@@ -8,7 +8,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { COLUMN_PLACEHOLDER, COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, columnEmptyHint, isActionsColumn, type ColumnDef } from './columns';
-  import { clusterDisplayName, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
+  import { alignedRows, clusterDisplayName, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
   import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
   import type { CardData } from './types';
@@ -23,6 +23,12 @@
     lanes: ClusterLane[];
     // Everything in this column, grouped or not.
     cardCount: number;
+    // Desktop with groups showing: this column's lanes line up with the other
+    // columns' through a shared grid (see alignedRows), and Board draws the
+    // group names. Otherwise each column stacks its own blocks.
+    aligned: boolean;
+    // This column's position in the board, for that grid.
+    columnIndex: number;
     canCluster: boolean;
     canMerge: boolean;
     // Title of the first column holding each group's cards (see mergeCluster).
@@ -73,6 +79,8 @@
     cards,
     lanes,
     cardCount,
+    aligned,
+    columnIndex,
     canCluster,
     canMerge,
     mergeTitle,
@@ -117,6 +125,8 @@
   const style = $derived(COLUMN_STYLE[column.color]);
   const typingNew = $derived(typingByCard.get(`new-${column.key}`) ?? []);
   const lanesHere = $derived(lanes.filter((lane) => (lane.cards[column.key]?.length ?? 0) > 0));
+  const rows = $derived(alignedRows(lanes.length));
+  const isActions = $derived(isActionsColumn(column));
   const groupOptions = $derived(lanes.map((lane) => lane.cluster));
   const canGroupHere = $derived(canCluster && !isActionsColumn(column));
   const canDropToGroup = $derived(dragCanGroup && !isActionsColumn(column));
@@ -252,14 +262,58 @@
   {/if}
 {/snippet}
 
+{#snippet laneList(lane: ClusterLane, withHeader: boolean)}
+  <div
+    role="list"
+    aria-label={`Group: ${clusterDisplayName(lane.cluster)}, ${lane.count} ${lane.count === 1 ? 'card' : 'cards'}`}
+    class="space-y-2"
+  >
+    {#if withHeader}
+      <ClusterHeader
+        {lane}
+        canEdit={canCluster}
+        {canMerge}
+        mergeInto={mergeTitle(lane)}
+        onRename={(label) => clusterActions.rename(lane.cluster.id, label)}
+        onDissolve={() => clusterActions.dissolve(lane.cluster.id)}
+        onMerge={() => clusterActions.merge(lane.cluster.id)}
+      />
+    {/if}
+    {@render cardList(lane.cards[column.key], lane.cluster.id)}
+  </div>
+{/snippet}
+
+{#snippet looseCards()}
+  {#if cardCount === 0}
+    <div class="text-xs text-slate-400 dark:text-slate-500 italic px-1 py-2 select-none">
+      {columnEmptyHint(column)}
+    </div>
+  {/if}
+  {@render cardList(cards, null)}
+  {#if dragCardId && dragCanGroup && dragIsGrouped}
+    <div
+      role="listitem"
+      class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400"
+      data-testid="ungroup-zone"
+      ondragover={onLooseDragOver}
+    >
+      Drop here to leave the group
+    </div>
+  {/if}
+{/snippet}
+
 <section
-  class="border rounded-xl shadow-sm flex flex-col {style.accent}"
+  class="border rounded-xl shadow-sm {aligned ? 'grid grid-rows-subgrid' : 'flex flex-col'} {style.accent}"
+  style={aligned ? `grid-column: ${columnIndex + 1}; grid-row: 1 / span ${rows.total}` : undefined}
   role="list"
   aria-label={column.title}
   ondragover={onColumnDragOver}
   ondrop={onColumnDrop}
 >
-  <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}">
+  <header
+    class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}"
+    style={aligned ? 'grid-row: 1' : undefined}
+  >
     <div class="flex items-center gap-2 min-w-0 flex-1">
       <span class="w-1.5 h-5 rounded-full shrink-0 {style.dot}" aria-hidden="true"></span>
       <EditableHeading
@@ -273,47 +327,51 @@
     </div>
     <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cardCount}</span>
   </header>
-  <div class="p-3 flex-1 space-y-2 min-h-[96px]">
-    {#if cardCount === 0}
-      <div class="text-xs text-slate-400 dark:text-slate-500 italic px-1 py-2 select-none">
-        {columnEmptyHint(column)}
+  {#if aligned && !isActions}
+    {#each lanes as lane, i (lane.cluster.id)}
+      {@const here = lane.cards[column.key] ?? []}
+      <div
+        role="listitem"
+        class="relative z-[2] px-3 pt-1 pb-3 has-[[role=menu]]:z-30 has-[[role=dialog]]:z-30"
+        style="grid-row: {rows.cellRow(i)}"
+        data-testid="group-cell"
+        ondragover={(e) => onGroupDragOver(e, lane.cluster.id)}
+      >
+        {#if here.length > 0}
+          {@render laneList(lane, false)}
+        {:else if dragCardId && canDropToGroup}
+          <div class="h-full min-h-10 flex items-center justify-center rounded-lg border border-dashed border-violet-300 dark:border-violet-600 text-xs text-violet-700 dark:text-violet-300 text-center px-2 py-3 {dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id ? 'bg-violet-100/70 dark:bg-violet-900/30' : ''}">
+            Drop to add to this group
+          </div>
+        {/if}
       </div>
-    {/if}
-    {#each lanesHere as lane (lane.cluster.id)}
-      <div role="listitem">
+    {/each}
+    <div class="p-3 space-y-2 min-h-[48px]" style="grid-row: {rows.looseRow}">
+      {@render looseCards()}
+    </div>
+  {:else if aligned}
+    <div class="p-3 space-y-2 min-h-[96px]" style="grid-row: 2 / span {rows.looseRow - 1}">
+      {@render looseCards()}
+    </div>
+  {:else}
+    <div class="p-3 flex-1 space-y-2 min-h-[96px]">
+      {#each lanesHere as lane (lane.cluster.id)}
         <div
-          role="list"
-          aria-label={`Group: ${clusterDisplayName(lane.cluster)}, ${lane.count} ${lane.count === 1 ? 'card' : 'cards'}`}
-          class="rounded-lg border border-dashed bg-white/50 dark:bg-slate-800/30 p-2 space-y-2 transition-colors {dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700' : 'border-slate-300 dark:border-slate-600'}"
+          role="listitem"
+          class="rounded-lg border border-dashed bg-white/50 dark:bg-slate-800/30 p-2 transition-colors {dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700' : 'border-slate-300 dark:border-slate-600'}"
           data-testid="group-block"
           ondragover={(e) => onGroupDragOver(e, lane.cluster.id)}
         >
-          <ClusterHeader
-            {lane}
-            canEdit={canCluster}
-            {canMerge}
-            mergeInto={mergeTitle(lane)}
-            onRename={(label) => clusterActions.rename(lane.cluster.id, label)}
-            onDissolve={() => clusterActions.dissolve(lane.cluster.id)}
-            onMerge={() => clusterActions.merge(lane.cluster.id)}
-          />
-          {@render cardList(lane.cards[column.key], lane.cluster.id)}
+          {@render laneList(lane, true)}
         </div>
-      </div>
-    {/each}
-    {@render cardList(cards, null)}
-    {#if dragCardId && dragCanGroup && dragIsGrouped}
-      <div
-        role="listitem"
-        class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400"
-        data-testid="ungroup-zone"
-        ondragover={onLooseDragOver}
-      >
-        Drop here to leave the group
-      </div>
-    {/if}
-  </div>
-  <footer class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl">
+      {/each}
+      {@render looseCards()}
+    </div>
+  {/if}
+  <footer
+    class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl"
+    style={aligned ? `grid-row: ${rows.footerRow}` : undefined}
+  >
     {#if canAdd}
       <textarea
         bind:value={draft}

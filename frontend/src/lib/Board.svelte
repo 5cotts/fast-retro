@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import BoardColumn from './BoardColumn.svelte';
+  import ClusterRow from './ClusterRow.svelte';
   import BoardHeader from './BoardHeader.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import NamePrompt from './NamePrompt.svelte';
@@ -65,7 +66,7 @@
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
-  import { canEditClusters, clustersVisible, layoutBoard, planDrop, reorderTarget, sameDropTarget, sectionOf, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
+  import { alignedRows, canEditClusters, clustersVisible, layoutBoard, planDrop, reorderTarget, sameDropTarget, sectionOf, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
@@ -128,6 +129,9 @@
   let dropTarget = $state<DropTarget | null>(null);
   let coarsePointer = $state<boolean>(false);
   let reducedMotion = $state<boolean>(false);
+  // Group rows line up across columns only where columns sit side by side. The
+  // fallback for a browser without subgrid is the stacked layout phones use.
+  let canAlignRows = $state<boolean>(false);
   let prevTimerExpired = $state<boolean>(false);
   let timerJustExpired = $state<boolean>(false);
   let timerExpiredHandle: ReturnType<typeof setTimeout> | null = null;
@@ -205,6 +209,13 @@
 
       coarsePointer = window.matchMedia('(pointer: coarse)').matches;
       reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (CSS.supports('grid-template-rows', 'subgrid')) {
+        const desktop = window.matchMedia('(min-width: 768px)');
+        const onChange = () => (canAlignRows = desktop.matches);
+        onChange();
+        desktop.addEventListener('change', onChange);
+        onDestroy(() => desktop.removeEventListener('change', onChange));
+      }
     }
 
     const storedName = getName();
@@ -773,6 +784,8 @@
       sortByVotes: sortActive
     })
   );
+  const aligned = $derived(canAlignRows && layout.lanes.length > 0);
+  const inputColumnCount = $derived(conn.state.columns.filter((c) => c.key !== ACTIONS_COLUMN_KEY).length);
   const canCluster = $derived(canEditClusters(conn.state.phase, ended));
   const canMergeClusters = $derived(canCluster && effectiveLead);
   const dragCanGroup = $derived(canCluster && dragFromCol !== null && dragFromCol !== ACTIONS_COLUMN_KEY);
@@ -1195,15 +1208,17 @@
     >
       <div
         class={boardGridClass(conn.state.columns.length)}
-        style="--board-cols: {conn.state.columns.length}"
+        style="--board-cols: {conn.state.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}"
         data-testid="board-columns"
       >
-        {#each conn.state.columns as col (col.key)}
+        {#each conn.state.columns as col, columnIndex (col.key)}
           <BoardColumn
             column={col}
             cards={layout.loose[col.key] ?? []}
             lanes={layout.lanes}
             cardCount={cardsIn(col.key).length}
+            {aligned}
+            {columnIndex}
             {canCluster}
             canMerge={canMergeClusters}
             {mergeTitle}
@@ -1244,6 +1259,26 @@
             onRename={(t) => renameColumnInline(col.key, t)}
           />
         {/each}
+        {#if aligned}
+          {#each layout.lanes as lane, i (lane.cluster.id)}
+            <ClusterRow
+              {lane}
+              titleRow={alignedRows(layout.lanes.length).titleRow(i)}
+              columnSpan={inputColumnCount}
+              wide={isWideBoard(conn.state.columns.length)}
+              canEdit={canCluster}
+              canMerge={canMergeClusters}
+              mergeInto={mergeTitle(lane)}
+              {clusterActions}
+              highlighted={dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id}
+              onDragOver={(e) => {
+                if (!dragCanGroup) return;
+                onTargetDragOver(e, { kind: 'group', column: conn.state.columns[0].key, clusterId: lane.cluster.id });
+              }}
+              onDrop={(e) => onColumnDrop(e, conn.state.columns[0].key)}
+            />
+          {/each}
+        {/if}
       </div>
     </main>
 

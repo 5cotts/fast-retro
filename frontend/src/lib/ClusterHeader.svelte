@@ -26,7 +26,7 @@
   let confirmingMerge = $state(false);
 </script>
 
-<div class="flex items-center gap-1.5 flex-wrap px-1 min-h-[28px]">
+<div class="flex items-center gap-x-2 gap-y-0.5 flex-wrap px-1 min-h-[28px]">
   <div class="flex-1 min-w-0 flex">
     <EditableHeading
       title={lane.cluster.label}
