@@ -90,6 +90,7 @@ const CANVAS_LAYOUT: &str = "canvas";
 // product limit, just a bound on what a client can make the server store.
 const MAX_COLUMNS: usize = 51;
 const MAX_COLUMN_TITLE_CHARS: usize = 100;
+const MAX_ENDED_MESSAGE_CHARS: usize = 500;
 
 fn valid_column_key(key: &str) -> bool {
     !key.is_empty()
@@ -127,10 +128,20 @@ pub struct ArchiveRequest {
     // Absent for column boards.
     #[serde(default)]
     pub layout: Option<String>,
+    // Shown to everyone when the retro ends. Not part of the archive.
+    #[serde(default)]
+    pub ended_message: Option<String>,
 }
 
 impl ArchiveRequest {
     pub fn validate(&self) -> Result<(), String> {
+        if self
+            .ended_message
+            .as_ref()
+            .is_some_and(|m| m.chars().count() > MAX_ENDED_MESSAGE_CHARS)
+        {
+            return Err("ended message too long".into());
+        }
         if self.cards.0.len() > MAX_COLUMNS {
             return Err("too many columns".into());
         }

@@ -166,6 +166,11 @@ bug above) — regardless of which slugs they pointed at. Two separate
 Playwright *contexts* would NOT catch this (BroadcastChannel is
 scoped per browser profile); it has to be two pages in one context.
 
+`end-celebration.spec.ts` — ending a retro shows the confetti, message and "ended"
+banner live on every connected client, including when the host's socket is slow (the
+server announces the end itself, regression test for a race that left participants on
+a board that looked live). A failed end tells nobody and the retro carries on.
+
 `json-export.spec.ts` — Export → Save board file (skipped unless
 `RETRO_LEAD_TOKEN` is set): checks the `.fastretro.json` contents, that
 anonymous boards leave names out, the End retro "Save board file & end"
