@@ -244,6 +244,11 @@ Shift+Up/Down within a section. Group names hidden when going back to Brainstorm
 Voter counts and sorted groups in Discuss. Export, CSV, re-import, ending and the
 archive viewer.
 
+`canvas-persistence.spec.ts` — a canvas board's layout and card positions survive
+Export, re-import, ending, the archive viewer's download (needs `RETRO_LEAD_TOKEN`)
+and Start next retro, which stays a canvas but starts carried action items from the
+grid. A column board writes neither field.
+
 `edit-board.spec.ts` — Edit board (two browsers, no lead token). The host
 renames, reorders and adds columns mid-Brainstorm in one save; the guest
 sees the new columns live, cards stay with their column, and the guest can
@@ -262,7 +267,7 @@ ended boards get a plain heading.
 The frozen board files live in `frontend/src/lib/fixtures/`
 (`board-v1.fastretro.json` for classic boards, `board-v2.fastretro.json`
 for custom columns) and are checked by the unit tests
-`boardfile-v1.spec.ts`, `boardfile-v2.spec.ts` and `boardfile-v3.spec.ts` (`bun run test:unit`).
+`boardfile-v1.spec.ts` through `boardfile-v4.spec.ts` (`bun run test:unit`).
 Never edit them to make a test pass; see the README next to them.
 
 ### Lead token

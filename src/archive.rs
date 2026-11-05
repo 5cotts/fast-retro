@@ -36,6 +36,18 @@ pub struct CardSnapshot {
     pub comments: Vec<CommentSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cluster_id: Option<String>,
+    // Canvas boards only. Absent means the card never left its starting slot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos: Option<CardPosSnapshot>,
+}
+
+/// Where a card sits on a canvas board, in world coordinates.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq)]
+pub struct CardPosSnapshot {
+    pub x: f64,
+    pub y: f64,
+    #[serde(default)]
+    pub z: f64,
 }
 
 /// Cards keyed by column key. Classic boards use `wentWell`, `toImprove` and
@@ -68,6 +80,11 @@ pub struct ClusterSnapshot {
 const MAX_CLUSTERS: usize = 1000;
 const MAX_CLUSTER_LABEL_CHARS: usize = 60;
 const MAX_CLUSTER_ID_LEN: usize = 64;
+
+// Matches the frontend (canvas.ts), which clamps positions on every read.
+const WORLD_LIMIT: f64 = 20_000.0;
+const MAX_Z: f64 = 1_000_000_000.0;
+const CANVAS_LAYOUT: &str = "canvas";
 
 // Matches the frontend (columns.ts): 50 input columns plus Action items. Not a
 // product limit, just a bound on what a client can make the server store.
@@ -107,6 +124,9 @@ pub struct ArchiveRequest {
     // Absent for boards with no groups.
     #[serde(default)]
     pub clusters: Option<Vec<ClusterSnapshot>>,
+    // Absent for column boards.
+    #[serde(default)]
+    pub layout: Option<String>,
 }
 
 impl ArchiveRequest {
@@ -153,6 +173,19 @@ impl ArchiveRequest {
         if long_cluster_id {
             return Err("bad group id".into());
         }
+        if self.layout.as_deref().is_some_and(|l| l != CANVAS_LAYOUT) {
+            return Err("unknown layout".into());
+        }
+        let bad_pos = self
+            .cards
+            .0
+            .values()
+            .flatten()
+            .filter_map(|card| card.pos)
+            .any(|p| p.x.abs() > WORLD_LIMIT || p.y.abs() > WORLD_LIMIT || !(0.0..=MAX_Z).contains(&p.z));
+        if bad_pos {
+            return Err("card position out of bounds".into());
+        }
         Ok(())
     }
 }
@@ -179,6 +212,8 @@ pub struct Archive {
     pub columns: Option<Vec<ColumnSnapshot>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clusters: Option<Vec<ClusterSnapshot>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -263,6 +298,7 @@ pub fn save(
         hide_cards: req.hide_cards,
         columns: req.columns,
         clusters: req.clusters,
+        layout: req.layout,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
@@ -514,6 +550,68 @@ mod tests {
             serde_json::json!({ "cards": {}, "clusters": [{ "id": "g", "label": "é".repeat(60) }] });
         let req: ArchiveRequest = serde_json::from_value(label_at_limit).unwrap();
         assert!(save(&db, "x", req, None).is_ok());
+    }
+
+    #[test]
+    fn canvas_layout_and_positions_round_trip_through_the_db() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_str(
+            r#"{
+                "cards": {
+                    "wentWell": [
+                        { "id": "1", "text": "moved", "pos": { "x": -120.5, "y": 40, "z": 3 } },
+                        { "id": "2", "text": "unmoved" }
+                    ]
+                },
+                "layout": "canvas"
+            }"#,
+        )
+        .unwrap();
+        let saved = save(&db, "canvas", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().unwrap();
+        assert_eq!(loaded.layout.as_deref(), Some("canvas"));
+        assert_eq!(
+            loaded.cards.0["wentWell"][0].pos,
+            Some(CardPosSnapshot { x: -120.5, y: 40.0, z: 3.0 })
+        );
+        assert_eq!(loaded.cards.0["wentWell"][1].pos, None);
+        let out = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(out["layout"], "canvas");
+        assert_eq!(out["cards"]["wentWell"][0]["pos"]["x"], -120.5);
+        assert!(out["cards"]["wentWell"][1].get("pos").is_none());
+    }
+
+    #[test]
+    fn archive_without_a_layout_stores_no_canvas_fields() {
+        let db = test_db();
+        let req: ArchiveRequest =
+            serde_json::from_str(r#"{ "cards": { "wentWell": [{ "id": "1", "text": "a" }] } }"#).unwrap();
+        let saved = save(&db, "plain", req, None).unwrap();
+        let out = serde_json::to_value(&saved).unwrap();
+        assert!(out.get("layout").is_none());
+        assert!(out["cards"]["wentWell"][0].get("pos").is_none());
+    }
+
+    #[test]
+    fn rejects_unknown_layouts_and_out_of_bounds_positions() {
+        let db = test_db();
+        let card = |pos: serde_json::Value| {
+            serde_json::json!({ "cards": { "wentWell": [{ "id": "1", "text": "a", "pos": pos }] } })
+        };
+        let cases = [
+            serde_json::json!({ "cards": {}, "layout": "spiral" }),
+            card(serde_json::json!({ "x": 20_001, "y": 0, "z": 1 })),
+            card(serde_json::json!({ "x": 0, "y": -20_001, "z": 1 })),
+            card(serde_json::json!({ "x": 0, "y": 0, "z": -1 })),
+            card(serde_json::json!({ "x": 0, "y": 0, "z": 1_000_000_001_i64 })),
+        ];
+        for case in cases {
+            let req: ArchiveRequest = serde_json::from_value(case).unwrap();
+            assert!(save(&db, "x", req, None).is_err());
+        }
+        let at_limit: ArchiveRequest =
+            serde_json::from_value(card(serde_json::json!({ "x": 20_000, "y": -20_000, "z": 0 }))).unwrap();
+        assert!(save(&db, "x", at_limit, None).is_ok());
     }
 
     #[test]
