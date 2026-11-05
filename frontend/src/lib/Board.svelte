@@ -635,12 +635,14 @@
         break;
       case 'setCluster':
         setCardCluster(state.board, source.column, source.cardId, plan.clusterId);
+        track({ name: 'card_group', params: { action: plan.clusterId ? 'join' : 'leave', source: 'drag' } });
         break;
       case 'moveLoose':
         state.doc.transact(() => {
           setCardCluster(state.board, source.column, source.cardId, null);
           moveCard(state.doc, state.board, source.column, source.cardId, plan.column, plan.beforeId);
         });
+        if (source.clusterId) track({ name: 'card_group', params: { action: 'leave', source: 'drag' } });
         break;
       case 'newClusterWith':
         state.doc.transact(() => {
@@ -648,6 +650,7 @@
           setCardCluster(state.board, plan.column, plan.cardId, id);
           setCardCluster(state.board, source.column, source.cardId, id);
         });
+        track({ name: 'card_group', params: { action: 'create', source: 'drag' } });
         break;
     }
     onDragEnd();
@@ -798,7 +801,9 @@
   }
   const clusterActions: ClusterActions = {
     join(column, cardId, clusterId) {
-      if (conn.state.board) setCardCluster(conn.state.board.board, column, cardId, clusterId);
+      if (!conn.state.board) return;
+      setCardCluster(conn.state.board.board, column, cardId, clusterId);
+      track({ name: 'card_group', params: { action: 'join', source: 'menu' } });
     },
     create(column, cardId, label) {
       const state = conn.state.board;
@@ -806,18 +811,25 @@
       state.doc.transact(() => {
         setCardCluster(state.board, column, cardId, createCluster(state.clusters, label));
       });
+      track({ name: 'card_group', params: { action: 'create', source: 'menu' } });
     },
     leave(column, cardId) {
-      if (conn.state.board) setCardCluster(conn.state.board.board, column, cardId, null);
+      if (!conn.state.board) return;
+      setCardCluster(conn.state.board.board, column, cardId, null);
+      track({ name: 'card_group', params: { action: 'leave', source: 'menu' } });
     },
     rename(clusterId, label) {
       if (conn.state.board) renameCluster(conn.state.board.clusters, clusterId, label);
     },
     dissolve(clusterId) {
-      if (conn.state.board) dissolveCluster(conn.state.board.doc, conn.state.board.board, clusterId);
+      if (!conn.state.board) return;
+      dissolveCluster(conn.state.board.doc, conn.state.board.board, clusterId);
+      track({ name: 'card_group', params: { action: 'ungroup', source: 'menu' } });
     },
     merge(clusterId) {
-      if (conn.state.board) mergeCluster(conn.state.board.doc, conn.state.board.board, clusterId, conn.state.columns.map((c) => c.key));
+      if (!conn.state.board) return;
+      mergeCluster(conn.state.board.doc, conn.state.board.board, clusterId, conn.state.columns.map((c) => c.key));
+      track({ name: 'card_group', params: { action: 'merge', source: 'menu' } });
     }
   };
 

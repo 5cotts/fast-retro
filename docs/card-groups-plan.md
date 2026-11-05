@@ -1,6 +1,6 @@
 # Plan: group related cards across columns
 
-Status: approved, building · decisions recorded 2026-11-05 · checked against `main` at `2e97998`
+Status: built in #54–#59, awaiting review · decisions recorded 2026-11-05 · checked against `main` at `2e97998`
 
 ## Goal
 
@@ -61,6 +61,8 @@ The UI says **group**, which matches the Group phase. The code says **cluster**,
 | Vote | Votes stay on cards. The row shows how many different people voted on any card in it. |
 | Discuss, Actions | With auto-sort on, rows sort by that count and cards sort by votes inside each row. Dragging is already off while sorted. |
 | Ended, archive | Rows shown read-only. |
+
+**As built:** a zone reading "Drop here to leave the group" appears in each column during a drag of a grouped card, because a column full of rows has no ungrouped area to aim at. A new group from the menu must be named, because an unnamed one-card group displays as a normal card. The stacked layout is also the fallback for browsers without subgrid.
 
 **Known tradeoff:** rows always sit above ungrouped cards, so a top-voted ungrouped card can sit below a lower-voted group. Vote counts stay visible, and the host leads the order anyway.
 
