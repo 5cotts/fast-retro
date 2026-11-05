@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import type { CardActions } from './cardActions';
   import type { CardData, CommentData } from './types';
   import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
@@ -21,13 +22,8 @@
     namesMap,
     isGroupTarget = false,
     canReorder = true,
-    onEdit,
-    onDelete,
-    onToggleVote,
-    onToggleReaction,
-    onAddComment,
-    onDeleteComment,
-    onTypingComment,
+    surface = 'columns',
+    cardActions,
     onDragStart,
     onDragEnd,
     onKeydown,
@@ -45,15 +41,13 @@
     namesMap: Record<string, string>;
     isGroupTarget?: boolean;
     canReorder?: boolean;
-    onEdit: (cardId: string, text: string) => void;
-    onDelete: (cardId: string) => void;
-    onToggleVote: (cardId: string) => void;
-    onToggleReaction: (cardId: string, emoji: string) => void;
-    onAddComment: (cardId: string, text: string) => void;
-    onDeleteComment: (cardId: string, commentId: string) => void;
-    onTypingComment: (cardId: string | null) => void;
-    onDragStart: (e: DragEvent, cardId: string, fromCol: string) => void;
-    onDragEnd: () => void;
+    // Which surface draws this card. A canvas moves cards with pointer events
+    // instead of HTML5 drag, and starts comments closed because open ones would
+    // make cards very tall where they sit.
+    surface?: 'columns' | 'canvas';
+    cardActions: CardActions;
+    onDragStart?: (e: DragEvent, cardId: string, fromCol: string) => void;
+    onDragEnd?: () => void;
     onKeydown?: (e: KeyboardEvent) => void;
     onFocusCard?: () => void;
     // Extra controls for the card's action row.
@@ -68,7 +62,7 @@
 
   let editing = $state(false);
   let editText = $state('');
-  let showComments = $state(card.comments.length > 0);
+  let showComments = $state(surface === 'columns' && card.comments.length > 0);
   let commentDraft = $state('');
   let showReactionPicker = $state(false);
   let pickerCategory = $state(EMOJI_CATEGORIES[0].id);
@@ -110,7 +104,7 @@
 
   function saveEdit() {
     const t = editText.trim();
-    if (t && t !== card.text) onEdit(card.id, t);
+    if (t && t !== card.text) cardActions.edit(column, card.id, t);
     editing = false;
   }
 
@@ -121,9 +115,9 @@
   function submitComment() {
     const t = commentDraft.trim();
     if (!t) return;
-    onAddComment(card.id, t);
+    cardActions.addComment(column, card.id, t);
     commentDraft = '';
-    onTypingComment(null);
+    cardActions.setTyping(null);
   }
 
   function onCommentKey(e: KeyboardEvent) {
@@ -176,18 +170,18 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
-  draggable={!editing && !readOnly && canReorder}
+  draggable={surface === 'columns' && !editing && !readOnly && canReorder}
   tabindex="0"
   role="group"
   aria-label={`Card: ${card.text.slice(0, 80)}`}
   class="card group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-3 text-sm shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-1 dark:focus:ring-offset-slate-900 transition-[box-shadow,border-color,transform,opacity] duration-200 ease-out cursor-grab active:cursor-grabbing active:scale-[0.99] {dragging ? 'opacity-50 scale-[1.02] rotate-[0.6deg] shadow-xl border-sky-400 dark:border-sky-500 ring-2 ring-sky-200 dark:ring-sky-900' : ''} {isGroupTarget ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700 shadow-md' : ''}"
   ondragstart={(e) => {
     dragging = true;
-    onDragStart(e, card.id, column);
+    onDragStart?.(e, card.id, column);
   }}
   ondragend={() => {
     dragging = false;
-    onDragEnd();
+    onDragEnd?.();
   }}
   onkeydown={(e) => onKeydown?.(e)}
   onfocus={() => onFocusCard?.()}
@@ -273,7 +267,7 @@
               {users.includes(userId)
                 ? 'border-sky-400 bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200'
                 : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'}"
-            onclick={() => onToggleReaction(card.id, emoji)}
+            onclick={() => cardActions.toggleReaction(column, card.id, emoji)}
             aria-label={users.includes(userId) ? `Remove your ${reactionName(emoji)} reaction (${users.length} total)` : `Add ${reactionName(emoji)} reaction (${users.length} so far)`}
             aria-pressed={users.includes(userId)}
           >
@@ -291,7 +285,7 @@
           {hasVoted
             ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200'
             : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:hover:bg-transparent'}"
-        onclick={() => onToggleVote(card.id)}
+        onclick={() => cardActions.toggleVote(column, card.id)}
         disabled={(!canVote && !hasVoted) || readOnly}
         aria-label={hasVoted
           ? `Remove vote (${voteCount})`
@@ -360,7 +354,7 @@
                 <button
                   class="text-lg hover:bg-slate-100 dark:hover:bg-slate-700 rounded p-1 min-w-[36px] min-h-[36px] flex items-center justify-center transition-colors focus:outline-none focus:ring-2 focus:ring-sky-400"
                   onclick={() => {
-                    onToggleReaction(card.id, it.e);
+                    cardActions.toggleReaction(column, card.id, it.e);
                     showReactionPicker = false;
                   }}
                   role="menuitem"
@@ -422,7 +416,7 @@
         <button
           class="btn-danger px-2.5 py-1"
           onclick={() => {
-            onDelete(card.id);
+            cardActions.remove(column, card.id);
             confirmingDelete = false;
           }}
         >
@@ -461,7 +455,7 @@
               <button
                 class="text-[11px] px-1.5 py-0.5 rounded bg-rose-600 text-white hover:bg-rose-700 transition-colors"
                 onclick={() => {
-                  onDeleteComment(card.id, c.id);
+                  cardActions.deleteComment(column, card.id, c.id);
                   pendingCommentDelete = null;
                 }}
                 aria-label="Confirm delete comment"
@@ -495,8 +489,8 @@
               aria-label="Add a comment"
               class="flex-1 min-w-0 text-xs border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 rounded-md px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-sky-400"
               onkeydown={onCommentKey}
-              onfocus={() => onTypingComment(card.id)}
-              onblur={() => onTypingComment(null)}
+              onfocus={() => cardActions.setTyping(card.id)}
+              onblur={() => cardActions.setTyping(null)}
             />
             <button
               class="text-xs px-2.5 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md disabled:opacity-40 hover:opacity-90 transition-opacity"

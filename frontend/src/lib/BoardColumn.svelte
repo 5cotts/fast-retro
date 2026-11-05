@@ -11,6 +11,7 @@
   import { alignedRows, clusterDisplayName, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
   import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
+  import type { CardActions } from './cardActions';
   import type { CardData } from './types';
 
   // One board column: header, cards, drop targets and composer. Drag state
@@ -55,14 +56,7 @@
     typingByCard: Map<string, string[]>;
     reducedMotion: boolean;
     coarsePointer: boolean;
-    onAddCard: (text: string) => void;
-    onTyping: (target: string | null) => void;
-    onEdit: (cardId: string, text: string) => void;
-    onDelete: (cardId: string) => void;
-    onToggleVote: (cardId: string) => void;
-    onToggleReaction: (cardId: string, emoji: string) => void;
-    onAddComment: (cardId: string, text: string) => void;
-    onDeleteComment: (cardId: string, commentId: string) => void;
+    cardActions: CardActions;
     onCardKeydown: (e: KeyboardEvent, cardId: string) => void;
     onFocusCard: (cardId: string) => void;
     onDragStart: (e: DragEvent, cardId: string, fromCol: string) => void;
@@ -103,14 +97,7 @@
     typingByCard,
     reducedMotion,
     coarsePointer,
-    onAddCard,
-    onTyping,
-    onEdit,
-    onDelete,
-    onToggleVote,
-    onToggleReaction,
-    onAddComment,
-    onDeleteComment,
+    cardActions,
     onCardKeydown,
     onFocusCard,
     onDragStart,
@@ -181,9 +168,9 @@
   function submit() {
     const text = draft.trim();
     if (!text) return;
-    onAddCard(text);
+    cardActions.add(column.key, text);
     draft = '';
-    onTyping(null);
+    cardActions.setTyping(null);
   }
 
   function onKey(e: KeyboardEvent) {
@@ -222,13 +209,7 @@
           {namesMap}
           isGroupTarget={dropTarget?.kind === 'card' && dropTarget.cardId === card.id}
           {canReorder}
-          {onEdit}
-          {onDelete}
-          {onToggleVote}
-          {onToggleReaction}
-          {onAddComment}
-          {onDeleteComment}
-          onTypingComment={(target) => onTyping(target)}
+          {cardActions}
           onKeydown={(e) => onCardKeydown(e, card.id)}
           onFocusCard={() => onFocusCard(card.id)}
           {onDragStart}
@@ -376,8 +357,8 @@
       <textarea
         bind:value={draft}
         onkeydown={onKey}
-        onfocus={() => onTyping(`new-${column.key}`)}
-        onblur={() => onTyping(null)}
+        onfocus={() => cardActions.setTyping(`new-${column.key}`)}
+        onblur={() => cardActions.setTyping(null)}
         placeholder={COLUMN_PLACEHOLDER}
         rows="2"
         aria-label={`Add a card to ${column.title}`}
