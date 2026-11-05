@@ -91,7 +91,7 @@ The prod DB stays at `/home/workspace/fast-retro/data/fastretro.db`. **Only `pro
 | Runs | `cargo run` (debug) via `./test-local.sh` | `fast-retro-releases/qa/fast-retro` | `fast-retro-releases/prod/fast-retro` |
 | Managed by | the script, torn down on exit | Zo user service `fast-retro-qa` | Zo user service `fast-retro-prod` |
 | Port | 5199 | 5103 (from `local_port`) | 5102 (from `local_port`) |
-| URL | localhost only | `https://fast-retro-qa-5cotts.zo.computer` (**private**, Scott must be signed in) | `https://fast-retro.scottschmidt.io` |
+| URL | localhost only | `https://fast-retro-qa-5cotts.zocomputer.io` (**public**, see Q1) | `https://fast-retro.scottschmidt.io` |
 | DB | temp file, deleted | `qa-data/fastretro-qa.db` (persistent; reseed on request) | `fast-retro/data/fastretro.db` |
 | Lead token | `dev-token` | its own token, set as a service env var | prod token (service env var) |
 | Google sign-in | off | off (Q3) | on |
@@ -199,7 +199,7 @@ The EXIT trap covers the case where the script dies between step 6 and a passed 
 
 **Verify only** (after a prod or QA restart):
 
-- Token-free checks (health, `/`, asset, WS 101) also run against the **public URL**, since those exercise the proxy path. *Prod only (PR 4):* QA's URL is private, so a script can't get past the sign-in; QA's proxy path is what Scott's click-through covers.
+- Token-free checks (health, `/`, asset, WS 101) also run against the **public URL**, since those exercise the proxy path. These run for QA too since QA went public (Q1).
 - Before the restart, record the byte offset of `/dev/shm/<service>.log`. After 60 s, strip ANSI codes from the new bytes and fail on ` WARN `, ` ERROR ` or `panicked`. `_err.log` is also checked, but only catches panics.
 - `supervisorctl status` shows the **same PID** for ≥ 60 s (catches a restart loop under `startretries=20`).
 - Save a token-redacted tail of the new log bytes to `logs/<ts>-<action>.log` (the `/dev/shm` copy is lost on reboot).
@@ -309,7 +309,7 @@ Zo owns the supervisor config, so service changes go through Zo's service tools.
 
 0. **Branch protection (Scott):** after the CI PR merges, require the `gates` check on `main` in the repo settings (§2.10.1).
 
-1. **Create QA:** `register_user_service(label="fast-retro-qa", mode="http", local_port=5103, public="false", entrypoint="/home/workspace/fast-retro-releases/qa/fast-retro", workdir="/home/workspace/fast-retro-releases", env_vars={RETRO_LEAD_TOKEN: <new random>, FASTRETRO_DB: "/home/workspace/fast-retro-releases/qa-data/fastretro-qa.db"})`. `PORT` comes from `local_port`. *Done 2026-11-04 (PR 4): `svc_2CDUDNWHHkA`, URL `https://fast-retro-qa-5cotts.zo.computer`.* The Basic plan allows 5 hosted services and all were taken, so Scott had `wat-dev-web` deleted to free a slot (recreate it with: private http, port 5173, workdir `wat/web`, `bunx vite --host 0.0.0.0 --port %(ENV_PORT)s`). The `qa` link must exist before registering (the first `make qa-deploy` creates it and then stops, asking for this step). The QA lead token is in `fast-retro-releases/qa-lead.token` (mode 600, never committed). `supervisorctl restart fast-retro-qa` works alongside Zo's management (step 3 confirmed for QA).
+1. **Create QA:** `register_user_service(label="fast-retro-qa", mode="http", local_port=5103, public="true", entrypoint="/home/workspace/fast-retro-releases/qa/fast-retro", workdir="/home/workspace/fast-retro-releases", env_vars={RETRO_LEAD_TOKEN: <new random>, FASTRETRO_DB: "/home/workspace/fast-retro-releases/qa-data/fastretro-qa.db"})`. `PORT` comes from `local_port`. *Done 2026-11-04 (PR 4): `svc_2CDUDNWHHkA`, URL `https://fast-retro-qa-5cotts.zo.computer`.* The Basic plan allows 5 hosted services and all were taken, so Scott had `wat-dev-web` deleted to free a slot (recreate it with: private http, port 5173, workdir `wat/web`, `bunx vite --host 0.0.0.0 --port %(ENV_PORT)s`). The `qa` link must exist before registering (the first `make qa-deploy` creates it and then stops, asking for this step). The QA lead token is in `fast-retro-releases/qa-lead.token` (mode 600, never committed). `supervisorctl restart fast-retro-qa` works alongside Zo's management (step 3 confirmed for QA).
 2. **Migrate prod's entrypoint** (scheduled with Scott, in a quiet window, after PR 1 is deployed):
    - Seed `builds/` with the binary prod is **then** running (the PR 1 manual deploy). Copy it with `cp`, not a hardlink. Take the sha from `/api/version`, not from notes. Write its `BUILD_INFO` with `source: seeded`, its `binary_sha256`, and no QA'd or tree-check record. A seeded build is a valid **rollback** target but never a `prod-deploy` candidate (guard d). Point `prod` at it (`prod.prev` stays absent until the first scripted deploy).
    - Run `update_user_service(svc_OeivC8ngdHY, entrypoint="/home/workspace/fast-retro-releases/prod/fast-retro")`. **Change only `entrypoint`.** Don't pass `env_vars` (merge vs. replace isn't documented, and re-sending them means handling secrets). Leave workdir unchanged, so the relative DB default still resolves to the same file. An absolute `FASTRETRO_DB` for prod can be a separate, explicitly approved change later.
@@ -360,7 +360,7 @@ Estimate: PRs 1–4 are about one working session (PR 2's first CI run is the sl
 
 | # | Question | Decision |
 |---|---|---|
-| Q1 | QA visibility | **Private.** Unreleased builds and seeded prod data stay off the internet. Share prod links after release. |
+| Q1 | QA visibility | **Public (changed 2026-11-05).** Originally private, but Zo's private proxy doesn't complete WebSocket upgrades, so boards never connected. QA now holds test boards only; `SEED=prod` needs `ALLOW_PUBLIC_SEED=1`. |
 | Q2 | QA data | **Persistent QA DB, reseed on request** (`SEED=prod`). |
 | Q3 | Google sign-in on QA | **Off** at first. Turn it on only when a release changes the auth flow. |
 | Q4 | Every prod deploy through QA? | **Yes.** The only escape is `SKIP_QA=1` for an urgent hotfix, with Scott's explicit OK. |
@@ -428,7 +428,7 @@ flowchart TD
     G --> H["smoke on :5197<br/>scratch copy of prod DB<br/>candidate, then prod.prev on migrated copy"]
     H -->|fail| X1
     H -->|pass| I["Swap qa symlink, restart fast-retro-qa,<br/>verify qa, record QA'd in LOCAL_INFO"]
-    I --> J{"Scott QAs on<br/>private QA URL"}
+    I --> J{"Scott QAs on<br/>QA URL"}
     J -->|issues| A
     J -->|approved| K["Scott merges PR to main"]
     K --> L{"Build tree ==<br/>origin/main tree?"}

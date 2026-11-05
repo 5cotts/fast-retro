@@ -456,7 +456,7 @@ env_get() {
   esac
 }
 
-readonly QA_URL="https://fast-retro-qa-5cotts.zo.computer"
+readonly QA_URL="https://fast-retro-qa-5cotts.zocomputer.io"
 readonly PROD_URL="https://fast-retro.scottschmidt.io"
 
 # Absolute build dir a symlink in RELEASE_ROOT points at, or empty.
@@ -535,8 +535,8 @@ restart_service() {
 
 # verify_env <qa|prod> <build-dir> <log-offset> <action>
 # §2.7 verify: the shared checks on 127.0.0.1 (with the service's own lead
-# token), token-free checks on the public URL (prod only; QA's URL is private
-# and needs a signed-in browser), the startup log, the same PID for
+# token), token-free checks on the public URL (these go through Zo's proxy,
+# including the WebSocket upgrade), the startup log, the same PID for
 # VERIFY_STABLE_SECS (default 60), and no WARN/ERROR/panic in the new log
 # bytes. Saves a redacted log tail to logs/. Returns non-zero on failure.
 verify_env() {
@@ -568,11 +568,9 @@ verify_env() {
   check_instance "${env} (127.0.0.1:${port})" "http://127.0.0.1:${port}" "$dir" \
     "$token" "$pid" "$newlog" "$db" 0 || fails=$((fails+CHECK_FAILS))
 
-  if [[ "$env" == prod ]]; then
-    check_instance "${env} (public ${PROD_URL})" "$PROD_URL" "$dir" || fails=$((fails+CHECK_FAILS))
-  else
-    log "public URL checks skipped for ${env}: $(env_get "$env" url) is private (needs a signed-in browser)"
-  fi
+  local url
+  url="$(env_get "$env" url)"
+  check_instance "${env} (public ${url})" "$url" "$dir" || fails=$((fails+CHECK_FAILS))
 
   log "watching ${service} for ${stable}s (same PID, no WARN/ERROR/panic)"
   # Backgrounded + wait, so a signal is handled now rather than after the sleep.

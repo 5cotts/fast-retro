@@ -14,6 +14,9 @@ ensure_layout
 
 seed="${SEED:-}"
 [[ -z "$seed" || "$seed" == prod ]] || die "SEED must be 'prod' or unset, got '$seed'"
+if [[ "$seed" == prod ]] && ! is_true "${ALLOW_PUBLIC_SEED:-}"; then
+  die "SEED=prod would copy real user boards onto QA, and QA is public. Get Scott's OK, then rerun with ALLOW_PUBLIC_SEED=1"
+fi
 
 # ---- which build
 if [[ -n "${BUILD:-}" ]]; then

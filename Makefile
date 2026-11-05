@@ -6,7 +6,7 @@
 R := scripts/release
 # Pass only the variables a script reads, explicitly, so nothing else from
 # the caller's environment changes behavior.
-ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" DRY_RUN="$(DRY_RUN)" \
+ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" ALLOW_PUBLIC_SEED="$(ALLOW_PUBLIC_SEED)" DRY_RUN="$(DRY_RUN)" \
        CONFIRM="$(CONFIRM)" FORCE="$(FORCE)" SKIP_QA="$(SKIP_QA)" ALLOW_LOCAL_BUILD="$(ALLOW_LOCAL_BUILD)"
 
 .PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy prod-deploy rollback release-seed-prod qa-drill-deploy qa-drill-rollback
