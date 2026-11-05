@@ -20,6 +20,15 @@ export const PHASE_HINT: Record<Phase, string> = {
   actions: 'Decide what to do next.'
 };
 
+const CANVAS_PHASE_HINT: Partial<Record<Phase, string>> = {
+  brainstorm: 'Add cards under each prompt.',
+  group: 'Drag cards near each other to cluster them. Each card keeps its prompt color.'
+};
+
+export function phaseHint(phase: Phase, layout: 'columns' | 'canvas'): string {
+  return (layout === 'canvas' ? CANVAS_PHASE_HINT[phase] : undefined) ?? PHASE_HINT[phase];
+}
+
 export function readPhase(phaseMap: Y.Map<unknown>): Phase {
   const v = phaseMap.get('current');
   if (typeof v === 'string' && (PHASES as readonly string[]).includes(v)) {

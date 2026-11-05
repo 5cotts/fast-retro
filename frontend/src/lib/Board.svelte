@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import CanvasSurface from './CanvasSurface.svelte';
   import ColumnsSurface from './ColumnsSurface.svelte';
   import BoardHeader from './BoardHeader.svelte';
   import ExportMenu from './ExportMenu.svelte';
@@ -67,7 +68,7 @@
   import {
     phasesFor,
     PHASE_LABEL,
-    PHASE_HINT,
+    phaseHint,
     nextPhase,
     prevPhase,
     setPhase
@@ -103,6 +104,7 @@
   let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
+  const isCanvas = $derived(conn.state.layout === 'canvas');
 
   let themePref = $state<ThemePref>('auto');
   let systemDark = $state<boolean>(false);
@@ -760,7 +762,7 @@
     onCycleTheme={cycleTheme}
   />
 {:else}
-  <div class="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+  <div class="{isCanvas ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
     <BoardHeader
       isLead={effectiveLead}
       connected={conn.state.connected}
@@ -816,7 +818,7 @@
             </span>
           {/each}
         </div>
-        <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {PHASE_HINT[conn.state.phase]}</span>
+        <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {phaseHint(conn.state.phase, conn.state.layout)}</span>
         {#if conn.state.imported}
           {@const imp = conn.state.imported}
           <span
@@ -984,30 +986,43 @@
       </div>
     {/if}
 
-    <ColumnsSurface
-      board={conn.state}
-      {cardActions}
-      {ended}
-      {userId}
-      {userName}
-      isLead={effectiveLead}
-      namesMap={namesMapDisambiguated}
-      {typingByCard}
-      {reducedMotion}
-      {coarsePointer}
-      onRenameColumn={renameColumnInline}
-    />
+    {#if isCanvas}
+      <CanvasSurface
+        board={conn.state}
+        {cardActions}
+        {ended}
+        {userId}
+        {userName}
+        isLead={effectiveLead}
+        namesMap={namesMapDisambiguated}
+        {typingByCard}
+      />
+    {:else}
+      <ColumnsSurface
+        board={conn.state}
+        {cardActions}
+        {ended}
+        {userId}
+        {userName}
+        isLead={effectiveLead}
+        namesMap={namesMapDisambiguated}
+        {typingByCard}
+        {reducedMotion}
+        {coarsePointer}
+        onRenameColumn={renameColumnInline}
+      />
 
-    <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
-      Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
-      <span aria-hidden="true">·</span>
-      <a
-        href={isLead ? '/docs?role=lead' : '/docs?role=participant'}
-        class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
-      >
-        User guide
-      </a>
-    </footer>
+      <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
+        Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
+        <span aria-hidden="true">·</span>
+        <a
+          href={isLead ? '/docs?role=lead' : '/docs?role=participant'}
+          class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
+        >
+          User guide
+        </a>
+      </footer>
+    {/if}
   </div>
 
   {#if showOnboarding}
