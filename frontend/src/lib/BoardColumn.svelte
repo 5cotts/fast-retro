@@ -1,11 +1,14 @@
 <script lang="ts">
   import Card from './Card.svelte';
   import HiddenCard from './HiddenCard.svelte';
-  import ColumnTitle from './ColumnTitle.svelte';
+  import EditableHeading from './EditableHeading.svelte';
+  import ClusterHeader from './ClusterHeader.svelte';
+  import CardGroupMenu from './CardGroupMenu.svelte';
   import { fly } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
-  import { COLUMN_PLACEHOLDER, COLUMN_STYLE, columnEmptyHint, isActionsColumn, type ColumnDef } from './columns';
+  import { COLUMN_PLACEHOLDER, COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, columnEmptyHint, isActionsColumn, type ColumnDef } from './columns';
+  import { clusterDisplayName, type ClusterActions, type ClusterLane } from './clusters';
   import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
   import type { CardData } from './types';
@@ -14,7 +17,14 @@
   // lives in Board.svelte, which owns cross-column moves; this only renders it.
   interface Props {
     column: ColumnDef;
+    // Cards outside any group.
     cards: CardData[];
+    // Every group on the board. This column shows those with a card in it.
+    lanes: ClusterLane[];
+    // Everything in this column, grouped or not.
+    cardCount: number;
+    canCluster: boolean;
+    clusterActions: ClusterActions;
     canAdd: boolean;
     phase: Phase;
     userId: string;
@@ -30,8 +40,9 @@
     dragMergeTargetId: string | null;
     // The board's hide-cards setting (see visibility.ts).
     hideCards: boolean;
-    // Index of the drop indicator in this column, or -1 when not dragging here.
-    dropIndex: number;
+    // The card the drop indicator sits above: null for the end of the column,
+    // undefined when not dragging here.
+    dropBeforeId: string | null | undefined;
     typingByCard: Map<string, string[]>;
     reducedMotion: boolean;
     coarsePointer: boolean;
@@ -50,7 +61,7 @@
     onMergeDragOver: (cardId: string) => void;
     onMergeDragLeave: (cardId: string) => void;
     onMergeDrop: (cardId: string) => void;
-    onSlotDragOver: (e: DragEvent, index: number) => void;
+    onSlotDragOver: (e: DragEvent, cardId: string) => void;
     onColumnDragOver: (e: DragEvent) => void;
     onColumnDrop: (e: DragEvent) => void;
     // Host only: rename this column in place.
@@ -60,6 +71,10 @@
   let {
     column,
     cards,
+    lanes,
+    cardCount,
+    canCluster,
+    clusterActions,
     canAdd,
     phase,
     userId,
@@ -74,7 +89,7 @@
     hideCards,
     dragCardId,
     dragMergeTargetId,
-    dropIndex,
+    dropBeforeId,
     typingByCard,
     reducedMotion,
     coarsePointer,
@@ -102,6 +117,9 @@
   let draft = $state('');
   const style = $derived(COLUMN_STYLE[column.color]);
   const typingNew = $derived(typingByCard.get(`new-${column.key}`) ?? []);
+  const lanesHere = $derived(lanes.filter((lane) => (lane.cards[column.key]?.length ?? 0) > 0));
+  const groupOptions = $derived(lanes.map((lane) => lane.cluster));
+  const canGroupHere = $derived(canCluster && !isActionsColumn(column));
 
   function submit() {
     const text = draft.trim();
@@ -119,6 +137,75 @@
   }
 </script>
 
+{#snippet cardList(list: CardData[], laneId: string | null)}
+  {#each list as card (card.id)}
+    {@const typers = typingByCard.get(card.id) ?? []}
+    <div
+      class="relative has-[[role=menu]]:z-20 has-[[role=dialog]]:z-20"
+      role="listitem"
+      ondragover={(e) => onSlotDragOver(e, card.id)}
+      in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
+      animate:flip={{ duration: reducedMotion ? 0 : 500, easing: cubicOut }}
+    >
+      {#if dropBeforeId === card.id && dragCardId !== card.id}
+        <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
+      {/if}
+      {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, userId })}
+        <HiddenCard />
+      {:else}
+        <Card
+          {card}
+          column={column.key}
+          {userId}
+          {userName}
+          {isLead}
+          {readOnly}
+          {canVote}
+          {anonymous}
+          {namesMap}
+          mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
+          isMergeTarget={dragMergeTargetId === card.id}
+          {canReorder}
+          {onEdit}
+          {onDelete}
+          {onToggleVote}
+          {onToggleReaction}
+          {onAddComment}
+          {onDeleteComment}
+          onTypingComment={(target) => onTyping(target)}
+          onKeydown={(e) => onCardKeydown(e, card.id)}
+          onFocusCard={() => onFocusCard(card.id)}
+          {onDragStart}
+          {onDragEnd}
+          onMergeDragOver={() => onMergeDragOver(card.id)}
+          onMergeDragLeave={() => onMergeDragLeave(card.id)}
+          onMergeDrop={() => onMergeDrop(card.id)}
+        >
+          {#snippet actions()}
+            {#if canGroupHere}
+              <CardGroupMenu
+                groups={groupOptions}
+                currentId={laneId}
+                onJoin={(id) => clusterActions.join(column.key, card.id, id)}
+                onCreate={(label) => clusterActions.create(column.key, card.id, label)}
+                onLeave={() => clusterActions.leave(column.key, card.id)}
+              />
+            {/if}
+          {/snippet}
+        </Card>
+      {/if}
+      {#if typers.length > 0}
+        <div
+          class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
+          aria-live="polite"
+        >
+          {typers.join(', ')} typing…
+        </div>
+      {/if}
+    </div>
+  {/each}
+{/snippet}
+
 <section
   class="border rounded-xl shadow-sm flex flex-col {style.accent}"
   role="list"
@@ -129,71 +216,43 @@
   <header class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}">
     <div class="flex items-center gap-2 min-w-0 flex-1">
       <span class="w-1.5 h-5 rounded-full shrink-0 {style.dot}" aria-hidden="true"></span>
-      <ColumnTitle title={column.title} canEdit={isLead && !readOnly && !!onRename} onRename={(t) => onRename?.(t)} />
+      <EditableHeading
+        title={column.title}
+        canEdit={isLead && !readOnly && !!onRename}
+        onRename={(t) => onRename?.(t)}
+        inputLabel="Column name"
+        hint="Click to rename this column"
+        maxLength={MAX_COLUMN_TITLE_LEN}
+      />
     </div>
-    <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cards.length}</span>
+    <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{cardCount}</span>
   </header>
   <div class="p-3 flex-1 space-y-2 min-h-[96px]">
-    {#if cards.length === 0}
+    {#if cardCount === 0}
       <div class="text-xs text-slate-400 dark:text-slate-500 italic px-1 py-2 select-none">
         {columnEmptyHint(column)}
       </div>
     {/if}
-    {#each cards as card, i (card.id)}
-      {@const typers = typingByCard.get(card.id) ?? []}
-      <div
-        class="relative"
-        role="listitem"
-        ondragover={(e) => onSlotDragOver(e, i)}
-        in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
-        animate:flip={{ duration: reducedMotion ? 0 : 500, easing: cubicOut }}
-      >
-        {#if dropIndex === i && dragCardId !== card.id}
-          <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
-        {/if}
-        {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, userId })}
-          <HiddenCard />
-        {:else}
-          <Card
-            {card}
-            column={column.key}
-            {userId}
-            {userName}
-            {isLead}
-            {readOnly}
-            {canVote}
-            {anonymous}
-            {namesMap}
-            mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
-            isMergeTarget={dragMergeTargetId === card.id}
-            {canReorder}
-            {onEdit}
-            {onDelete}
-            {onToggleVote}
-            {onToggleReaction}
-            {onAddComment}
-            {onDeleteComment}
-            onTypingComment={(target) => onTyping(target)}
-            onKeydown={(e) => onCardKeydown(e, card.id)}
-            onFocusCard={() => onFocusCard(card.id)}
-            {onDragStart}
-            {onDragEnd}
-            onMergeDragOver={() => onMergeDragOver(card.id)}
-            onMergeDragLeave={() => onMergeDragLeave(card.id)}
-            onMergeDrop={() => onMergeDrop(card.id)}
+    {#each lanesHere as lane (lane.cluster.id)}
+      <div role="listitem">
+        <div
+          role="list"
+          aria-label={`Group: ${clusterDisplayName(lane.cluster)}, ${lane.count} ${lane.count === 1 ? 'card' : 'cards'}`}
+          class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-slate-800/30 p-2 space-y-2"
+          data-testid="group-block"
+        >
+          <ClusterHeader
+            {lane}
+            canEdit={canCluster}
+            onRename={(label) => clusterActions.rename(lane.cluster.id, label)}
+            onDissolve={() => clusterActions.dissolve(lane.cluster.id)}
           />
-        {/if}
-        {#if typers.length > 0}
-          <div
-            class="text-[11px] text-slate-500 dark:text-slate-400 italic pl-1 mt-0.5"
-            aria-live="polite"
-          >
-            {typers.join(', ')} typing…
-          </div>
-        {/if}
+          {@render cardList(lane.cards[column.key], lane.cluster.id)}
+        </div>
       </div>
     {/each}
-    {#if dropIndex >= cards.length}
+    {@render cardList(cards, null)}
+    {#if dropBeforeId === null}
       <div class="h-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
     {/if}
   </div>

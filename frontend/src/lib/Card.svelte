@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import type { CardData, CommentData } from './types';
   import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
@@ -34,7 +35,8 @@
     onFocusCard,
     onMergeDragOver,
     onMergeDragLeave,
-    onMergeDrop
+    onMergeDrop,
+    actions
   } = $props<{
     card: CardData;
     column: string;
@@ -62,6 +64,8 @@
     onMergeDragOver?: () => void;
     onMergeDragLeave?: () => void;
     onMergeDrop?: () => void;
+    // Extra controls for the card's action row.
+    actions?: Snippet;
   }>();
 
   const displayName = (id: string) =>
@@ -407,6 +411,8 @@
         <MessageSquare size={14} aria-hidden="true" />
         <span class="tabular-nums">{commentCount}</span>
       </button>
+
+      {@render actions?.()}
 
       <span class="flex-1"></span>
 

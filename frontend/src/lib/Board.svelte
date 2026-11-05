@@ -19,6 +19,10 @@
     setBoardLabel,
     setBoardEnded,
     applyBoardEdit,
+    createCluster,
+    renameCluster,
+    setCardCluster,
+    dissolveCluster,
     type BoardEdit,
     countCards,
     type SeedSource
@@ -61,7 +65,7 @@
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
-  import { reorderTarget, sortedByVotes } from './clusters';
+  import { canEditClusters, clustersVisible, layoutBoard, reorderTarget, sectionOf, type ClusterActions } from './clusters';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
@@ -122,7 +126,9 @@
   let dragCardId = $state<string | null>(null);
   let dragFromCol = $state<string | null>(null);
   let dragOverCol = $state<string | null>(null);
-  let dragOverIndex = $state<number>(-1);
+  // The card a drop would land above. null is the end of the column; undefined
+  // is no drop position (nothing dragging here, or hovering a merge target).
+  let dragOverBeforeId = $state<string | null | undefined>(undefined);
   let dragMergeTargetId = $state<string | null>(null);
   let coarsePointer = $state<boolean>(false);
   let reducedMotion = $state<boolean>(false);
@@ -586,7 +592,7 @@
     dragCardId = null;
     dragFromCol = null;
     dragOverCol = null;
-    dragOverIndex = -1;
+    dragOverBeforeId = undefined;
     dragMergeTargetId = null;
   }
 
@@ -598,7 +604,7 @@
   function onCardMergeDragOver(cardId: string) {
     if (!mergeMode || !dragCardId || dragCardId === cardId) return;
     dragMergeTargetId = cardId;
-    dragOverIndex = -1;
+    dragOverBeforeId = undefined;
   }
 
   function onCardMergeDragLeave(cardId: string) {
@@ -625,12 +631,12 @@
     onDragEnd();
   }
 
-  function onCardSlotDragOver(e: DragEvent, col: string, index: number) {
+  function onCardSlotDragOver(e: DragEvent, col: string, beforeId: string) {
     if (!dragCardId || !canReorder) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     dragOverCol = col;
-    dragOverIndex = index;
+    dragOverBeforeId = beforeId;
   }
 
   function onColumnDragOver(e: DragEvent, col: string) {
@@ -639,7 +645,7 @@
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
     if (dragOverCol !== col) {
       dragOverCol = col;
-      dragOverIndex = cardsIn(col).length;
+      dragOverBeforeId = null;
     }
   }
 
@@ -649,15 +655,13 @@
       onDragEnd();
       return;
     }
-    // dragOverIndex is a position on screen; the card there is what's stable.
-    const beforeId = dragOverIndex < 0 ? null : (cardsIn(col)[dragOverIndex]?.id ?? null);
     moveCard(
       conn.state.board.doc,
       conn.state.board.board,
       dragFromCol,
       dragCardId,
       col,
-      beforeId
+      dragOverBeforeId ?? null
     );
     onDragEnd();
   }
@@ -686,7 +690,7 @@
     if (!loc) return;
     const { col } = loc;
     if (direction === 'up' || direction === 'down') {
-      const target = reorderTarget(cardsIn(col), focusedCardId, direction === 'up' ? -1 : 1);
+      const target = reorderTarget(sectionOf(layout, col, focusedCardId), focusedCardId, direction === 'up' ? -1 : 1);
       if (!target) return;
       moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, col, target.beforeId);
     } else {
@@ -787,6 +791,35 @@
   // get overridden by the next sort on re-render.
   const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.settings.autoSort);
   const canReorder = $derived(!sortActive);
+
+  const layout = $derived(
+    layoutBoard(conn.state.columns, conn.state.cards, conn.state.clusters, {
+      showClusters: clustersVisible(conn.state.phase, ended),
+      sortByVotes: sortActive
+    })
+  );
+  const canCluster = $derived(canEditClusters(conn.state.phase, ended));
+  const clusterActions: ClusterActions = {
+    join(column, cardId, clusterId) {
+      if (conn.state.board) setCardCluster(conn.state.board.board, column, cardId, clusterId);
+    },
+    create(column, cardId, label) {
+      const state = conn.state.board;
+      if (!state) return;
+      state.doc.transact(() => {
+        setCardCluster(state.board, column, cardId, createCluster(state.clusters, label));
+      });
+    },
+    leave(column, cardId) {
+      if (conn.state.board) setCardCluster(conn.state.board.board, column, cardId, null);
+    },
+    rename(clusterId, label) {
+      if (conn.state.board) renameCluster(conn.state.board.clusters, clusterId, label);
+    },
+    dissolve(clusterId) {
+      if (conn.state.board) dissolveCluster(conn.state.board.doc, conn.state.board.board, clusterId);
+    }
+  };
 
   function downloadCSV(source: 'board' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'csv', source } });
@@ -1179,10 +1212,13 @@
         data-testid="board-columns"
       >
         {#each conn.state.columns as col (col.key)}
-          {@const colCards = sortActive ? sortedByVotes(cardsIn(col.key)) : cardsIn(col.key)}
           <BoardColumn
             column={col}
-            cards={colCards}
+            cards={layout.loose[col.key] ?? []}
+            lanes={layout.lanes}
+            cardCount={cardsIn(col.key).length}
+            {canCluster}
+            {clusterActions}
             canAdd={canAddCardInColumn(col, conn.state.phase) && !ended}
             phase={conn.state.phase}
             {userId}
@@ -1197,7 +1233,7 @@
             hideCards={conn.state.settings.hideCards}
             {dragCardId}
             {dragMergeTargetId}
-            dropIndex={dragOverCol === col.key ? dragOverIndex : -1}
+            dropBeforeId={dragOverCol === col.key ? dragOverBeforeId : undefined}
             {typingByCard}
             {reducedMotion}
             {coarsePointer}
@@ -1216,7 +1252,7 @@
             onMergeDragOver={onCardMergeDragOver}
             onMergeDragLeave={onCardMergeDragLeave}
             onMergeDrop={(id) => onCardMergeDrop(col.key, id)}
-            onSlotDragOver={(e, i) => onCardSlotDragOver(e, col.key, i)}
+            onSlotDragOver={(e, id) => onCardSlotDragOver(e, col.key, id)}
             onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
             onColumnDrop={(e) => onColumnDrop(e, col.key)}
             onRename={(t) => renameColumnInline(col.key, t)}
