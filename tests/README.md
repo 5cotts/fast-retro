@@ -258,6 +258,12 @@ items are docked, not placed, through the end and into the next retro. List view
 voting, adding and no dragging, and keeps positions. A phone starts there. A host gets
 prompts instead of columns, no auto-sort, and inline rename, and Discuss doesn't re-sort.
 
+`canvas-labels.spec.ts` — floating labels on a canvas (two browsers). Anyone adds,
+drags, edits and deletes one, everyone sees it, and no card moves. A click edits rather
+than moves. Hidden in Brainstorm, counted by Fit. They survive export, re-import, ending
+and the archive's download (needs `RETRO_LEAD_TOKEN`), and don't carry into the next
+retro. An ended board's labels can't be changed.
+
 `canvas.spec.ts` — moving things on a canvas board, imported from a v4 file (two
 browsers, `page.mouse` drives real pointer events). A drag shows live for the other person and saves on
 drop. Pan and zoom stay local, a drop while zoomed out lands in the right place, and

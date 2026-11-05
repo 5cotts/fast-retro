@@ -112,6 +112,7 @@ export async function endBoard(
     columns?: { key: string; title: string; color: string }[];
     clusters?: { id: string; label: string }[];
     layout?: 'canvas';
+    labels?: { text: string; x: number; y: number }[];
     endedMessage: string;
   },
   auth: { hostKey?: string; leadToken?: string }

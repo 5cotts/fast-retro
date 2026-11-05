@@ -3,6 +3,7 @@ import { WebsocketProvider } from 'y-websocket';
 import type { CardData, CardPos } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
 import { cleanClusterLabel, clusterMapOf, type ClusterMap } from './clusters';
+import { createLabel, labelMapOf, type LabelMap } from './labels';
 import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
 import { BOARD_SETTING_KEYS, readBoardSetting, setBoardSetting, type BoardSettings } from './settings';
 import { newId } from './identity';
@@ -23,6 +24,7 @@ export interface BoardState {
   phase: Y.Map<unknown>;
   meta: Y.Map<unknown>;
   clusters: ClusterMap;
+  labels: LabelMap;
   slug: string;
 }
 
@@ -68,6 +70,7 @@ export function createBoard(slug: string, seed?: SeedSource): BoardState {
   const phase = doc.getMap<unknown>('phase');
   const meta = doc.getMap<unknown>('meta');
   const clusters = clusterMapOf(doc);
+  const labels = labelMapOf(doc);
 
   // Wait for the initial server sync before deciding which columns are
   // "missing" and need a default empty array. Setting defaults eagerly
@@ -86,7 +89,7 @@ export function createBoard(slug: string, seed?: SeedSource): BoardState {
     if (setUpAfterSync({ doc, board, meta, names, phase }, pending) && pending) seed?.onApplied?.(pending);
   });
 
-  return { doc, provider, board, timer, names, phase, meta, clusters, slug };
+  return { doc, provider, board, timer, names, phase, meta, clusters, labels, slug };
 }
 
 // Runs once per client after the first sync: applies the seed (only to a
@@ -645,6 +648,7 @@ export function seedBoard(
       if (cards.length) arr.push(cards);
     }
     if (file.board.layout === 'canvas') meta.set('layout', 'canvas');
+    for (const label of file.board.labels ?? []) createLabel(labelMapOf(doc), label.text, label);
     setBoardLabel(meta, file.board.label);
     setBoardSetting(meta, 'anonymous', file.board.anonymous);
     setBoardSetting(meta, 'autoSort', file.board.autoSort);

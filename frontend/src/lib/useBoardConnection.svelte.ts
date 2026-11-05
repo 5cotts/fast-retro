@@ -16,6 +16,7 @@ import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
 import { readClusters, type ClusterDef } from './clusters';
+import { readLabels, type CanvasLabelData } from './labels';
 import { readLayout, type BoardLayout } from './canvas';
 import { BOARD_SETTING_DEFAULTS, readBoardSettings, sameSettings, type BoardSettings } from './settings';
 
@@ -43,6 +44,8 @@ export interface UseBoardConnectionState {
   columns: ColumnDef[];
   // Every group record, including ones with no cards. See layoutBoard.
   clusters: ClusterDef[];
+  // Floating labels, on a canvas board.
+  labels: CanvasLabelData[];
   timerState: TimerState;
   presence: PresenceUser[];
   phase: Phase;
@@ -79,6 +82,7 @@ export function useBoardConnection() {
     cards: {},
     columns: DEFAULT_COLUMNS,
     clusters: [],
+    labels: [],
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
     presence: [],
     phase: 'brainstorm',
@@ -95,7 +99,7 @@ export function useBoardConnection() {
     if (state.board) return; // already started
 
     const conn = createBoard(init.slug, init.seed);
-    const { board, provider, doc, timer, names, phase, meta, clusters } = conn;
+    const { board, provider, doc, timer, names, phase, meta, clusters, labels } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;
 
@@ -104,6 +108,9 @@ export function useBoardConnection() {
     };
     const recomputeClusters = () => {
       state.clusters = readClusters(clusters);
+    };
+    const recomputeLabels = () => {
+      state.labels = readLabels(labels);
     };
     const recomputeTimer = () => {
       state.timerState = readTimer(timer);
@@ -136,12 +143,14 @@ export function useBoardConnection() {
 
     board.observeDeep(recomputeCards);
     clusters.observe(recomputeClusters);
+    labels.observe(recomputeLabels);
     timer.observeDeep(recomputeTimer);
     names.observe(recomputeNames);
     phase.observe(recomputePhase);
     meta.observe(recomputeMeta);
     recomputeCards();
     recomputeClusters();
+    recomputeLabels();
     recomputeTimer();
     recomputeNames();
     recomputePhase();

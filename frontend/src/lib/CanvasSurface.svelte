@@ -5,6 +5,8 @@
   import CanvasComposer from './CanvasComposer.svelte';
   import CanvasDock from './CanvasDock.svelte';
   import CanvasDraftCard from './CanvasDraftCard.svelte';
+  import CanvasLabel from './CanvasLabel.svelte';
+  import CanvasLabelInput from './CanvasLabelInput.svelte';
   import EditableHeading from './EditableHeading.svelte';
   import {
     CARD_SLOT_HEIGHT,
@@ -29,6 +31,8 @@
   } from './canvas';
   import { DRAG_FRAME_MS, DRAG_HEARTBEAT_MS, LiveMoves, parseDragFrame } from './canvasLive';
   import { setCardPos } from './yboard';
+  import { clustersVisible } from './clusters';
+  import { MAX_LABELS, createLabel, deleteLabel, editLabel, labelRect, moveLabel } from './labels';
   import { COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, isActionsColumn, type ColumnDef } from './columns';
   import { canAddCardInColumn, canVoteInPhase } from './phase';
   import { isCardHidden } from './visibility';
@@ -90,6 +94,8 @@
   // Never start a drag or a pan from these, and let them scroll themselves.
   const INTERACTIVE = 'button, a, input, textarea, select, label, summary, [role="menu"], [role="menuitem"], [contenteditable="true"]';
   const OWN_SCROLLER = '[role="menu"], textarea';
+  // How far above the pointer a new label's top edge sits.
+  const LABEL_GRAB_Y = 16;
 
   let view = $state<View>(DEFAULT_VIEW);
   let viewportEl = $state<HTMLElement | null>(null);
@@ -136,6 +142,12 @@
   });
   const placed = $derived(grid.cards);
 
+  // Hidden in Brainstorm, so a label can't hint at hidden cards.
+  const labels = $derived(clustersVisible(board.phase, ended) ? board.labels : []);
+  const canAddLabel = $derived(!ended && board.phase !== 'brainstorm' && board.labels.length < MAX_LABELS);
+  let editingLabel = $state<string | null>(null);
+  let labelDraftAt = $state<Point | null>(null);
+
   const rankOf = $derived.by(() => {
     const order = placed.map((p) => ({ id: p.card.id, z: p.z })).sort(compareStack);
     return new Map(order.map((c, i) => [c.id, i + 1]));
@@ -152,7 +164,8 @@
         width: CARD_WIDTH,
         height: HEADING_HEIGHT + MIN_FIT_SLOTS * CARD_SLOT_HEIGHT
       })),
-      ...placed.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height }))
+      ...placed.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height })),
+      ...labels.map(labelRect)
     ];
     view = fitToBounds(boundsOf(rects), viewportSize());
     followsFit = true;
@@ -204,10 +217,20 @@
     if (!canAdd && draftAt) cancelDraft();
   });
 
+  $effect(() => {
+    if (!canAddLabel && labelDraftAt) labelDraftAt = null;
+  });
+
   function onDoubleClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (!canAdd || target.closest(INTERACTIVE) || target.closest('[data-canvas-card]')) return;
+    if (target.closest(INTERACTIVE) || target.closest('[data-canvas-card], [data-canvas-label]')) return;
     const world = screenToWorld(view, pointIn(e));
+    if (canAddLabel) {
+      const spot = sanitizePos({ x: world.x, y: world.y - LABEL_GRAB_Y });
+      if (spot) labelDraftAt = { x: spot.x, y: spot.y };
+      return;
+    }
+    if (!canAdd) return;
     // Under the pointer, with the card's top edge just above it.
     const clean = sanitizePos({ x: world.x - CARD_WIDTH / 2, y: world.y - 20 });
     if (!clean) return;
@@ -226,6 +249,22 @@
   function cancelDraft() {
     draftAt = null;
     cardActions.setTyping(null);
+  }
+
+  function commitLabelDraft(text: string) {
+    const at = labelDraftAt;
+    labelDraftAt = null;
+    if (at && board.board) createLabel(board.board.labels, text, at);
+  }
+
+  function saveLabelEdit(id: string, text: string) {
+    editingLabel = null;
+    if (board.board) editLabel(board.board.labels, id, text);
+  }
+
+  function removeLabel(id: string) {
+    editingLabel = null;
+    if (board.board) deleteLabel(board.board.labels, id);
   }
 
   function placedById(cardId: string): Placed | undefined {
@@ -290,10 +329,13 @@
     | { kind: 'pan'; pointerId: number; last: Point }
     | { kind: 'pinch'; distance: number; mid: Point }
     | {
-        kind: 'card';
+        kind: 'item';
         pointerId: number;
-        cardId: string;
-        column: string;
+        id: string;
+        // Writes the final position to the doc, once, on drop.
+        commit: (at: Point) => void;
+        // A press that never became a drag.
+        onClick?: () => void;
         start: Point;
         grab: Point;
         moved: boolean;
@@ -309,13 +351,29 @@
     return { distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
   }
 
-  function abortCardDrag() {
-    if (gesture?.kind !== 'card') return;
+  function abortItemDrag() {
+    if (gesture?.kind !== 'item') return;
     if (gesture.moved) {
       live.clearOwn();
       stopFrames();
       sendDrag(null);
     }
+  }
+
+  function startItem(e: PointerEvent, here: Point, id: string, docPos: Point, commit: (at: Point) => void, onClick?: () => void) {
+    const pointerWorld = screenToWorld(view, here);
+    const from = live.shownAt(id) ?? docPos;
+    gesture = {
+      kind: 'item',
+      pointerId: e.pointerId,
+      id,
+      commit,
+      onClick,
+      start: here,
+      grab: { x: pointerWorld.x - from.x, y: pointerWorld.y - from.y },
+      moved: false,
+      at: from
+    };
   }
 
   function onPointerDown(e: PointerEvent) {
@@ -325,7 +383,7 @@
     if (pointers.size === 1 && gesture) {
       // A second finger turns whatever the first was doing into a pinch.
       pointers.set(e.pointerId, here);
-      abortCardDrag();
+      abortItemDrag();
       const metrics = pinchMetrics();
       if (metrics) {
         gesture = { kind: 'pinch', ...metrics };
@@ -338,18 +396,26 @@
     const cardEl = target.closest<HTMLElement>('[data-canvas-card]');
     const hit = cardEl ? placedById(cardEl.dataset.canvasCard ?? '') : undefined;
     if (hit && !hit.hidden && !ended) {
-      const pointerWorld = screenToWorld(view, here);
-      const from = live.shownAt(hit.card.id) ?? { x: hit.x, y: hit.y };
-      gesture = {
-        kind: 'card',
-        pointerId: e.pointerId,
-        cardId: hit.card.id,
-        column: hit.column.key,
-        start: here,
-        grab: { x: pointerWorld.x - from.x, y: pointerWorld.y - from.y },
-        moved: false,
-        at: from
-      };
+      startItem(e, here, hit.card.id, { x: hit.x, y: hit.y }, (at) => {
+        const state = board.board;
+        if (!state) return;
+        setCardPos(state.board, hit.column.key, hit.card.id, { ...at, z: nextZ(placed.map((p) => p.card.pos)) });
+      });
+      return;
+    }
+    const labelId = target.closest<HTMLElement>('[data-canvas-label]')?.dataset.canvasLabel;
+    const label = labels.find((l) => l.id === labelId);
+    if (label && !ended) {
+      startItem(
+        e,
+        here,
+        label.id,
+        { x: label.x, y: label.y },
+        (at) => {
+          if (board.board) moveLabel(board.board.labels, label.id, at);
+        },
+        () => (editingLabel = label.id)
+      );
       return;
     }
     gesture = { kind: 'pan', pointerId: e.pointerId, last: here };
@@ -374,37 +440,33 @@
       });
       gesture.distance = metrics.distance;
       gesture.mid = metrics.mid;
-    } else if (gesture.kind === 'card' && gesture.pointerId === e.pointerId) {
+    } else if (gesture.kind === 'item' && gesture.pointerId === e.pointerId) {
       if (!gesture.moved) {
         if (Math.hypot(here.x - gesture.start.x, here.y - gesture.start.y) < DRAG_THRESHOLD_PX) return;
         gesture.moved = true;
         gesturing = true;
         window.getSelection()?.removeAllRanges();
-        const cardId = gesture.cardId;
+        const itemId = gesture.id;
         heartbeatHandle = setInterval(() => {
-          const at = live.shownAt(cardId);
-          if (at && Date.now() - lastFrameAt >= DRAG_HEARTBEAT_MS) sendDrag({ id: cardId, x: at.x, y: at.y });
+          const at = live.shownAt(itemId);
+          if (at && Date.now() - lastFrameAt >= DRAG_HEARTBEAT_MS) sendDrag({ id: itemId, x: at.x, y: at.y });
         }, DRAG_HEARTBEAT_MS);
       }
       const world = screenToWorld(view, here);
       const clean = sanitizePos({ x: world.x - gesture.grab.x, y: world.y - gesture.grab.y });
       if (!clean) return;
       gesture.at = { x: clean.x, y: clean.y };
-      live.setOwn(gesture.cardId, gesture.at);
-      queueFrame({ id: gesture.cardId, x: clean.x, y: clean.y });
+      live.setOwn(gesture.id, gesture.at);
+      queueFrame({ id: gesture.id, x: clean.x, y: clean.y });
     }
   }
 
   // The real position goes in the doc once, here. The doc write comes before the
   // awareness clear, so peers have the new position when the live one ends.
-  function dropCard(g: Extract<Gesture, { kind: 'card' }>) {
+  function dropItem(g: Extract<Gesture, { kind: 'item' }>) {
     stopFrames();
-    const state = board.board;
-    if (state) {
-      const pos = { ...g.at, z: nextZ(placed.map((p) => p.card.pos)) };
-      setCardPos(state.board, g.column, g.cardId, pos);
-      live.setDocPos(g.cardId, g.at);
-    }
+    g.commit(g.at);
+    live.setDocPos(g.id, g.at);
     live.clearOwn();
     sendDrag(null);
   }
@@ -412,10 +474,12 @@
   function onPointerEnd(e: PointerEvent) {
     if (!pointers.delete(e.pointerId) || !gesture) return;
     const g = gesture;
-    if (g.kind === 'card' && g.pointerId === e.pointerId) {
+    if (g.kind === 'item' && g.pointerId === e.pointerId) {
       if (g.moved) {
-        if (e.type === 'pointercancel') abortCardDrag();
-        else dropCard(g);
+        if (e.type === 'pointercancel') abortItemDrag();
+        else dropItem(g);
+      } else if (e.type !== 'pointercancel') {
+        g.onClick?.();
       }
     } else if (g.kind === 'pinch' && pointers.size === 1) {
       // One finger left: carry on panning with it.
@@ -471,7 +535,7 @@
   }
 
   function onFocusIn(e: FocusEvent) {
-    const cardEl = (e.target as HTMLElement).closest<HTMLElement>('[data-canvas-card]');
+    const cardEl = (e.target as HTMLElement).closest<HTMLElement>('[data-canvas-card], [data-canvas-label]');
     // Raised so its emoji picker and comments open above the next card.
     setActive(cardEl);
     if (!cardEl || !viewportEl) return;
@@ -506,6 +570,13 @@
     const step = delta[e.key];
     const target = e.target as HTMLElement;
     if (!step || target.closest('input, textarea')) return;
+    const labelId = target.closest<HTMLElement>('[data-canvas-label]')?.dataset.canvasLabel;
+    const label = labels.find((l) => l.id === labelId);
+    if (label) {
+      e.preventDefault();
+      moveLabel(board.board.labels, label.id, { x: label.x + step.x, y: label.y + step.y });
+      return;
+    }
     const hit = placedById(target.closest<HTMLElement>('[data-canvas-card]')?.dataset.canvasCard ?? '');
     if (!hit || hit.hidden) return;
     e.preventDefault();
@@ -533,7 +604,7 @@
   });
 
   onDestroy(() => {
-    abortCardDrag();
+    abortItemDrag();
     stopFrames();
     if (wheelEndHandle !== null) clearTimeout(wheelEndHandle);
   });
@@ -584,6 +655,29 @@
           />
         </div>
       {/each}
+      {#each labels as label (label.id)}
+        <CanvasLabel
+          {label}
+          {live}
+          canEdit={!ended}
+          editing={editingLabel === label.id}
+          onStartEdit={() => (editingLabel = label.id)}
+          onEdit={(text) => saveLabelEdit(label.id, text)}
+          onCancelEdit={() => (editingLabel = null)}
+          onDelete={() => removeLabel(label.id)}
+        />
+      {/each}
+      {#if labelDraftAt}
+        <div
+          class="absolute"
+          style:left="{labelDraftAt.x}px"
+          style:top="{labelDraftAt.y}px"
+          style:z-index="1000002"
+          data-testid="canvas-label-draft"
+        >
+          <CanvasLabelInput ariaLabel="New label" onCommit={commitLabelDraft} onCancel={() => (labelDraftAt = null)} />
+        </div>
+      {/if}
       {#each placed as p (p.card.id)}
         <CanvasCard
           card={p.card}
@@ -666,8 +760,9 @@
   :global(.canvas-card[data-active]) {
     z-index: 1000000 !important;
   }
-  /* Whoever is moving it, a card in motion is on top, and it doesn't ease. */
-  :global(.canvas-card[data-live]) {
+  /* Whoever is moving it, a card or label in motion is on top. */
+  :global(.canvas-card[data-live]),
+  :global(.canvas-label[data-live]) {
     z-index: 1000001 !important;
     cursor: grabbing;
   }
