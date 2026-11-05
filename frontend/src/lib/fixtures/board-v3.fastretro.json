@@ -1,0 +1,115 @@
+{
+  "format": "fast-retro",
+  "version": 3,
+  "exportedAt": 1793600000000,
+  "board": {
+    "label": "Sprint 41 — groups",
+    "anonymous": false,
+    "phase": "discuss",
+    "autoSort": true,
+    "clusters": [
+      {
+        "id": "g-deploys",
+        "label": "Deploys"
+      },
+      {
+        "id": "g-untitled",
+        "label": ""
+      },
+      {
+        "id": "g-onecard",
+        "label": "Named with one card"
+      }
+    ]
+  },
+  "cards": {
+    "wentWell": [
+      {
+        "id": "k1",
+        "text": "Deploys felt calm this sprint",
+        "authorId": "u_alice",
+        "votes": [
+          "u_bob"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g-deploys"
+      },
+      {
+        "id": "k2",
+        "text": "Pairing on the flaky test",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {
+          "🙌": [
+            "u_carol"
+          ]
+        },
+        "comments": [],
+        "clusterId": "g-untitled"
+      },
+      {
+        "id": "k3",
+        "text": "Lunch was good",
+        "authorId": "u_carol",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "toImprove": [
+      {
+        "id": "k4",
+        "text": "Rollback took too long",
+        "authorId": "u_bob",
+        "votes": [
+          "u_alice",
+          "u_carol"
+        ],
+        "reactions": {},
+        "comments": [
+          {
+            "id": "m1",
+            "text": "Agreed",
+            "authorId": "u_alice",
+            "createdAt": 1793600000100
+          }
+        ],
+        "clusterId": "g-deploys"
+      },
+      {
+        "id": "k5",
+        "text": "Flaky test ate a day",
+        "authorId": "u_alice",
+        "votes": [],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g-untitled"
+      },
+      {
+        "id": "k6",
+        "text": "Too many meetings",
+        "authorId": "u_carol",
+        "votes": [],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g-onecard"
+      }
+    ],
+    "actions": [
+      {
+        "id": "k7",
+        "text": "Write the rollback runbook",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ]
+  },
+  "names": {
+    "u_alice": "Alice",
+    "u_bob": "Bob",
+    "u_carol": "Carol"
+  }
+}

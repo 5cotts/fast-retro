@@ -15,6 +15,7 @@ import { updateAwarenessUser } from './awareness';
 import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
+import { readClusters, type ClusterDef } from './clusters';
 import { BOARD_SETTING_DEFAULTS, readBoardSettings, sameSettings, type BoardSettings } from './settings';
 
 export interface UseBoardConnectionInit {
@@ -39,6 +40,8 @@ export interface UseBoardConnectionState {
   // `cards[col.key] ?? []`: a column's array may not have synced yet.
   cards: Record<string, CardData[]>;
   columns: ColumnDef[];
+  // Every group record, including ones with no cards. See layoutBoard.
+  clusters: ClusterDef[];
   timerState: TimerState;
   presence: PresenceUser[];
   phase: Phase;
@@ -73,6 +76,7 @@ export function useBoardConnection() {
     namesMap: {},
     cards: {},
     columns: DEFAULT_COLUMNS,
+    clusters: [],
     timerState: { durationSec: 0, startedAt: null, paused: false, pausedRemaining: null },
     presence: [],
     phase: 'brainstorm',
@@ -88,12 +92,15 @@ export function useBoardConnection() {
     if (state.board) return; // already started
 
     const conn = createBoard(init.slug, init.seed);
-    const { board, provider, doc, timer, names, phase, meta } = conn;
+    const { board, provider, doc, timer, names, phase, meta, clusters } = conn;
     state.board = conn;
     state.currentClientId = doc.clientID;
 
     const recomputeCards = () => {
       state.cards = readAllCards(board);
+    };
+    const recomputeClusters = () => {
+      state.clusters = readClusters(clusters);
     };
     const recomputeTimer = () => {
       state.timerState = readTimer(timer);
@@ -124,11 +131,13 @@ export function useBoardConnection() {
     };
 
     board.observeDeep(recomputeCards);
+    clusters.observe(recomputeClusters);
     timer.observeDeep(recomputeTimer);
     names.observe(recomputeNames);
     phase.observe(recomputePhase);
     meta.observe(recomputeMeta);
     recomputeCards();
+    recomputeClusters();
     recomputeTimer();
     recomputeNames();
     recomputePhase();

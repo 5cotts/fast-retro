@@ -12,6 +12,7 @@ import type { CardData } from './types';
 // a card to it, and an empty record is simply not shown.
 
 export const MAX_CLUSTER_LABEL_LEN = 60;
+export const UNNAMED_CLUSTER_LABEL = 'Untitled group';
 
 export interface ClusterDef {
   id: string;
@@ -25,6 +26,10 @@ export interface ClusterRecord {
 }
 
 export type ClusterMap = Y.Map<ClusterRecord>;
+
+export function clusterMapOf(doc: Y.Doc): ClusterMap {
+  return doc.getMap<ClusterRecord>('clusters');
+}
 
 export function cleanClusterLabel(label: string): string {
   return label.trim().slice(0, MAX_CLUSTER_LABEL_LEN);

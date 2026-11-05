@@ -20,6 +20,7 @@
     autoSort?: boolean;
     hideCards?: boolean;
     columns?: unknown;
+    clusters?: unknown;
   }
 
   let ok = $state<boolean | null>(null);

@@ -72,4 +72,45 @@ describe('exportCSV', () => {
     const dataRow = csv.split('\n')[1];
     expect(dataRow).toContain("'=HYPERLINK");
   });
+
+  it('adds the group as the last column, using the same rules as the board', () => {
+    const csv = exportCSV(
+      {
+        wentWell: [
+          card('grouped', { id: 'a', clusterId: 'g' }),
+          card('untitled', { id: 'b', clusterId: 'u' }),
+          card('alone', { id: 'c', clusterId: 'solo' }),
+          card('none', { id: 'd' })
+        ],
+        toImprove: [
+          card('grouped too', { id: 'e', clusterId: 'g' }),
+          card('untitled too', { id: 'f', clusterId: 'u' })
+        ]
+      },
+      undefined,
+      [
+        { id: 'g', label: 'Deploys', createdAt: 1 },
+        { id: 'u', label: '', createdAt: 2 },
+        { id: 'solo', label: '', createdAt: 3 }
+      ]
+    );
+    expect(csv.split('\n')).toEqual([
+      'column,card_text,votes,reactions,comments,group',
+      'What went well,grouped,0,,,Deploys',
+      'What went well,untitled,0,,,Untitled group',
+      'What went well,alone,0,,,',
+      'What went well,none,0,,,',
+      'What to improve,grouped too,0,,,Deploys',
+      'What to improve,untitled too,0,,,Untitled group'
+    ]);
+  });
+
+  it('neutralizes a formula in a group name', () => {
+    const csv = exportCSV(
+      { wentWell: [card('a', { id: 'a', clusterId: 'g' })] },
+      undefined,
+      [{ id: 'g', label: '=HYPERLINK(1)', createdAt: 1 }]
+    );
+    expect(csv.split('\n')[1]).toBe("What went well,a,0,,,'=HYPERLINK(1)");
+  });
 });

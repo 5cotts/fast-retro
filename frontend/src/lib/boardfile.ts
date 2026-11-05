@@ -1,6 +1,7 @@
 import type { CardData, CommentData } from './types';
-import { DEFAULT_COLUMNS, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
+import { DEFAULT_COLUMNS, isActionsColumn, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
 import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
+import { cleanClusterLabel, type ClusterDef } from './clusters';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -10,11 +11,17 @@ import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
 // lose data. Version 2 adds `board.columns` for custom columns, which a v1
 // reader would drop along with their cards, so only boards with custom
 // columns are written as v2 (and v1 readers refuse them). Classic boards are
-// still written as v1, readable by every build. Optional, ignorable fields
-// don't bump the version.
+// still written as v1, readable by every build. Version 3 adds `board.clusters`
+// (groups), which an older reader would silently drop, so only boards with
+// groups are written as v3. Optional, ignorable fields don't bump the version.
 export const BOARD_FILE_FORMAT = 'fast-retro';
-export const BOARD_FILE_VERSION = 2;
+export const BOARD_FILE_VERSION = 3;
 export const BOARD_FILE_EXTENSION = '.fastretro.json';
+
+export interface BoardFileCluster {
+  id: string;
+  label: string;
+}
 
 export interface BoardFile {
   format: typeof BOARD_FILE_FORMAT;
@@ -30,6 +37,8 @@ export interface BoardFile {
     // Absent for classic boards (the three default columns). See
     // boardFileColumns.
     columns?: ColumnDef[];
+    // In creation order, and only groups that have cards. Absent when there are none.
+    clusters?: BoardFileCluster[];
   };
   names?: Record<string, string>;
   cards: Record<string, CardData[]>;
@@ -44,6 +53,8 @@ export interface BoardFileSource {
   // Only these columns' cards are exported. Defaults to the classic three;
   // a custom board must pass its own list or its cards are left out.
   columns?: ColumnDef[];
+  // Without this, cards export ungrouped.
+  clusters?: ClusterDef[] | BoardFileCluster[];
   cards: Record<string, CardData[]>;
   namesMap: Record<string, string>;
 }
@@ -69,9 +80,39 @@ function referencedUserIds(cards: Record<string, CardData[]>): Set<string> {
   return ids;
 }
 
+function fileVersion(custom: boolean, clusters: BoardFileCluster[]): number {
+  if (clusters.length > 0) return 3;
+  return custom ? 2 : 1;
+}
+
+// The groups worth keeping: known and with at least one card, in creation order.
+// Also used for archives, so empty groups never get stored. Action items are never
+// grouped, whatever the doc says.
+export function clustersInUse(
+  clusters: readonly (ClusterDef | BoardFileCluster)[],
+  cards: Record<string, CardData[]>,
+  columns: ColumnDef[]
+): BoardFileCluster[] {
+  const used = new Set<string>();
+  for (const col of columns) {
+    if (isActionsColumn(col)) continue;
+    for (const card of cards[col.key] ?? []) if (card.clusterId) used.add(card.clusterId);
+  }
+  return clusters
+    .map((c, i) => ({ c, at: 'createdAt' in c ? c.createdAt : 0, i }))
+    .sort((a, b) => a.at - b.at || a.i - b.i)
+    .filter(({ c }) => used.has(c.id))
+    .map(({ c }) => ({ id: c.id, label: c.label }));
+}
+
 // Copies only the given columns, in order, so stray arrays in the doc never
 // reach a file.
-function copyCards(cards: Record<string, CardData[]>, columns: ColumnDef[]): Record<string, CardData[]> {
+function copyCards(
+  cards: Record<string, CardData[]>,
+  columns: ColumnDef[],
+  clusters: BoardFileCluster[]
+): Record<string, CardData[]> {
+  const known = new Set(clusters.map((c) => c.id));
   const out: Record<string, CardData[]> = {};
   for (const col of columns) {
     out[col.key] = (cards[col.key] ?? []).map((card) => ({
@@ -84,7 +125,8 @@ function copyCards(cards: Record<string, CardData[]>, columns: ColumnDef[]): Rec
           .filter(([, users]) => users.length > 0)
           .map(([emoji, users]) => [emoji, [...users]])
       ),
-      comments: card.comments.map((c) => ({ ...c }))
+      comments: card.comments.map((c) => ({ ...c })),
+      ...(card.clusterId && known.has(card.clusterId) && !isActionsColumn(col) ? { clusterId: card.clusterId } : {})
     }));
   }
   return out;
@@ -93,10 +135,11 @@ function copyCards(cards: Record<string, CardData[]>, columns: ColumnDef[]): Rec
 export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFile {
   const columns = src.columns ?? DEFAULT_COLUMNS;
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
-  const cards = copyCards(src.cards, columns);
+  const clusters = clustersInUse(src.clusters ?? [], src.cards, columns);
+  const cards = copyCards(src.cards, columns, clusters);
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: custom ? 2 : 1,
+    version: fileVersion(custom, clusters),
     exportedAt: now,
     board: {
       label: src.label,
@@ -104,7 +147,8 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
       phase: src.phase,
       autoSort: src.autoSort,
       ...(src.hideCards ? { hideCards: true } : {}),
-      ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {})
+      ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {}),
+      ...(clusters.length ? { clusters } : {})
     },
     cards
   };
@@ -185,7 +229,26 @@ export interface ArchiveLike {
   autoSort?: boolean;
   hideCards?: boolean;
   columns?: unknown;
+  clusters?: unknown;
   endedAt: number;
+}
+
+const MAX_FILE_CLUSTERS = 1000;
+
+// Group records from a file or an archive. Skips anything malformed and keeps
+// the first of any repeated ID.
+export function sanitizeFileClusters(raw: unknown): BoardFileCluster[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: BoardFileCluster[] = [];
+  for (const c of raw.slice(0, MAX_FILE_CLUSTERS)) {
+    if (typeof c !== 'object' || c === null) continue;
+    const { id, label } = c as { id?: unknown; label?: unknown };
+    if (typeof id !== 'string' || !id || id.length > 64 || seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, label: typeof label === 'string' ? cleanClusterLabel(label) : '' });
+  }
+  return out;
 }
 
 // Archives saved before the anonymous flag was recorded can't prove they
@@ -199,6 +262,7 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       autoSort: archive.autoSort ?? true,
       hideCards: archive.hideCards === true,
       columns: sanitizeColumns(archive.columns) ?? DEFAULT_COLUMNS,
+      clusters: sanitizeFileClusters(archive.clusters),
       cards: Object.fromEntries(
         Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
       ),
@@ -249,6 +313,7 @@ export interface BoardFileStats {
   comments: number;
   votes: number;
   reactions: number;
+  groups: number;
   namesRestored: boolean;
 }
 
@@ -279,7 +344,14 @@ function plural(n: number, word: string): string {
 }
 
 export function boardFileStats(file: BoardFile): BoardFileStats {
-  const stats = { cards: 0, comments: 0, votes: 0, reactions: 0, namesRestored: !!file.names };
+  const stats = {
+    cards: 0,
+    comments: 0,
+    votes: 0,
+    reactions: 0,
+    groups: file.board.clusters?.length ?? 0,
+    namesRestored: !!file.names
+  };
   for (const list of Object.values(file.cards)) {
     for (const card of list) {
       stats.cards++;
@@ -333,6 +405,10 @@ export function parseBoardFile(text: string): ParseResult {
   }
   phase = clampPhase(phase, phasesFor(columns));
 
+  const declaredClusters = sanitizeFileClusters(rawBoard.clusters);
+  const declaredIds = new Set(declaredClusters.map((c) => c.id));
+  let unknownClusterCards = 0;
+
   const rawCards = isRecord(raw.cards) ? raw.cards : {};
   const cards: Record<string, CardData[]> = Object.fromEntries(columns.map((c) => [c.key, []]));
   let skippedCards = 0;
@@ -379,26 +455,42 @@ export function parseBoardFile(text: string): ParseResult {
           });
         }
       }
+      let clusterId: string | undefined;
+      if (typeof rc.clusterId === 'string' && !isActionsColumn(col)) {
+        if (declaredIds.has(rc.clusterId)) clusterId = rc.clusterId;
+        else unknownClusterCards++;
+      }
       cards[col.key].push({
         id: typeof rc.id === 'string' ? rc.id : '',
         text: rc.text,
         authorId: isUserId(rc.authorId) ? rc.authorId : '',
         votes: userIds(rc.votes),
         reactions,
-        comments
+        comments,
+        ...(clusterId ? { clusterId } : {})
       });
     }
   }
   if (skippedCards) warnings.push(`Skipped ${plural(skippedCards, 'card')} with no text.`);
   if (skippedComments) warnings.push(`Skipped ${plural(skippedComments, 'comment')} with no text.`);
   if (orphanCards) warnings.push(`Skipped ${plural(orphanCards, 'card')} in columns this file doesn't define.`);
+  if (unknownClusterCards) warnings.push(`${plural(unknownClusterCards, 'card')} referred to a group this file doesn't define, and will be ungrouped.`);
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
+  const clusters = clustersInUse(declaredClusters, cards, columns);
 
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: custom ? 2 : 1,
+    version: fileVersion(custom, clusters),
     exportedAt,
-    board: { label, anonymous, phase, autoSort, ...(hideCards ? { hideCards } : {}), ...(custom ? { columns } : {}) },
+    board: {
+      label,
+      anonymous,
+      phase,
+      autoSort,
+      ...(hideCards ? { hideCards } : {}),
+      ...(custom ? { columns } : {}),
+      ...(clusters.length ? { clusters } : {})
+    },
     cards
   };
   // A hand-edited anonymous file can't smuggle names in.
@@ -422,6 +514,7 @@ export function describeStats(stats: BoardFileStats, anonymous: boolean): string
     plural(stats.votes, 'vote'),
     plural(stats.reactions, 'reaction')
   ];
+  if (stats.groups) parts.push(plural(stats.groups, 'group'));
   parts.push(anonymous ? 'anonymous' : stats.namesRestored ? 'names restored' : 'no names');
   return parts.join(' · ');
 }

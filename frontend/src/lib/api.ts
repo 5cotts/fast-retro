@@ -110,6 +110,7 @@ export async function endBoard(
     autoSort: boolean;
     hideCards?: boolean;
     columns?: { key: string; title: string; color: string }[];
+    clusters?: { id: string; label: string }[];
   },
   auth: { hostKey?: string; leadToken?: string }
 ): Promise<{ archiveId: string }> {
