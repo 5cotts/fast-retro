@@ -1,6 +1,6 @@
 # Discovery: canvas mode
 
-Status: discovery, five decisions open (see below) · 2026-11-04 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
+Status: approved through the PR 4 preview, decisions recorded 2026-11-05 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
 
 ## Goal
 
@@ -17,6 +17,8 @@ Valentina, after seeing the group rows mockup in #52:
 > I like columns most of the time, but canvas mode can group in a more nuanced way, where the proximity maters, not the binary of "grouped/not grouped"
 
 So this adds to group rows and doesn't replace them. Columns stay the default.
+
+She also liked the mockup below. That's a reaction to a static image, so it supports the direction but doesn't show that a team would run a retro this way. The PR 4 preview tests that.
 
 ## Bottom line
 
@@ -87,12 +89,14 @@ Spreo is a general whiteboard with shapes, connectors, drawing and templates. \[
 
 **What people give up on a canvas, compared with group rows:** Merge, a group's voter count, moving a theme as one unit (until PR 8), and any grouping in CSV. These are the costs of having no group object. A team that wants them can use a column board.
 
-### Open decisions
+### Decisions
 
-| # | Question | Recommendation | Why |
+Scott accepted the recommendations on 2026-11-05.
+
+| # | Question | Decision | Why |
 | --- | --- | --- | --- |
 | **C1** | Build it now? | **Group rows first, then PRs 1–4 as a preview, then decide** | Stops at a real test with little sunk cost. See Bottom line. |
-| **C2** | Pure proximity, or also derive clusters? | **Pure proximity plus floating labels** | It's what she described. A distance threshold brings the binary back, and its boundaries would flicker during a drag. Deriving clusters later is cheap (0.38 ms at 300 cards), so nothing is ruled out. Worth confirming with her, since she knows Metro Retro's Topics. |
+| **C2** | Pure proximity, or also derive clusters? | **Pure proximity plus floating labels** | It's what she described. A distance threshold brings the binary back, and its boundaries would flicker during a drag. Deriving clusters later is cheap (0.38 ms at 300 cards), so nothing is ruled out. Still worth asking her, since she knows Metro Retro's Topics. |
 | **C3** | Can a board switch between columns and canvas? | **Chosen at creation.** People can still use List view. | Switching is cheap in the data, since it's one key and no conversion. The product question is what happens to group rows, so wait until someone asks. |
 | **C4** | Who can move cards, and when? | **Anyone, in every phase, until the board ends** | This matches the existing rule that drag-to-reorder stays available in all phases (`phase.ts:63`). The risk is an accidental move during discussion with no undo. |
 | **C5** | What do phones get? | **List view by default,** with a link to open the canvas | A free-form board is hard to use on a phone, and voting and comments work fine in the list. This also means phone users can't arrange cards unless they opt in. |
