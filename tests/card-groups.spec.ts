@@ -203,6 +203,109 @@ test.describe('fast-retro card groups', () => {
     }
   });
 
+  // Valentina's request, end to end: "if the same thing popped up as 'went ok'
+  // and 'went well', you could cluster them together but still keep them in
+  // separate columns". docs/qa-card-groups.md is the same session by hand.
+  test('the same topic in "went well" and "went OK" is grouped, and both cards keep their own votes', async ({ browser }) => {
+    test.setTimeout(150_000);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const columns = ['What went well', 'What went OK', 'What to improve'];
+    const [well, ok, improve] = columns;
+    const wentWell = `Friday deploy had no drama ${suffix}`;
+    const wentOk = `Deploys were fine but slow ${suffix}`;
+    const toImprove = `Rollback steps aren't written down ${suffix}`;
+    const unrelated = `Standups got shorter ${suffix}`;
+    const ana = await newPage(browser);
+    const ben = await newPage(browser);
+    const host = await newPage(browser);
+    try {
+      await host.page.addInitScript(() => {
+        localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }]));
+        const w = window as unknown as { __gaEvents: unknown[][]; gtag: (...a: unknown[]) => void };
+        w.__gaEvents = [];
+        w.gtag = (...args: unknown[]) => {
+          w.__gaEvents.push(args);
+        };
+      });
+      await host.page.goto('/');
+      await host.page.getByRole('button', { name: 'Start a new retro' }).click();
+      const dialog = host.page.getByRole('dialog', { name: 'Start a new retro' });
+      await dialog.getByLabel('Retro name').fill(`Team retro ${suffix}`);
+      await dialog.locator('label').filter({ hasText: 'Custom' }).click();
+      const inputs = dialog.getByRole('textbox', { name: /^Column \d+ name/ });
+      await expect(inputs.first()).toBeVisible();
+      for (let i = 0; i < columns.length; i++) {
+        if ((await inputs.count()) <= i) await dialog.getByRole('button', { name: 'Add column' }).click();
+        await inputs.nth(i).fill(columns[i]);
+      }
+      await dialog.getByRole('button', { name: 'Create retro' }).click();
+      await host.page.waitForURL(/\/board\//);
+      const url = host.page.url();
+      const hostName = host.page.getByLabel('Your display name');
+      await expect(hostName.or(host.page.getByTestId('board-columns'))).toBeVisible();
+      if (await hostName.isVisible()) {
+        await hostName.fill(`Host ${suffix}`);
+        await host.page.getByRole('button', { name: 'Join the retro' }).click();
+      }
+      await dismissOnboardingIfPresent(host.page);
+      await joinAs(ana.page, url, `Ana ${suffix}`);
+      await joinAs(ben.page, url, `Ben ${suffix}`);
+
+      await addCard(ana.page, well, wentWell);
+      await addCard(ana.page, well, unrelated);
+      await addCard(ben.page, ok, wentOk);
+      await addCard(ben.page, improve, toImprove);
+      await goTo(host.page, 'Advance to', 'Group');
+
+      // Ben drags his card onto Ana's. Ana names the group.
+      await expect(card(ben.page, well, wentWell)).toBeVisible();
+      await startDrag(ben.page, card(ben.page, ok, wentOk));
+      await dropOn(ben.page, card(ben.page, well, wentWell));
+      await expect(groupRow(ana.page, 'Untitled group')).toBeVisible();
+      await groupRow(ana.page, 'Untitled group').getByRole('button', { name: 'Untitled group', exact: true }).click();
+      await ana.page.getByLabel('Group name').fill('Deploys');
+      await ana.page.keyboard.press('Enter');
+      // The host adds a third card from the third column, by menu.
+      await joinGroup(host.page, improve, toImprove, 'Deploys');
+
+      for (const { page } of [host, ana, ben]) {
+        await expect(groupCard(page, well, 'Deploys, 3 cards', wentWell)).toBeVisible();
+        await expect(groupCard(page, ok, 'Deploys, 3 cards', wentOk)).toBeVisible();
+        await expect(groupCard(page, improve, 'Deploys, 3 cards', toImprove)).toBeVisible();
+        await expect(card(page, well, unrelated)).toBeVisible();
+        await expect(groupCard(page, well, 'Deploys', unrelated)).toHaveCount(0);
+      }
+
+      // Votes and comments stay on each card, and the row counts people.
+      await goTo(host.page, 'Advance to', 'Vote');
+      await vote(ana.page, ok, wentOk);
+      await vote(ben.page, well, wentWell);
+      await vote(ben.page, ok, wentOk);
+      await expect(card(host.page, ok, wentOk).getByRole('button', { name: /\(2/ })).toBeVisible();
+      await expect(card(host.page, well, wentWell).getByRole('button', { name: /\(1/ })).toBeVisible();
+      await expect(groupRow(host.page, 'Deploys')).toContainText('2 voters');
+
+      await goTo(host.page, 'Advance to', 'Discuss');
+      await card(ana.page, ok, wentOk).getByRole('button', { name: /^Comments/ }).click();
+      await card(ana.page, ok, wentOk).getByLabel('Add a comment').fill(`Which part was slow? ${suffix}`);
+      await card(ana.page, ok, wentOk).getByRole('button', { name: 'Post' }).click();
+      await expect(card(ben.page, ok, wentOk).getByRole('button', { name: 'Comments (1)' })).toBeVisible();
+      await expect(card(ben.page, well, wentWell).getByRole('button', { name: 'Comments (0)' })).toBeVisible();
+
+      // Counts and enums only: no names, labels or card text reach analytics.
+      const events: unknown[][] = await host.page.evaluate(() =>
+        (window as unknown as { __gaEvents: unknown[][] }).__gaEvents.filter((e) => e[1] === 'card_group')
+      );
+      expect(events).toContainEqual(['event', 'card_group', { action: 'join', source: 'menu' }]);
+      expect(JSON.stringify(events)).not.toContain('Deploys');
+      expect(JSON.stringify(events)).not.toContain(suffix);
+    } finally {
+      await ana.ctx.close();
+      await ben.ctx.close();
+      await host.ctx.close();
+    }
+  });
+
   test('anyone can group cards across columns, and everyone sees it live', async ({ browser }) => {
     test.setTimeout(120_000);
     const suffix = Math.random().toString(36).slice(2, 6);

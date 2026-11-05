@@ -233,8 +233,10 @@ to Brainstorm hides them again; turning the setting off reveals at once;
 an ended board shows everything. A second test imports a file with the
 setting on and checks that action items are never hidden.
 
-`card-groups.spec.ts` — groups of cards across columns (two browsers; skipped
-without `RETRO_LEAD_TOKEN`). Grouping from the card menu, with each card staying
+`card-groups.spec.ts` — groups of cards across columns (two or three browsers;
+skipped without `RETRO_LEAD_TOKEN`). The session that prompted it, also available
+by hand as `docs/qa-card-groups.md`. Aligned rows on desktop, measured by position,
+and stacked blocks on a phone. Grouping from the card menu, with each card staying
 in its column and everyone seeing it live. Dragging: onto a card or a group's name
 groups, a card's edges reorder, the zone shown during a drag leaves a group, and
 another column's loose area changes column. Rename, leave, Ungroup and reload.
