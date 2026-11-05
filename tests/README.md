@@ -221,7 +221,7 @@ prompted custom columns, end to end with a host and two participants (no
 lead token): problem-statement columns, no Action items, hidden cards;
 the host adds a forgotten fifth problem from Edit board after people have
 joined; a 10-minute timer everyone sees; private ideas shown to others only
-as placeholders; Group reveals them; the host merges a duplicate; voting;
+as placeholders; Group reveals them; the host groups, then merges, a duplicate; voting;
 Discuss is the last phase, sorts by votes and takes comments; ending and
 exporting keep the columns. `docs/qa-brainstorm-scenario.md` is the same
 scenario as a manual script.
@@ -235,7 +235,9 @@ setting on and checks that action items are never hidden.
 
 `card-groups.spec.ts` — groups of cards across columns (two browsers; skipped
 without `RETRO_LEAD_TOKEN`). Grouping from the card menu, with each card staying
-in its column and everyone seeing it live. Rename, leave, Ungroup and reload.
+in its column and everyone seeing it live. Dragging: onto a card or a group's name
+groups, a card's edges reorder, the zone shown during a drag leaves a group, and
+another column's loose area changes column. Rename, leave, Ungroup and reload.
 Shift+Up/Down within a section. Group names hidden when going back to Brainstorm.
 Voter counts and sorted groups in Discuss. Export, CSV, re-import, ending and the
 archive viewer.

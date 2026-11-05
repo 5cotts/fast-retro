@@ -6,6 +6,7 @@ import {
   clustersVisible,
   layoutBoard,
   MAX_CLUSTER_LABEL_LEN,
+  planDrop,
   readClusters,
   reorderTarget,
   sectionOf,
@@ -259,6 +260,62 @@ describe('reorderTarget', () => {
     expect(reorderTarget(section, 'a', -1)).toBeNull();
     expect(reorderTarget(section, 'c', 1)).toBeNull();
     expect(reorderTarget(section, 'missing', 1)).toBeNull();
+  });
+});
+
+describe('planDrop', () => {
+  const src = (column: string, clusterId: string | null = null) => ({ column, cardId: 'me', clusterId });
+  const onCard = (column: string, clusterId: string | null = null, cardId = 'x') => ({ kind: 'card' as const, column, cardId, clusterId });
+  const slot = (column: string, sectionId: string | null, beforeId: string | null = 'x') => ({ kind: 'slot' as const, column, beforeId, sectionId });
+
+  it('starts a new group when dropped on an ungrouped card, in any column', () => {
+    expect(planDrop(src('a'), onCard('a'), true)).toEqual({ kind: 'newClusterWith', column: 'a', cardId: 'x' });
+    expect(planDrop(src('b', 'old'), onCard('a'), true)).toEqual({ kind: 'newClusterWith', column: 'a', cardId: 'x' });
+  });
+
+  it("joins the target card's group without moving", () => {
+    expect(planDrop(src('b'), onCard('a', 'g'), true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+    expect(planDrop(src('b', 'old'), onCard('a', 'g'), true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+  });
+
+  it('does nothing on itself or on a card already in its group', () => {
+    expect(planDrop(src('a'), onCard('a', null, 'me'), true)).toEqual({ kind: 'none' });
+    expect(planDrop(src('a', 'g'), onCard('a', 'g'), true)).toEqual({ kind: 'none' });
+    expect(planDrop(src('b', 'g'), onCard('a', 'g'), true)).toEqual({ kind: 'none' });
+  });
+
+  it('joins a group row from any column', () => {
+    expect(planDrop(src('b'), { kind: 'group', column: 'a', clusterId: 'g' }, true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+    expect(planDrop(src('b', 'g'), { kind: 'group', column: 'a', clusterId: 'g' }, true)).toEqual({ kind: 'none' });
+  });
+
+  it('reorders within a section', () => {
+    expect(planDrop(src('a'), slot('a', null), true)).toEqual({ kind: 'reorder', column: 'a', beforeId: 'x' });
+    expect(planDrop(src('a', 'g'), slot('a', 'g'), true)).toEqual({ kind: 'reorder', column: 'a', beforeId: 'x' });
+  });
+
+  it("joins a section's group instead of changing column", () => {
+    expect(planDrop(src('a'), slot('a', 'g'), true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+    expect(planDrop(src('b'), slot('a', 'g'), true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+    expect(planDrop(src('b', 'h'), slot('a', 'g'), true)).toEqual({ kind: 'setCluster', clusterId: 'g' });
+    expect(planDrop(src('b', 'g'), slot('a', 'g'), true)).toEqual({ kind: 'none' });
+  });
+
+  it('leaves the group when dropped in its own loose area', () => {
+    expect(planDrop(src('a', 'g'), slot('a', null), true)).toEqual({ kind: 'setCluster', clusterId: null });
+    expect(planDrop(src('a', 'g'), slot('a', null, null), true)).toEqual({ kind: 'setCluster', clusterId: null });
+  });
+
+  it("changes column only via another column's loose area", () => {
+    expect(planDrop(src('b'), slot('a', null), true)).toEqual({ kind: 'moveLoose', column: 'a', beforeId: 'x' });
+    expect(planDrop(src('b', 'g'), slot('a', null, null), true)).toEqual({ kind: 'moveLoose', column: 'a', beforeId: null });
+  });
+
+  it('is always a plain move outside the Group phase', () => {
+    expect(planDrop(src('a', 'g'), slot('b', 'h'), false)).toEqual({ kind: 'reorder', column: 'b', beforeId: 'x' });
+    expect(planDrop(src('a', 'g'), slot('a', null), false)).toEqual({ kind: 'reorder', column: 'a', beforeId: 'x' });
+    expect(planDrop(src('a'), onCard('a'), false)).toEqual({ kind: 'none' });
+    expect(planDrop(src('a'), { kind: 'group', column: 'a', clusterId: 'g' }, false)).toEqual({ kind: 'none' });
   });
 });
 

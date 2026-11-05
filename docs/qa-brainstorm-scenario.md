@@ -73,10 +73,12 @@ When the timer ends (it pulses red), click **Next phase** to move to **Group**.
 
 ## 6. Group (host)
 
-Drag Ben's buddy idea onto Ana's buddy idea in column 1.
+Drag Ben's buddy idea onto the middle of Ana's buddy idea in column 1.
 
 **Check:**
-- [ ] The two cards merge into one, showing both texts, in every window.
+- [ ] The two cards show together in an "Untitled group" block, each with its own text, in every window.
+- [ ] Click the group's name and call it "Buddies". Every window shows the new name.
+- [ ] Host only: **Merge** on the group asks to confirm, then the two cards become one showing both texts. Ana and Ben don't see **Merge**.
 
 ## 7. Vote
 

@@ -84,8 +84,121 @@ async function exportFile(page: Page, item: RegExp): Promise<string> {
   return readFileSync((await download.path()) as string, 'utf-8');
 }
 
+// Starts a real drag and leaves it held, so controls that appear during a drag
+// can be targeted. Finish with page.mouse.up().
+async function startDrag(page: Page, source: ReturnType<Page['getByRole']>) {
+  // hover waits for the card to stop moving: cards animate when others regroup.
+  await source.hover();
+  const box = (await source.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 8, box.y + box.height / 2 + 8, { steps: 3 });
+}
+
+async function dropOn(page: Page, target: ReturnType<Page['getByRole']>, at: 'middle' | 'top' | 'bottom' = 'middle') {
+  const box = (await target.boundingBox())!;
+  const y = at === 'top' ? box.y + 4 : at === 'bottom' ? box.y + box.height - 4 : box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y, { steps: 5 });
+  await page.mouse.up();
+}
+
+const cardOrder = async (locator: ReturnType<Page['getByRole']>) =>
+  (await locator.getByRole('group', { name: /^Card: / }).evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')))).map((l) =>
+    (l ?? '').replace(/^Card: /, '')
+  );
+
 test.describe('fast-retro card groups', () => {
   test.skip(!LEAD_TOKEN, 'RETRO_LEAD_TOKEN env var must be set');
+
+  test('dragging groups across columns, and never changes a card column by accident', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const suffix = Math.random().toString(36).slice(2, 6);
+    const slug = `pw-groups-drag-${suffix}`;
+    const a = `alpha ${suffix}`;
+    const b = `bravo ${suffix}`;
+    const c = `charlie ${suffix}`;
+    const d = `delta ${suffix}`;
+    const lead = await newPage(browser);
+    const guest = await newPage(browser);
+    try {
+      await joinAs(lead.page, `/lead/${LEAD_TOKEN}/${slug}`, `Lead ${suffix}`);
+      await joinAs(guest.page, `/board/${slug}`, `Guest ${suffix}`);
+      await addCard(lead.page, WELL, a);
+      await addCard(lead.page, WELL, c);
+      await addCard(lead.page, IMPROVE, b);
+      await addCard(lead.page, IMPROVE, d);
+      await goTo(lead.page, 'Advance to', 'Group');
+      const { page } = guest;
+
+      // Onto the middle of a card in another column: an unnamed group, and a
+      // participant can do it. Nothing changes column.
+      await startDrag(page, card(page, IMPROVE, b));
+      await dropOn(page, card(page, WELL, a));
+      await expect(groupCard(page, WELL, 'Untitled group, 2 cards', a)).toBeVisible();
+      await expect(groupCard(page, IMPROVE, 'Untitled group, 2 cards', b)).toBeVisible();
+      await expect(groupCard(lead.page, IMPROVE, 'Untitled group', b)).toBeVisible();
+      // No text box opened, so grouping stays quick.
+      await expect(page.getByLabel('Group name')).toHaveCount(0);
+
+      // Onto a grouped card: joins that group, from either column.
+      await startDrag(page, card(page, IMPROVE, d));
+      await dropOn(page, card(page, WELL, a));
+      await expect(groupCard(page, IMPROVE, 'Untitled group, 3 cards', d)).toBeVisible();
+
+      // Reordering inside the group by its edges, never grouping or merging.
+      await expect.poll(() => cardOrder(groupIn(page, IMPROVE, 'Untitled group'))).toEqual([b, d]);
+      await startDrag(page, card(page, IMPROVE, d));
+      await dropOn(page, card(page, IMPROVE, b), 'top');
+      await expect.poll(() => cardOrder(groupIn(page, IMPROVE, 'Untitled group'))).toEqual([d, b]);
+
+      // Out of the group using the zone that appears during the drag.
+      await startDrag(page, card(page, IMPROVE, d));
+      const zone = column(page, IMPROVE).getByTestId('ungroup-zone');
+      await expect(zone).toBeVisible();
+      await dropOn(page, zone);
+      await expect(groupCard(page, IMPROVE, 'Untitled group', d)).toHaveCount(0);
+      await expect(card(page, IMPROVE, d)).toBeVisible();
+
+      // Onto a group's name: joins it.
+      await startDrag(page, card(page, WELL, c));
+      await dropOn(page, groupIn(page, IMPROVE, 'Untitled group').locator('h3'));
+      await expect(groupCard(page, WELL, 'Untitled group, 3 cards', c)).toBeVisible();
+
+      // Dragging out the second-last card leaves a normal card, not a group of one.
+      for (const text of [c, a]) {
+        await startDrag(page, card(page, WELL, text));
+        await dropOn(page, column(page, WELL).getByTestId('ungroup-zone'));
+      }
+      await expect(page.getByTestId('group-block')).toHaveCount(0);
+      await expect(card(page, IMPROVE, b)).toBeVisible();
+
+      // Into another column's loose area: moves it there. That's the way to
+      // change column, and it leaves the group.
+      await startDrag(page, card(page, WELL, a));
+      await dropOn(page, card(page, IMPROVE, d), 'bottom');
+      await expect(card(page, IMPROVE, a)).toBeVisible();
+      await expect(card(page, WELL, a)).toHaveCount(0);
+      await expect.poll(() => cardOrder(column(page, IMPROVE))).toEqual([d, a, b]);
+
+      // A participant has no Merge, and neither does a phase other than Group.
+      await startDrag(page, card(page, IMPROVE, b));
+      await dropOn(page, card(page, IMPROVE, d));
+      await expect(groupIn(page, IMPROVE, 'Untitled group, 2 cards')).toBeVisible();
+      await expect(page.getByRole('button', { name: /^Merge/ })).toHaveCount(0);
+      await expect(lead.page.getByRole('button', { name: /^Merge/ })).toHaveCount(1);
+      await goTo(lead.page, 'Advance to', 'Vote');
+      await expect(lead.page.getByRole('button', { name: /^Merge/ })).toHaveCount(0);
+
+      // Outside the Group phase a drop is a plain move and groups don't change.
+      await startDrag(lead.page, card(lead.page, IMPROVE, a));
+      await dropOn(lead.page, card(lead.page, IMPROVE, b));
+      await expect(card(lead.page, IMPROVE, a)).toBeVisible();
+      await expect(groupCard(lead.page, IMPROVE, 'Untitled group, 2 cards', a)).toHaveCount(0);
+    } finally {
+      await lead.ctx.close();
+      await guest.ctx.close();
+    }
+  });
 
   test('anyone can group cards across columns, and everyone sees it live', async ({ browser }) => {
     test.setTimeout(120_000);

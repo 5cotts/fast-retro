@@ -8,7 +8,7 @@
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { COLUMN_PLACEHOLDER, COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, columnEmptyHint, isActionsColumn, type ColumnDef } from './columns';
-  import { clusterDisplayName, type ClusterActions, type ClusterLane } from './clusters';
+  import { clusterDisplayName, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
   import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
   import type { CardData } from './types';
@@ -24,6 +24,9 @@
     // Everything in this column, grouped or not.
     cardCount: number;
     canCluster: boolean;
+    canMerge: boolean;
+    // Title of the first column holding each group's cards (see mergeCluster).
+    mergeTitle: (lane: ClusterLane) => string;
     clusterActions: ClusterActions;
     canAdd: boolean;
     phase: Phase;
@@ -34,15 +37,15 @@
     canVote: boolean;
     anonymous: boolean;
     namesMap: Record<string, string>;
-    mergeMode: boolean;
     canReorder: boolean;
     dragCardId: string | null;
-    dragMergeTargetId: string | null;
+    // Whether the card being dragged can be grouped by dropping it.
+    dragCanGroup: boolean;
+    // Whether it's in a group, so dropping in the loose area leaves it.
+    dragIsGrouped: boolean;
+    dropTarget: DropTarget | null;
     // The board's hide-cards setting (see visibility.ts).
     hideCards: boolean;
-    // The card the drop indicator sits above: null for the end of the column,
-    // undefined when not dragging here.
-    dropBeforeId: string | null | undefined;
     typingByCard: Map<string, string[]>;
     reducedMotion: boolean;
     coarsePointer: boolean;
@@ -58,10 +61,7 @@
     onFocusCard: (cardId: string) => void;
     onDragStart: (e: DragEvent, cardId: string, fromCol: string) => void;
     onDragEnd: () => void;
-    onMergeDragOver: (cardId: string) => void;
-    onMergeDragLeave: (cardId: string) => void;
-    onMergeDrop: (cardId: string) => void;
-    onSlotDragOver: (e: DragEvent, cardId: string) => void;
+    onTargetDragOver: (e: DragEvent, target: DropTarget) => void;
     onColumnDragOver: (e: DragEvent) => void;
     onColumnDrop: (e: DragEvent) => void;
     // Host only: rename this column in place.
@@ -74,6 +74,8 @@
     lanes,
     cardCount,
     canCluster,
+    canMerge,
+    mergeTitle,
     clusterActions,
     canAdd,
     phase,
@@ -84,12 +86,12 @@
     canVote,
     anonymous,
     namesMap,
-    mergeMode,
     canReorder,
     hideCards,
     dragCardId,
-    dragMergeTargetId,
-    dropBeforeId,
+    dragCanGroup,
+    dragIsGrouped,
+    dropTarget,
     typingByCard,
     reducedMotion,
     coarsePointer,
@@ -105,10 +107,7 @@
     onFocusCard,
     onDragStart,
     onDragEnd,
-    onMergeDragOver,
-    onMergeDragLeave,
-    onMergeDrop,
-    onSlotDragOver,
+    onTargetDragOver,
     onColumnDragOver,
     onColumnDrop,
     onRename
@@ -120,6 +119,54 @@
   const lanesHere = $derived(lanes.filter((lane) => (lane.cards[column.key]?.length ?? 0) > 0));
   const groupOptions = $derived(lanes.map((lane) => lane.cluster));
   const canGroupHere = $derived(canCluster && !isActionsColumn(column));
+  const canDropToGroup = $derived(dragCanGroup && !isActionsColumn(column));
+
+  // The middle of a card groups, and its edges reorder. Outside the Group phase
+  // all of it reorders. The edge is a fixed-ish strip, so tall cards still have a
+  // reachable middle and short ones a reachable edge.
+  function onCardDragOver(e: DragEvent, card: CardData, nextId: string | null, sectionId: string | null) {
+    if (!dragCardId) return;
+    e.stopPropagation();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const edge = Math.min(rect.height * 0.25, 24);
+    if (canDropToGroup && dragCardId !== card.id && y > edge && y < rect.height - edge) {
+      onTargetDragOver(e, { kind: 'card', column: column.key, cardId: card.id, clusterId: sectionId });
+      return;
+    }
+    const beforeId = y <= rect.height / 2 ? card.id : nextId;
+    onTargetDragOver(e, { kind: 'slot', column: column.key, beforeId, sectionId });
+  }
+
+  function onGroupDragOver(e: DragEvent, clusterId: string) {
+    if (!dragCardId || !canDropToGroup) return;
+    e.stopPropagation();
+    onTargetDragOver(e, { kind: 'group', column: column.key, clusterId });
+  }
+
+  function onLooseDragOver(e: DragEvent) {
+    if (!dragCardId) return;
+    e.stopPropagation();
+    onTargetDragOver(e, { kind: 'slot', column: column.key, beforeId: null, sectionId: null });
+  }
+
+  function showsLineAbove(cardId: string, sectionId: string | null): boolean {
+    return (
+      dropTarget?.kind === 'slot' &&
+      dropTarget.column === column.key &&
+      dropTarget.sectionId === sectionId &&
+      dropTarget.beforeId === cardId
+    );
+  }
+
+  function showsLineAtEnd(sectionId: string | null): boolean {
+    return (
+      dropTarget?.kind === 'slot' &&
+      dropTarget.column === column.key &&
+      dropTarget.sectionId === sectionId &&
+      dropTarget.beforeId === null
+    );
+  }
 
   function submit() {
     const text = draft.trim();
@@ -138,16 +185,16 @@
 </script>
 
 {#snippet cardList(list: CardData[], laneId: string | null)}
-  {#each list as card (card.id)}
+  {#each list as card, i (card.id)}
     {@const typers = typingByCard.get(card.id) ?? []}
     <div
       class="relative has-[[role=menu]]:z-20 has-[[role=dialog]]:z-20"
       role="listitem"
-      ondragover={(e) => onSlotDragOver(e, card.id)}
+      ondragover={(e) => onCardDragOver(e, card, list[i + 1]?.id ?? null, laneId)}
       in:fly|global={{ y: 6, duration: reducedMotion ? 0 : 180, easing: cubicOut }}
       animate:flip={{ duration: reducedMotion ? 0 : 500, easing: cubicOut }}
     >
-      {#if dropBeforeId === card.id && dragCardId !== card.id}
+      {#if showsLineAbove(card.id, laneId) && dragCardId !== card.id}
         <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
       {/if}
       {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, userId })}
@@ -163,8 +210,7 @@
           {canVote}
           {anonymous}
           {namesMap}
-          mergeMode={mergeMode && dragCardId !== null && dragCardId !== card.id}
-          isMergeTarget={dragMergeTargetId === card.id}
+          isGroupTarget={dropTarget?.kind === 'card' && dropTarget.cardId === card.id}
           {canReorder}
           {onEdit}
           {onDelete}
@@ -177,9 +223,6 @@
           onFocusCard={() => onFocusCard(card.id)}
           {onDragStart}
           {onDragEnd}
-          onMergeDragOver={() => onMergeDragOver(card.id)}
-          onMergeDragLeave={() => onMergeDragLeave(card.id)}
-          onMergeDrop={() => onMergeDrop(card.id)}
         >
           {#snippet actions()}
             {#if canGroupHere}
@@ -204,6 +247,9 @@
       {/if}
     </div>
   {/each}
+  {#if showsLineAtEnd(laneId)}
+    <div class="h-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
+  {/if}
 {/snippet}
 
 <section
@@ -238,22 +284,33 @@
         <div
           role="list"
           aria-label={`Group: ${clusterDisplayName(lane.cluster)}, ${lane.count} ${lane.count === 1 ? 'card' : 'cards'}`}
-          class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 bg-white/50 dark:bg-slate-800/30 p-2 space-y-2"
+          class="rounded-lg border border-dashed bg-white/50 dark:bg-slate-800/30 p-2 space-y-2 transition-colors {dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700' : 'border-slate-300 dark:border-slate-600'}"
           data-testid="group-block"
+          ondragover={(e) => onGroupDragOver(e, lane.cluster.id)}
         >
           <ClusterHeader
             {lane}
             canEdit={canCluster}
+            {canMerge}
+            mergeInto={mergeTitle(lane)}
             onRename={(label) => clusterActions.rename(lane.cluster.id, label)}
             onDissolve={() => clusterActions.dissolve(lane.cluster.id)}
+            onMerge={() => clusterActions.merge(lane.cluster.id)}
           />
           {@render cardList(lane.cards[column.key], lane.cluster.id)}
         </div>
       </div>
     {/each}
     {@render cardList(cards, null)}
-    {#if dropBeforeId === null}
-      <div class="h-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
+    {#if dragCardId && dragCanGroup && dragIsGrouped}
+      <div
+        role="listitem"
+        class="rounded-lg border border-dashed border-slate-300 dark:border-slate-600 px-3 py-4 text-center text-xs text-slate-500 dark:text-slate-400"
+        data-testid="ungroup-zone"
+        ondragover={onLooseDragOver}
+      >
+        Drop here to leave the group
+      </div>
     {/if}
   </div>
   <footer class="p-3 border-t border-slate-200 dark:border-slate-700 bg-white/60 dark:bg-slate-800/40 rounded-b-xl">

@@ -202,10 +202,16 @@ test.describe('fast-retro problem-solving brainstorm', () => {
         }
       }
 
-      // 6. Group: the host merges the two buddy-system ideas into one card.
+      // 6. Group: dragging one buddy-system idea onto the other groups them. The
+      // host then merges the group into one card.
       const anaBuddy = ideas.ana[0][1];
       const benBuddy = ideas.ben[0][1];
       await card(host.page, PROBLEMS[0], benBuddy).dragTo(card(host.page, PROBLEMS[0], anaBuddy));
+      const buddies = column(ana.page, PROBLEMS[0]).getByRole('list', { name: /^Group: Untitled group, 2 cards/ });
+      await expect(buddies.getByRole('group', { name: `Card: ${anaBuddy}` })).toBeVisible({ timeout: 10_000 });
+      await expect(buddies.getByRole('group', { name: `Card: ${benBuddy}` })).toBeVisible();
+      await host.page.getByRole('button', { name: 'Merge Untitled group' }).click();
+      await host.page.getByRole('button', { name: 'Merge cards' }).click();
       const merged = column(ana.page, PROBLEMS[0]).getByRole('group', { name: /^Card: / });
       await expect(merged).toHaveCount(1, { timeout: 10_000 });
       await expect(merged).toContainText(anaBuddy);
