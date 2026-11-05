@@ -86,7 +86,7 @@ It refuses unless all four guards pass: `CONFIRM` matches, the build was QA'd, i
 
 Overrides, each needing Scott's explicit OK: `FORCE=1` (deploy with live participants; never allowed for `doc-model-change` releases), `SKIP_QA=1` (hotfix), `ALLOW_LOCAL_BUILD=1` (break-glass build).
 
-After verify passes, it creates a GitHub release `prod-<build id>`, tagged at the `origin/main` commit, with the binary and `BUILD_INFO.json` attached and the PRs merged since the previous prod release listed. It's marked Latest, so the repo's Releases list is the history of what went live. This step is best effort: prod is already live, so a failure only warns (`gh-release ... result=fail` in `release.log`). To redo it by hand, use `gh release create prod-<id> --target <main sha> ...` with the same assets. `NO_GH_RELEASE=1` skips it. QA and drills never create releases.
+After verify passes, it creates a GitHub release `prod-<build id>`, tagged at the `origin/main` commit, with the binary and `BUILD_INFO.json` attached and the PRs merged since the previous prod release listed. It's marked Latest, so the repo's Releases list is the history of what went live. Redeploying a build that already has a release (after a rollback, say) adds a "Redeployed" note to that release and marks it Latest instead of creating another. This step is best effort: prod is already live, so a failure only warns (`gh-release ... result=fail` in `release.log`). To redo it by hand, use `gh release create prod-<id> --target <main sha> ...` with the same assets. `NO_GH_RELEASE=1` skips it. QA and drills never create releases.
 
 Report back: prod URL, build id and sha, the restore-point path, the GitHub release URL, and the verify result.
 

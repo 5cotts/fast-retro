@@ -765,7 +765,21 @@ gh_release_publish() {
   sha="$(info_get "$dir" sha)"; src="$(info_get "$dir" source)"
   run_url="$(info_get "$dir" run_url || echo -)"
   if is_true "${DRY_RUN:-}"; then
-    log "DRY_RUN: gh release create ${tag} --target ${main_sha:0:7} (binary + BUILD_INFO)"
+    log "DRY_RUN: gh release create ${tag} --target ${main_sha:0:7} (binary + BUILD_INFO), or note a redeploy if it exists"
+    return 0
+  fi
+  # Same build live again (redeploy after a rollback): its release already
+  # exists with the same binary, so note the redeploy instead of creating one.
+  local body err
+  if body="$(gh release view "$tag" -R "$REPO_SLUG" --json body --jq .body 2>/dev/null)"; then
+    if err="$(gh release edit "$tag" -R "$REPO_SLUG" --latest \
+         --notes "> **Redeployed** at $(now_iso), replacing \`${from_sha:0:7}\`."$'\n\n'"$body" 2>&1 > /dev/null)"; then
+      log "GitHub release ${tag} already exists: noted the redeploy and marked it Latest"
+      audit gh-release "env=${env} build=${id} tag=${tag} action=redeploy result=ok"
+    else
+      warn "couldn't update GitHub release ${tag} ($(tail -1 <<< "$err" | redact)); prod is fine. Retry by hand, see docs/RELEASING.md"
+      audit gh-release "env=${env} build=${id} tag=${tag} action=redeploy result=fail"
+    fi
     return 0
   fi
   # shellcheck disable=SC2016  # backticks are Markdown, not command substitution
