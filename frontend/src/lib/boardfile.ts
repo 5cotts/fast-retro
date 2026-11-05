@@ -2,6 +2,7 @@ import type { CardData, CommentData } from './types';
 import { DEFAULT_COLUMNS, isActionsColumn, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
 import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
 import { cleanClusterLabel, type ClusterDef } from './clusters';
+import { sanitizePos, type BoardLayout } from './canvas';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -13,9 +14,11 @@ import { cleanClusterLabel, type ClusterDef } from './clusters';
 // columns are written as v2 (and v1 readers refuse them). Classic boards are
 // still written as v1, readable by every build. Version 3 adds `board.clusters`
 // (groups), which an older reader would silently drop, so only boards with
-// groups are written as v3. Optional, ignorable fields don't bump the version.
+// groups are written as v3. Version 4 adds `board.layout` and card `pos`, which
+// an older reader would silently turn back into columns, so only canvas boards
+// are written as v4. Optional, ignorable fields don't bump the version.
 export const BOARD_FILE_FORMAT = 'fast-retro';
-export const BOARD_FILE_VERSION = 3;
+export const BOARD_FILE_VERSION = 4;
 export const BOARD_FILE_EXTENSION = '.fastretro.json';
 
 export interface BoardFileCluster {
@@ -39,6 +42,8 @@ export interface BoardFile {
     columns?: ColumnDef[];
     // In creation order, and only groups that have cards. Absent when there are none.
     clusters?: BoardFileCluster[];
+    // Written only for canvas boards. Absent means columns.
+    layout?: 'canvas';
   };
   names?: Record<string, string>;
   cards: Record<string, CardData[]>;
@@ -55,6 +60,8 @@ export interface BoardFileSource {
   columns?: ColumnDef[];
   // Without this, cards export ungrouped.
   clusters?: ClusterDef[] | BoardFileCluster[];
+  // Without this, the file is a column board and cards lose their positions.
+  layout?: BoardLayout;
   cards: Record<string, CardData[]>;
   namesMap: Record<string, string>;
 }
@@ -80,7 +87,8 @@ function referencedUserIds(cards: Record<string, CardData[]>): Set<string> {
   return ids;
 }
 
-function fileVersion(custom: boolean, clusters: BoardFileCluster[]): number {
+function fileVersion(custom: boolean, clusters: BoardFileCluster[], layout: BoardLayout): number {
+  if (layout === 'canvas') return 4;
   if (clusters.length > 0) return 3;
   return custom ? 2 : 1;
 }
@@ -110,7 +118,8 @@ export function clustersInUse(
 function copyCards(
   cards: Record<string, CardData[]>,
   columns: ColumnDef[],
-  clusters: BoardFileCluster[]
+  clusters: BoardFileCluster[],
+  layout: BoardLayout
 ): Record<string, CardData[]> {
   const known = new Set(clusters.map((c) => c.id));
   const out: Record<string, CardData[]> = {};
@@ -126,7 +135,8 @@ function copyCards(
           .map(([emoji, users]) => [emoji, [...users]])
       ),
       comments: card.comments.map((c) => ({ ...c })),
-      ...(card.clusterId && known.has(card.clusterId) && !isActionsColumn(col) ? { clusterId: card.clusterId } : {})
+      ...(card.clusterId && known.has(card.clusterId) && !isActionsColumn(col) ? { clusterId: card.clusterId } : {}),
+      ...(card.pos && layout === 'canvas' ? { pos: { ...card.pos } } : {})
     }));
   }
   return out;
@@ -136,10 +146,11 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
   const columns = src.columns ?? DEFAULT_COLUMNS;
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
   const clusters = clustersInUse(src.clusters ?? [], src.cards, columns);
-  const cards = copyCards(src.cards, columns, clusters);
+  const layout = src.layout ?? 'columns';
+  const cards = copyCards(src.cards, columns, clusters, layout);
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: fileVersion(custom, clusters),
+    version: fileVersion(custom, clusters, layout),
     exportedAt: now,
     board: {
       label: src.label,
@@ -148,7 +159,8 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
       autoSort: src.autoSort,
       ...(src.hideCards ? { hideCards: true } : {}),
       ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {}),
-      ...(clusters.length ? { clusters } : {})
+      ...(clusters.length ? { clusters } : {}),
+      ...(layout === 'canvas' ? { layout } : {})
     },
     cards
   };
@@ -167,7 +179,7 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
 
 // The seed for a blank new board: no cards, Brainstorm, auto-sort on.
 export function newBoardSeed(
-  opts: { label: string; anonymous: boolean; hideCards?: boolean; columns?: ColumnDef[] },
+  opts: { label: string; anonymous: boolean; hideCards?: boolean; columns?: ColumnDef[]; layout?: BoardLayout },
   now = Date.now()
 ): BoardFile {
   return exportBoardFile(
@@ -178,6 +190,7 @@ export function newBoardSeed(
       autoSort: true,
       hideCards: opts.hideCards,
       columns: opts.columns ?? DEFAULT_COLUMNS,
+      layout: opts.layout,
       cards: {},
       namesMap: {}
     },
@@ -230,6 +243,7 @@ export interface ArchiveLike {
   hideCards?: boolean;
   columns?: unknown;
   clusters?: unknown;
+  layout?: unknown;
   endedAt: number;
 }
 
@@ -263,6 +277,7 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       hideCards: archive.hideCards === true,
       columns: sanitizeColumns(archive.columns) ?? DEFAULT_COLUMNS,
       clusters: sanitizeFileClusters(archive.clusters),
+      layout: archive.layout === 'canvas' ? 'canvas' : 'columns',
       cards: Object.fromEntries(
         Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
       ),
@@ -404,6 +419,9 @@ export function parseBoardFile(text: string): ParseResult {
     else warnings.push("The file's column list is invalid; using the standard retro columns.");
   }
   phase = clampPhase(phase, phasesFor(columns));
+  let layout: BoardLayout = 'columns';
+  if (rawBoard.layout === 'canvas') layout = 'canvas';
+  else if (rawBoard.layout !== undefined) warnings.push('Unknown layout; the board will use columns.');
 
   const declaredClusters = sanitizeFileClusters(rawBoard.clusters);
   const declaredIds = new Set(declaredClusters.map((c) => c.id));
@@ -460,6 +478,7 @@ export function parseBoardFile(text: string): ParseResult {
         if (declaredIds.has(rc.clusterId)) clusterId = rc.clusterId;
         else unknownClusterCards++;
       }
+      const pos = layout === 'canvas' ? sanitizePos(rc.pos) : null;
       cards[col.key].push({
         id: typeof rc.id === 'string' ? rc.id : '',
         text: rc.text,
@@ -467,7 +486,8 @@ export function parseBoardFile(text: string): ParseResult {
         votes: userIds(rc.votes),
         reactions,
         comments,
-        ...(clusterId ? { clusterId } : {})
+        ...(clusterId ? { clusterId } : {}),
+        ...(pos ? { pos } : {})
       });
     }
   }
@@ -480,7 +500,7 @@ export function parseBoardFile(text: string): ParseResult {
 
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
-    version: fileVersion(custom, clusters),
+    version: fileVersion(custom, clusters, layout),
     exportedAt,
     board: {
       label,
@@ -489,7 +509,8 @@ export function parseBoardFile(text: string): ParseResult {
       autoSort,
       ...(hideCards ? { hideCards } : {}),
       ...(custom ? { columns } : {}),
-      ...(clusters.length ? { clusters } : {})
+      ...(clusters.length ? { clusters } : {}),
+      ...(layout === 'canvas' ? { layout } : {})
     },
     cards
   };

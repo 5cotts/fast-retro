@@ -1,0 +1,100 @@
+{
+  "format": "fast-retro",
+  "version": 4,
+  "exportedAt": 1793800000000,
+  "board": {
+    "label": "Sprint 42 — canvas",
+    "anonymous": false,
+    "phase": "group",
+    "autoSort": true,
+    "columns": [
+      {
+        "key": "c-ok",
+        "title": "Went OK",
+        "color": "amber"
+      },
+      {
+        "key": "c-well",
+        "title": "Went well",
+        "color": "emerald"
+      },
+      {
+        "key": "actions",
+        "title": "Action items",
+        "color": "sky"
+      }
+    ],
+    "layout": "canvas"
+  },
+  "cards": {
+    "c-ok": [
+      {
+        "id": "k1",
+        "text": "Deploys are slower than they should be",
+        "authorId": "u_alice",
+        "votes": [
+          "u_bob"
+        ],
+        "reactions": {},
+        "comments": [],
+        "pos": {
+          "x": 640,
+          "y": 120.5,
+          "z": 2
+        }
+      },
+      {
+        "id": "k2",
+        "text": "Docs mostly kept up",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c-well": [
+      {
+        "id": "k3",
+        "text": "Deploys never paged anyone",
+        "authorId": "u_bob",
+        "votes": [],
+        "reactions": {
+          "🎉": [
+            "u_alice"
+          ]
+        },
+        "comments": [
+          {
+            "id": "m1",
+            "text": "Same here",
+            "authorId": "u_alice",
+            "createdAt": 1793799990000
+          }
+        ],
+        "pos": {
+          "x": 660,
+          "y": 150,
+          "z": 3
+        }
+      },
+      {
+        "id": "k4",
+        "text": "New hire shipped on day 3",
+        "authorId": "u_alice",
+        "votes": [],
+        "reactions": {},
+        "comments": [],
+        "pos": {
+          "x": -48,
+          "y": -300,
+          "z": 1
+        }
+      }
+    ],
+    "actions": []
+  },
+  "names": {
+    "u_alice": "Alice",
+    "u_bob": "Bob"
+  }
+}
