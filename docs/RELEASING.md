@@ -16,7 +16,7 @@ Approval for one deploy doesn't carry over to the next.
 
 - Any `make prod-deploy` or `make rollback`
 - `FORCE=1`, `SKIP_QA=1` or `ALLOW_LOCAL_BUILD=1`
-- `make qa-deploy SEED=prod`, which copies real user boards into QA
+- `make qa-deploy SEED=prod ALLOW_PUBLIC_SEED=1`, which copies real user boards onto public QA
 - `make release-build-local`
 - A manual DB restore
 
@@ -27,12 +27,14 @@ Approval for one deploy doesn't carry over to the next.
 | | QA | Prod |
 |---|---|---|
 | Service | `fast-retro-qa` (port 5103) | `fast-retro-prod` (port 5102) |
-| URL | https://fast-retro-qa-5cotts.zo.computer (**private**: Scott must be signed in to Zo) | https://fast-retro.scottschmidt.io |
+| URL | https://fast-retro-qa-5cotts.zocomputer.io (**public**: no sign-in, anyone with the URL can open it) | https://fast-retro.scottschmidt.io |
 | Runs | `fast-retro-releases/qa/fast-retro` (symlink into `builds/`) | `fast-retro-releases/prod/fast-retro` (symlink into `builds/`) |
 | DB | `fast-retro-releases/qa-data/fastretro-qa.db` (persistent) | `fast-retro/data/fastretro.db` |
 | Lead token | `fast-retro-releases/qa-lead.token` | Scott's notes |
 
 Google sign-in and GA4 are off on QA.
+
+QA is public because Zo's private `*.zo.computer` proxy doesn't complete WebSocket upgrades: pages load, but `/ws` gets a `400` and boards stay on "Connecting...". Unreleased builds are therefore reachable by anyone with the URL, and QA's DB holds only test boards. Keep real user data off it.
 
 `make release-status` shows what each environment runs, the retained builds and the last `release.log` lines. It's read-only and safe any time.
 
@@ -58,16 +60,16 @@ gh run list --commit <full sha> --workflow build.yml
    make qa-deploy BUILD=<id>        # a build already fetched
    ```
 
-   This fetches and verifies the CI build (waits up to 30 min if the run is still going), smokes it against a copy of prod's DB on :5197, points `qa` at it, restarts `fast-retro-qa`, and verifies it (local checks with the lead token, then 60 s of the same PID and no `WARN`/`ERROR`/panic in the new log output). On success it records the QA deploy in the build's `LOCAL_INFO` and in `release.log`. If verify fails, it puts QA back on the previous build and exits non-zero.
+   This fetches and verifies the CI build (waits up to 30 min if the run is still going), smokes it against a copy of prod's DB on :5197, points `qa` at it, restarts `fast-retro-qa`, and verifies it (local checks with the lead token, token-free checks on the public URL including a WebSocket upgrade, then 60 s of the same PID and no `WARN`/`ERROR`/panic in the new log output). On success it records the QA deploy in the build's `LOCAL_INFO` and in `release.log`. If verify fails, it puts QA back on the previous build and exits non-zero.
 3. Report back to Scott: the QA URL, the build id and sha, and the verify result. Scott clicks through QA.
 
 ### Fresh prod data on QA (`SEED=prod`, Scott's OK first)
 
 ```sh
-make qa-deploy BUILD=<id> SEED=prod
+make qa-deploy BUILD=<id> SEED=prod ALLOW_PUBLIC_SEED=1
 ```
 
-This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>` (kept), copies prod's DB in with SQLite's online backup (it only reads prod), runs `integrity_check`, then starts and verifies QA. This copies real user boards into QA, which is why it needs Scott's go-ahead.
+This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>` (kept), copies prod's DB in with SQLite's online backup (it only reads prod), runs `integrity_check`, then starts and verifies QA. This copies real user boards onto a public URL, so the script refuses without `ALLOW_PUBLIC_SEED=1`, and that needs Scott's go-ahead. Prefer testing on QA's own boards.
 
 ## Deploy to prod (Scott's go-ahead for every deploy)
 
