@@ -846,7 +846,10 @@
                     ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}"
                   aria-pressed={canvasView === v.id}
-                  onclick={() => (canvasView = v.id)}
+                  onclick={() => {
+                    if (v.id === 'list' && canvasView !== 'list') track({ name: 'canvas_view', params: { action: 'list' } });
+                    canvasView = v.id;
+                  }}
                 >
                   {v.name}
                 </button>

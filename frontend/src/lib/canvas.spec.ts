@@ -10,9 +10,11 @@ import {
   compareStack,
   fitToBounds,
   cardSlotHeight,
+  centerOn,
   gridSlots,
   nextZ,
   panToReveal,
+  rankByVotes,
   readLayout,
   sanitizePos,
   screenToWorld,
@@ -298,6 +300,33 @@ describe('panToReveal', () => {
   it('lines up with the top-left of a rect too big for the viewport', () => {
     const view = panToReveal({ panX: 0, panY: 0, zoom: 2 }, { ...rect, y: 1000, height: 500 }, viewport);
     expect(worldToScreen(view, { x: 0, y: 1000 }).y).toBe(16);
+  });
+});
+
+describe('centerOn', () => {
+  it('puts the middle of the rect in the middle of the viewport, at any zoom', () => {
+    const rect = { x: 900, y: -300, width: 260, height: 190 };
+    const viewport = { width: 800, height: 600 };
+    for (const zoom of [0.5, 1, 1.75]) {
+      const view = centerOn({ panX: 11, panY: 22, zoom }, rect, viewport);
+      expect(view.zoom).toBe(zoom);
+      expect(worldToScreen(view, { x: 900 + 130, y: -300 + 95 })).toEqual({ x: 400, y: 300 });
+    }
+  });
+});
+
+describe('rankByVotes', () => {
+  const card = (id: string, votes: number) => ({ id, votes: Array.from({ length: votes }, (_, i) => `u${i}`) });
+
+  it('leaves out cards with no votes and puts the most votes first', () => {
+    const ranked = rankByVotes([card('a', 1), card('b', 0), card('c', 3)]);
+    expect(ranked.map((c) => c.id)).toEqual(['c', 'a']);
+  });
+
+  it('keeps the given order for a tie, and leaves its input alone', () => {
+    const cards = [card('a', 2), card('b', 2), card('c', 2)];
+    expect(rankByVotes(cards).map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(cards.map((c) => c.id)).toEqual(['a', 'b', 'c']);
   });
 });
 
