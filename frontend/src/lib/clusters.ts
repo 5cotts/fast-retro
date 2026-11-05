@@ -245,3 +245,17 @@ export function sameDropTarget(a: DropTarget | null, b: DropTarget | null): bool
   if (a.kind === 'group') return b.kind === 'group' && a.column === b.column && a.clusterId === b.clusterId;
   return b.kind === 'slot' && a.column === b.column && a.beforeId === b.beforeId && a.sectionId === b.sectionId;
 }
+
+// Row plan for the aligned layout. Every column shares these rows through CSS
+// subgrid: the header, then for each lane a title row and a row of cells, then
+// the loose cards, which take any spare height, then the composer.
+export function alignedRows(laneCount: number) {
+  return {
+    total: 3 + 2 * laneCount,
+    titleRow: (lane: number) => 2 + 2 * lane,
+    cellRow: (lane: number) => 3 + 2 * lane,
+    looseRow: 2 + 2 * laneCount,
+    footerRow: 3 + 2 * laneCount,
+    template: `auto ${laneCount > 0 ? `repeat(${2 * laneCount}, auto) ` : ''}1fr auto`
+  };
+}

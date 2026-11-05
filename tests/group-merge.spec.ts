@@ -88,7 +88,7 @@ test.describe('fast-retro group-phase merge', () => {
       // Source card should be gone — only one card left in the column.
       await expect(column.getByRole('group', { name: /^Card: / })).toHaveCount(1, { timeout: 10_000 });
       // The survivor is an ordinary card again.
-      await expect(leadPage.getByTestId('group-block')).toHaveCount(0);
+      await expect(leadPage.getByTestId('group-row')).toHaveCount(0);
     } finally {
       await leadCtx.close();
     }

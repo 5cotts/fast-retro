@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { cardFromY, cardToY } from './cardcodec';
 import {
+  alignedRows,
   canEditClusters,
   clustersVisible,
   layoutBoard,
@@ -316,6 +317,17 @@ describe('planDrop', () => {
     expect(planDrop(src('a', 'g'), slot('a', null), false)).toEqual({ kind: 'reorder', column: 'a', beforeId: 'x' });
     expect(planDrop(src('a'), onCard('a'), false)).toEqual({ kind: 'none' });
     expect(planDrop(src('a'), { kind: 'group', column: 'a', clusterId: 'g' }, false)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('alignedRows', () => {
+  it('gives each lane a title row and a cell row between the header and the loose cards', () => {
+    const rows = alignedRows(2);
+    expect([rows.titleRow(0), rows.cellRow(0), rows.titleRow(1), rows.cellRow(1)]).toEqual([2, 3, 4, 5]);
+    expect(rows.looseRow).toBe(6);
+    expect(rows.footerRow).toBe(7);
+    expect(rows.total).toBe(7);
+    expect(rows.template).toBe('auto repeat(4, auto) 1fr auto');
   });
 });
 
