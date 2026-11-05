@@ -249,8 +249,17 @@ Shift+Up/Down within a section. Group names hidden when going back to Brainstorm
 Voter counts and sorted groups in Discuss. Export, CSV, re-import, ending and the
 archive viewer.
 
-`canvas.spec.ts` — canvas boards, imported from a v4 file (two browsers, `page.mouse`
-drives real pointer events). A drag shows live for the other person and saves on
+`canvas-authoring.spec.ts` — making and running a canvas board (mostly two browsers).
+The Canvas choice in Start a new retro. The composer adds under the chosen prompt, and
+pans there if that's off screen. A double-click places a card; Escape or an empty draft
+leaves nothing. No prompts makes a Notes prompt. A long card leaves room for the next.
+The view re-fits as the canvas changes size until someone moves it. Hide-cards. Action
+items are docked, not placed, through the end and into the next retro. List view has
+voting, adding and no dragging, and keeps positions. A phone starts there. A host gets
+prompts instead of columns, no auto-sort, and inline rename, and Discuss doesn't re-sort.
+
+`canvas.spec.ts` — moving things on a canvas board, imported from a v4 file (two
+browsers, `page.mouse` drives real pointer events). A drag shows live for the other person and saves on
 drop. Pan and zoom stay local, a drop while zoomed out lands in the right place, and
 Fit shows every card. A card dropped on a card overlaps it and never merges. A card
 keeps its prompt color. A tiny movement or a press on a button doesn't drag. Shift +

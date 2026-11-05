@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { test, expect, type Browser, type Locator, type Page } from '@playwright/test';
 
 /**
- * Canvas boards (frontend/src/lib/CanvasSurface.svelte). There's no "Canvas"
- * option yet, so every board here comes from importing a v4 file. page.mouse
- * drives real pointer events; a card's style.transform is its world position,
- * which is the same for everyone regardless of pan and zoom.
+ * Moving things on a canvas board (frontend/src/lib/CanvasSurface.svelte). Each
+ * board here comes from importing a v4 file, to set up exact positions.
+ * page.mouse drives real pointer events; a card's style.transform is its world
+ * position, which is the same for everyone regardless of pan and zoom.
  */
 const VIEWPORT = { width: 1400, height: 900 };
 
