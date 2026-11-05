@@ -7,6 +7,7 @@ import {
   MAX_INPUT_COLUMNS,
   columnEmptyHint,
   isActionsColumn,
+  newCanvasColumns,
   newCustomColumns,
   readColumns,
   sanitizeColumns,
@@ -141,5 +142,17 @@ describe('phases', () => {
     expect(clampPhase('actions', phasesFor(noActions))).toBe('discuss');
     expect(clampPhase('actions', phasesFor(DEFAULT_COLUMNS))).toBe('actions');
     expect(clampPhase('vote', phasesFor(noActions))).toBe('vote');
+  });
+});
+
+describe('newCanvasColumns', () => {
+  it('makes a Notes prompt when none are named, so the board stays a canvas of one prompt', () => {
+    const columns = newCanvasColumns(['', '  '], { actionItems: false });
+    expect(columns.map((c) => c.title)).toEqual(['Notes']);
+  });
+
+  it('keeps the named prompts and the Action items choice', () => {
+    expect(newCanvasColumns(['Went OK', 'Went well']).map((c) => c.title)).toEqual(['Went OK', 'Went well', 'Action items']);
+    expect(newCanvasColumns(['Went OK'], { actionItems: false }).some(isActionsColumn)).toBe(false);
   });
 });

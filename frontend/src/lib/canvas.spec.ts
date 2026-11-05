@@ -9,16 +9,19 @@ import {
   boundsOf,
   compareStack,
   fitToBounds,
-  gridPosition,
+  cardSlotHeight,
+  gridSlots,
   nextZ,
+  panToReveal,
   readLayout,
   sanitizePos,
   screenToWorld,
   worldToScreen,
   zoomAt
 } from './canvas';
-import { addComment, applyBoardEdit, moveCard, readCards, setCardPos, toggleVote } from './yboard';
+import { addCard, addComment, applyBoardEdit, moveCard, readCards, setCardPos, toggleVote } from './yboard';
 import { cardToY } from './cardcodec';
+import { phaseHint } from './phase';
 import { readColumns } from './columns';
 import type { CardData } from './types';
 
@@ -46,17 +49,23 @@ describe('sanitizePos', () => {
 
 describe('starting grid', () => {
   it('stacks a column under its heading and keeps columns apart', () => {
-    expect(gridPosition(0, 1).x).toBe(gridPosition(0, 0).x);
-    expect(gridPosition(0, 1).y - gridPosition(0, 0).y).toBe(CARD_SLOT_HEIGHT);
-    expect(gridPosition(1, 0).x).toBeGreaterThan(gridPosition(0, 0).x);
+    const [first, second] = gridSlots(0, [CARD_SLOT_HEIGHT, CARD_SLOT_HEIGHT]);
+    expect(second.x).toBe(first.x);
+    expect(second.y - first.y).toBe(CARD_SLOT_HEIGHT);
+    expect(gridSlots(1, [])[0].x).toBeGreaterThan(first.x);
   });
 
-  it('depends only on the slot, so moving one card leaves a gap and no one else moves', () => {
-    const slots = ['a', 'b', 'c'];
-    const before = slots.map((_, i) => gridPosition(0, i));
-    const after = slots.map((id, i) => (id === 'b' ? null : gridPosition(0, i)));
-    expect(after[0]).toEqual(before[0]);
-    expect(after[2]).toEqual(before[2]);
+  it('ends with the next free slot', () => {
+    const slots = gridSlots(0, [200, 300]);
+    expect(slots).toHaveLength(3);
+    expect(slots[2].y - slots[0].y).toBe(500);
+  });
+
+  it('leaves room for a long card, and treats short ones alike', () => {
+    expect(cardSlotHeight('short')).toBe(CARD_SLOT_HEIGHT);
+    expect(cardSlotHeight('a line that wraps once')).toBe(CARD_SLOT_HEIGHT);
+    expect(cardSlotHeight('x'.repeat(260))).toBeGreaterThan(CARD_SLOT_HEIGHT + 100);
+    expect(cardSlotHeight('1\n2\n3\n4\n5\n6')).toBeGreaterThan(CARD_SLOT_HEIGHT);
   });
 });
 
@@ -261,5 +270,55 @@ describe('positions in the doc', () => {
     expect(readLayout(meta)).toBe('columns');
     meta.set('layout', 'canvas');
     expect(readLayout(meta)).toBe('canvas');
+  });
+});
+
+describe('panToReveal', () => {
+  const viewport = { width: 800, height: 600 };
+  const rect = { x: 0, y: 0, width: 260, height: 190 };
+
+  it('leaves the view alone when the rect is already on screen', () => {
+    const view = { panX: 100, panY: 100, zoom: 1 };
+    expect(panToReveal(view, rect, viewport)).toEqual(view);
+  });
+
+  it('pans the least it can, from any side', () => {
+    expect(panToReveal({ panX: 0, panY: 0, zoom: 1 }, { ...rect, y: 1000 }, viewport).panY).toBe(600 - 16 - 1190);
+    expect(panToReveal({ panX: 0, panY: 0, zoom: 1 }, { ...rect, x: 2000 }, viewport).panX).toBe(800 - 16 - 2260);
+    expect(panToReveal({ panX: 500, panY: 500, zoom: 1 }, rect, viewport)).toMatchObject({ panX: 500, panY: 394 });
+    expect(panToReveal({ panX: -500, panY: 100, zoom: 1 }, rect, viewport)).toMatchObject({ panX: 16, panY: 100 });
+  });
+
+  it('works in screen pixels at any zoom, and keeps the zoom', () => {
+    const view = panToReveal({ panX: 0, panY: 0, zoom: 0.5 }, { ...rect, y: 2000 }, viewport);
+    expect(view.zoom).toBe(0.5);
+    expect(worldToScreen(view, { x: 0, y: 2000 + 190 }).y).toBe(600 - 16);
+  });
+
+  it('lines up with the top-left of a rect too big for the viewport', () => {
+    const view = panToReveal({ panX: 0, panY: 0, zoom: 2 }, { ...rect, y: 1000, height: 500 }, viewport);
+    expect(worldToScreen(view, { x: 0, y: 1000 }).y).toBe(16);
+  });
+});
+
+describe('addCard on a canvas', () => {
+  it('stores a position when given one, and none otherwise', () => {
+    const doc = new Y.Doc();
+    const board = doc.getMap<Y.Array<Y.Map<unknown>>>('board');
+    board.set('ok', new Y.Array<Y.Map<unknown>>());
+    addCard(board, 'ok', 'placed', 'u', { x: 40, y: 50, z: 3 });
+    addCard(board, 'ok', 'slotted', 'u');
+    const cards = readCards(board, 'ok');
+    expect(cards[0].pos).toEqual({ x: 40, y: 50, z: 3 });
+    expect(cards[1]).not.toHaveProperty('pos');
+  });
+});
+
+describe('phaseHint', () => {
+  it('tells each view what it can do', () => {
+    expect(phaseHint('group', 'columns')).toMatch(/onto another/);
+    expect(phaseHint('group', 'canvas')).toMatch(/near each other/);
+    expect(phaseHint('group', 'list')).toMatch(/Switch to Canvas/);
+    expect(phaseHint('vote', 'list')).toBe(phaseHint('vote', 'columns'));
   });
 });

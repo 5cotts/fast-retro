@@ -21,12 +21,18 @@ export const PHASE_HINT: Record<Phase, string> = {
 };
 
 const CANVAS_PHASE_HINT: Partial<Record<Phase, string>> = {
-  brainstorm: 'Add cards under each prompt.',
+  brainstorm: 'Add cards below, or double-click the canvas to place one.',
   group: 'Drag cards near each other to cluster them. Each card keeps its prompt color.'
 };
 
-export function phaseHint(phase: Phase, layout: 'columns' | 'canvas'): string {
-  return (layout === 'canvas' ? CANVAS_PHASE_HINT[phase] : undefined) ?? PHASE_HINT[phase];
+// List view shows a canvas board's cards in columns, where they can't be moved.
+const LIST_PHASE_HINT: Partial<Record<Phase, string>> = {
+  group: 'Switch to Canvas to arrange the cards.'
+};
+
+export function phaseHint(phase: Phase, view: 'columns' | 'canvas' | 'list'): string {
+  const special = view === 'canvas' ? CANVAS_PHASE_HINT : view === 'list' ? LIST_PHASE_HINT : {};
+  return special[phase] ?? PHASE_HINT[phase];
 }
 
 export function readPhase(phaseMap: Y.Map<unknown>): Phase {

@@ -232,19 +232,21 @@ export function applyBoardEdit(
   return { ...diff, settingsChanged };
 }
 
-function makeCard(text: string, authorId: string): Y.Map<unknown> {
-  return cardToY({ id: newId(), text, authorId, votes: [], reactions: {}, comments: [] });
+function makeCard(text: string, authorId: string, pos?: CardPos): Y.Map<unknown> {
+  return cardToY({ id: newId(), text, authorId, votes: [], reactions: {}, comments: [], ...(pos ? { pos } : {}) });
 }
 
 export function addCard(
   board: Y.Map<Y.Array<Y.Map<unknown>>>,
   column: string,
   text: string,
-  authorId: string
+  authorId: string,
+  // Only a card placed on a canvas has one; others start in their grid slot.
+  pos?: CardPos
 ) {
   const arr = board.get(column);
   if (!arr) return;
-  arr.push([makeCard(text, authorId)]);
+  arr.push([makeCard(text, authorId, pos)]);
 }
 
 export function resetBoard(

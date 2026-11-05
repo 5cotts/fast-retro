@@ -2,17 +2,24 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import { Maximize, Minus, Plus } from 'lucide-svelte';
   import CanvasCard from './CanvasCard.svelte';
+  import CanvasComposer from './CanvasComposer.svelte';
+  import CanvasDock from './CanvasDock.svelte';
+  import CanvasDraftCard from './CanvasDraftCard.svelte';
+  import EditableHeading from './EditableHeading.svelte';
   import {
     CARD_SLOT_HEIGHT,
     CARD_WIDTH,
     DEFAULT_VIEW,
     HEADING_HEIGHT,
+    MIN_FIT_SLOTS,
     boundsOf,
+    cardSlotHeight,
     compareStack,
     fitToBounds,
-    gridPosition,
+    gridSlots,
     headingPosition,
     nextZ,
+    panToReveal,
     sanitizePos,
     screenToWorld,
     zoomAt,
@@ -22,8 +29,8 @@
   } from './canvas';
   import { DRAG_FRAME_MS, DRAG_HEARTBEAT_MS, LiveMoves, parseDragFrame } from './canvasLive';
   import { setCardPos } from './yboard';
-  import { COLUMN_STYLE, type ColumnDef } from './columns';
-  import { canVoteInPhase } from './phase';
+  import { COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, isActionsColumn, type ColumnDef } from './columns';
+  import { canAddCardInColumn, canVoteInPhase } from './phase';
   import { isCardHidden } from './visibility';
   import type { CardActions } from './cardActions';
   import type { CardData } from './types';
@@ -42,9 +49,24 @@
     isLead: boolean;
     namesMap: Record<string, string>;
     typingByCard: Map<string, string[]>;
+    reducedMotion: boolean;
+    coarsePointer: boolean;
+    onRenameColumn: (key: string, title: string) => void;
   }
 
-  let { board, cardActions, ended, userId, userName, isLead, namesMap, typingByCard }: Props = $props();
+  let {
+    board,
+    cardActions,
+    ended,
+    userId,
+    userName,
+    isLead,
+    namesMap,
+    typingByCard,
+    reducedMotion,
+    coarsePointer,
+    onRenameColumn
+  }: Props = $props();
 
   interface Placed {
     card: CardData;
@@ -52,6 +74,7 @@
     x: number;
     y: number;
     z: number;
+    height: number;
     hidden: boolean;
   }
 
@@ -76,31 +99,42 @@
 
   const canVote = $derived(canVoteInPhase(board.phase));
 
-  const placed = $derived.by(() => {
-    const out: Placed[] = [];
+  // Action items never sit on the canvas: they're docked beside it.
+  const prompts = $derived(board.columns.filter((c) => !isActionsColumn(c)));
+  const actionsColumn = $derived(board.columns.find(isActionsColumn) ?? null);
+  const actionCards = $derived(actionsColumn ? (board.cards[actionsColumn.key] ?? []) : []);
+  // Hidden until it's useful, unless carried-over items are waiting in it.
+  const showDock = $derived(
+    actionsColumn !== null && (board.phase === 'actions' || ended || actionCards.length > 0)
+  );
+
+  const canAdd = $derived(!ended && prompts.length > 0 && canAddCardInColumn(prompts[0], board.phase));
+  let selectedPrompt = $state<string | null>(null);
+  // The selection falls back if the host removes that prompt.
+  const activePrompt = $derived(prompts.find((p) => p.key === selectedPrompt) ?? prompts[0]);
+
+  const grid = $derived.by(() => {
+    const cards: Placed[] = [];
+    const nextSlot = new Map<string, Point>();
     const seen = new Set<string>();
-    board.columns.forEach((column, columnIndex) => {
-      (board.cards[column.key] ?? []).forEach((card, slot) => {
+    const rules = { hideCards: board.settings.hideCards, phase: board.phase, ended, userId };
+    prompts.forEach((column, columnIndex) => {
+      const list = board.cards[column.key] ?? [];
+      const hidden = list.map((card) => isCardHidden(card, column, rules));
+      // A placeholder's height mustn't give away how long the card is.
+      const heights = list.map((card, i) => (hidden[i] ? CARD_SLOT_HEIGHT : cardSlotHeight(card.text)));
+      const slots = gridSlots(columnIndex, heights);
+      nextSlot.set(column.key, slots[list.length]);
+      list.forEach((card, i) => {
         if (seen.has(card.id)) return;
         seen.add(card.id);
-        const at = card.pos ?? gridPosition(columnIndex, slot);
-        out.push({
-          card,
-          column,
-          x: at.x,
-          y: at.y,
-          z: card.pos?.z ?? 0,
-          hidden: isCardHidden(card, column, {
-            hideCards: board.settings.hideCards,
-            phase: board.phase,
-            ended,
-            userId
-          })
-        });
+        const at = card.pos ?? slots[i];
+        cards.push({ card, column, x: at.x, y: at.y, z: card.pos?.z ?? 0, height: heights[i], hidden: hidden[i] });
       });
     });
-    return out;
+    return { cards, nextSlot };
   });
+  const placed = $derived(grid.cards);
 
   const rankOf = $derived.by(() => {
     const order = placed.map((p) => ({ id: p.card.id, z: p.z })).sort(compareStack);
@@ -113,10 +147,25 @@
 
   function fit() {
     const rects: Rect[] = [
-      ...board.columns.map((_, i) => ({ ...headingPosition(i), width: CARD_WIDTH, height: HEADING_HEIGHT })),
-      ...placed.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: CARD_SLOT_HEIGHT }))
+      ...prompts.map((_, i) => ({
+        ...headingPosition(i),
+        width: CARD_WIDTH,
+        height: HEADING_HEIGHT + MIN_FIT_SLOTS * CARD_SLOT_HEIGHT
+      })),
+      ...placed.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height }))
     ];
     view = fitToBounds(boundsOf(rects), viewportSize());
+    followsFit = true;
+  }
+
+  // Keeps the whole board showing as the viewport changes size (the dock opening,
+  // the composer closing, a window resize), until this person moves the view.
+  let followsFit = true;
+
+  // The view after anything but Fit: pan, zoom, or a pan to reveal a card.
+  function moveView(next: View) {
+    view = next;
+    followsFit = false;
   }
 
   // Everyone's view starts by showing the whole board, once it has loaded.
@@ -129,12 +178,54 @@
 
   function zoomBy(factor: number) {
     const size = viewportSize();
-    view = zoomAt(view, { x: size.width / 2, y: size.height / 2 }, view.zoom * factor);
+    moveView(zoomAt(view, { x: size.width / 2, y: size.height / 2 }, view.zoom * factor));
   }
 
   function pointIn(e: { clientX: number; clientY: number }): Point {
     const rect = viewportEl?.getBoundingClientRect();
     return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+  }
+
+  // From the composer: the card takes the next slot under its heading, so pan
+  // there if that's off screen.
+  function addFromComposer(column: string, text: string) {
+    const slot = grid.nextSlot.get(column);
+    cardActions.add(column, text);
+    if (!slot) return;
+    const rect = { ...slot, width: CARD_WIDTH, height: cardSlotHeight(text) };
+    const next = panToReveal(view, rect, viewportSize());
+    if (next.panX !== view.panX || next.panY !== view.panY) moveView(next);
+  }
+
+  // A card being written where someone double-clicked.
+  let draftAt = $state<Point | null>(null);
+
+  $effect(() => {
+    if (!canAdd && draftAt) cancelDraft();
+  });
+
+  function onDoubleClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (!canAdd || target.closest(INTERACTIVE) || target.closest('[data-canvas-card]')) return;
+    const world = screenToWorld(view, pointIn(e));
+    // Under the pointer, with the card's top edge just above it.
+    const clean = sanitizePos({ x: world.x - CARD_WIDTH / 2, y: world.y - 20 });
+    if (!clean) return;
+    draftAt = { x: clean.x, y: clean.y };
+    if (activePrompt) cardActions.setTyping(`new-${activePrompt.key}`);
+  }
+
+  function commitDraft(text: string) {
+    const at = draftAt;
+    draftAt = null;
+    cardActions.setTyping(null);
+    if (!at || !activePrompt) return;
+    cardActions.add(activePrompt.key, text, { ...at, z: nextZ(placed.map((p) => p.card.pos)) });
+  }
+
+  function cancelDraft() {
+    draftAt = null;
+    cardActions.setTyping(null);
   }
 
   function placedById(cardId: string): Placed | undefined {
@@ -270,17 +361,17 @@
     const here = pointIn(e);
     pointers.set(e.pointerId, here);
     if (gesture.kind === 'pan' && gesture.pointerId === e.pointerId) {
-      view = { ...view, panX: view.panX + here.x - gesture.last.x, panY: view.panY + here.y - gesture.last.y };
+      moveView({ ...view, panX: view.panX + here.x - gesture.last.x, panY: view.panY + here.y - gesture.last.y });
       gesture.last = here;
     } else if (gesture.kind === 'pinch') {
       const metrics = pinchMetrics();
       if (!metrics) return;
       const zoomed = zoomAt(view, metrics.mid, (view.zoom * metrics.distance) / gesture.distance);
-      view = {
+      moveView({
         ...zoomed,
         panX: zoomed.panX + metrics.mid.x - gesture.mid.x,
         panY: zoomed.panY + metrics.mid.y - gesture.mid.y
-      };
+      });
       gesture.distance = metrics.distance;
       gesture.mid = metrics.mid;
     } else if (gesture.kind === 'card' && gesture.pointerId === e.pointerId) {
@@ -349,9 +440,9 @@
     const unit = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? WHEEL_LINE_PX : 1;
     if (zooming) {
       const delta = Math.max(-MAX_WHEEL_ZOOM_DELTA, Math.min(MAX_WHEEL_ZOOM_DELTA, e.deltaY * unit));
-      view = zoomAt(view, pointIn(e), view.zoom * Math.exp(-delta * WHEEL_ZOOM_SPEED));
+      moveView(zoomAt(view, pointIn(e), view.zoom * Math.exp(-delta * WHEEL_ZOOM_SPEED)));
     } else {
-      view = { ...view, panX: view.panX - e.deltaX * unit, panY: view.panY - e.deltaY * unit };
+      moveView({ ...view, panX: view.panX - e.deltaX * unit, panY: view.panY - e.deltaY * unit });
     }
     gesturing = true;
     if (wheelEndHandle !== null) clearTimeout(wheelEndHandle);
@@ -394,7 +485,7 @@
     else if (box.right > port.right) dx = port.right - box.right - margin;
     if (box.top < port.top) dy = port.top - box.top + margin;
     else if (box.bottom > port.bottom && box.height < port.height) dy = port.bottom - box.bottom - margin;
-    if (dx || dy) view = { ...view, panX: view.panX + dx, panY: view.panY + dy };
+    if (dx || dy) moveView({ ...view, panX: view.panX + dx, panY: view.panY + dy });
   }
 
   function onFocusOut(e: FocusEvent) {
@@ -428,7 +519,12 @@
     window.addEventListener('pointercancel', onPointerEnd);
     // Stopping the browser's own zoom needs a non-passive listener.
     viewportEl?.addEventListener('wheel', onWheel, { passive: false });
+    const resizes = new ResizeObserver(() => {
+      if (fitted && followsFit) fit();
+    });
+    if (viewportEl) resizes.observe(viewportEl);
     return () => {
+      resizes.disconnect();
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerEnd);
       window.removeEventListener('pointercancel', onPointerEnd);
@@ -443,7 +539,9 @@
   });
 </script>
 
-<main class="relative flex-1 min-h-0 w-full">
+<main class="flex-1 min-h-0 w-full flex flex-col">
+  <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+  <div class="relative flex-1 min-h-0 min-w-0">
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div
     bind:this={viewportEl}
@@ -452,6 +550,7 @@
     aria-label="Board canvas"
     data-testid="board-canvas"
     onpointerdown={onPointerDown}
+    ondblclick={onDoubleClick}
     onscroll={onViewportScroll}
     onfocusin={onFocusIn}
     onfocusout={onFocusOut}
@@ -463,10 +562,10 @@
       style:will-change={gesturing ? 'transform' : undefined}
       data-testid="canvas-world"
     >
-      {#each board.columns as column, i (column.key)}
+      {#each prompts as column, i (column.key)}
         {@const at = headingPosition(i)}
-        <h2
-          class="absolute flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400 pointer-events-none"
+        <div
+          class="absolute flex items-center gap-2 text-sm font-semibold text-slate-500 dark:text-slate-400"
           style:width="{CARD_WIDTH}px"
           style:height="{HEADING_HEIGHT}px"
           style:left="{at.x}px"
@@ -474,8 +573,16 @@
           data-testid="canvas-heading"
         >
           <span class="size-2.5 rounded-full shrink-0 {COLUMN_STYLE[column.color].dot}" aria-hidden="true"></span>
-          <span class="truncate">{column.title}</span>
-        </h2>
+          <EditableHeading
+            title={column.title}
+            canEdit={isLead && !ended}
+            onRename={(t) => onRenameColumn(column.key, t)}
+            inputLabel="Prompt name"
+            hint="Click to rename this prompt"
+            maxLength={MAX_COLUMN_TITLE_LEN}
+            headingClass="truncate min-w-0 text-sm font-semibold text-slate-500 dark:text-slate-400"
+          />
+        </div>
       {/each}
       {#each placed as p (p.card.id)}
         <CanvasCard
@@ -497,6 +604,9 @@
           typers={typingByCard.get(p.card.id) ?? []}
         />
       {/each}
+      {#if draftAt && activePrompt}
+        <CanvasDraftCard at={draftAt} column={activePrompt} onCommit={commitDraft} onCancel={cancelDraft} />
+      {/if}
     </div>
   </div>
 
@@ -516,6 +626,40 @@
       <Maximize size={14} aria-hidden="true" /> Fit
     </button>
   </div>
+  </div>
+
+  {#if showDock && actionsColumn}
+    <CanvasDock
+      column={actionsColumn}
+      cards={actionCards}
+      phase={board.phase}
+      {ended}
+      {userId}
+      {userName}
+      {isLead}
+      anonymous={board.settings.anonymous}
+      hideCards={board.settings.hideCards}
+      {namesMap}
+      {typingByCard}
+      {reducedMotion}
+      {coarsePointer}
+      {cardActions}
+      onRename={(t) => actionsColumn && onRenameColumn(actionsColumn.key, t)}
+    />
+  {/if}
+  </div>
+
+  {#if canAdd && activePrompt}
+    <CanvasComposer
+      {prompts}
+      activeKey={activePrompt.key}
+      typers={typingByCard.get(`new-${activePrompt.key}`) ?? []}
+      {coarsePointer}
+      onSelect={(key) => (selectedPrompt = key)}
+      onAdd={addFromComposer}
+      onTyping={cardActions.setTyping}
+    />
+  {/if}
 </main>
 
 <style>

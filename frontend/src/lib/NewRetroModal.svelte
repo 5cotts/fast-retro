@@ -13,7 +13,7 @@
     parseBoardFile,
     type ParseResult
   } from './boardfile';
-  import { BOARD_TEMPLATES, isActionsColumn, newCustomColumns, type BoardTemplateId } from './columns';
+  import { BOARD_TEMPLATES, isActionsColumn, newCanvasColumns, newCustomColumns, type BoardTemplateId } from './columns';
   import type { PendingSeed } from './yboard';
 
   let {
@@ -118,7 +118,12 @@
   const previewSlug = $derived(slugifyLabel(labelInput) || '— random —');
 
   function newSeed(label: string): PendingSeed {
-    const columns = template === 'custom' ? newCustomColumns(customTitles, { actionItems }) : undefined;
+    const columns =
+      template === 'custom'
+        ? newCustomColumns(customTitles, { actionItems })
+        : template === 'canvas'
+          ? newCanvasColumns(customTitles, { actionItems })
+          : undefined;
     track({
       name: 'board_create',
       params: {
@@ -127,7 +132,8 @@
         action_items: columns ? columns.some(isActionsColumn) : true
       }
     });
-    return { file: newBoardSeed({ label, anonymous: true, hideCards, columns }), origin: { kind: 'new' } };
+    const layout = template === 'canvas' ? 'canvas' : undefined;
+    return { file: newBoardSeed({ label, anonymous: true, hideCards, columns, layout }), origin: { kind: 'new' } };
   }
 
   function submit(e?: SubmitEvent) {
@@ -237,8 +243,8 @@
 
       {#if !importing}
         <fieldset class="mt-4">
-          <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">Columns</legend>
-          <div class="mt-1 inline-flex rounded-md border border-slate-300 dark:border-slate-600 p-0.5 text-sm" role="radiogroup" aria-label="Columns">
+          <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">Board type</legend>
+          <div class="mt-1 inline-flex rounded-md border border-slate-300 dark:border-slate-600 p-0.5 text-sm" role="radiogroup" aria-label="Board type">
             {#each BOARD_TEMPLATES as t (t.id)}
               <label
                 class="px-3 py-1.5 rounded cursor-pointer select-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-400 {template === t.id
@@ -252,6 +258,9 @@
           </div>
           {#if template === 'retro'}
             <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">What went well · What to improve · Action items</p>
+          {:else if template === 'canvas'}
+            <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Place cards anywhere: how close they sit is the grouping. Each card keeps its prompt's color.</p>
+            <ColumnEditor bind:rows={columnRows} bind:actionItems idPrefix="new-retro-column" noun="prompt" />
           {:else}
             <ColumnEditor bind:rows={columnRows} bind:actionItems idPrefix="new-retro-column" />
             {#if needsColumns}

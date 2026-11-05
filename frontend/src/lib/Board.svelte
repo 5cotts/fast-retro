@@ -57,7 +57,7 @@
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
   import { useBoardConnection } from './useBoardConnection.svelte';
-  import { setBoardSetting, type BoardSettingKey } from './settings';
+  import { setBoardSetting, settingsFor, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
   import type { CardActions } from './cardActions';
   import type { CardData } from './types';
@@ -104,6 +104,10 @@
 
   const conn = useBoardConnection();
   const isCanvas = $derived(conn.state.layout === 'canvas');
+  // How this person views a canvas board. A free-form board is hard to use on
+  // a phone, so phones start in the list.
+  let canvasView = $state<'canvas' | 'list'>('canvas');
+  const showCanvas = $derived(isCanvas && canvasView === 'canvas');
 
   let themePref = $state<ThemePref>('auto');
   let systemDark = $state<boolean>(false);
@@ -193,6 +197,7 @@
 
       coarsePointer = window.matchMedia('(pointer: coarse)').matches;
       reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (window.matchMedia('(max-width: 767px)').matches) canvasView = 'list';
     }
 
     const storedName = getName();
@@ -525,8 +530,8 @@
 
   // Every card write, in one object, so a surface doesn't need a prop for each.
   const cardActions: CardActions = {
-    add(column, text) {
-      if (conn.state.board) addCard(conn.state.board.board, column, text, userId);
+    add(column, text, pos) {
+      if (conn.state.board) addCard(conn.state.board.board, column, text, userId, pos);
     },
     edit(column, cardId, text) {
       if (conn.state.board) editCardText(conn.state.board.board, column, cardId, text);
@@ -750,7 +755,7 @@
     onCycleTheme={cycleTheme}
   />
 {:else}
-  <div class="{isCanvas ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+  <div class="{showCanvas ? 'h-dvh overflow-hidden' : 'min-h-screen'} flex flex-col bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
     <BoardHeader
       isLead={effectiveLead}
       connected={conn.state.connected}
@@ -768,6 +773,7 @@
       currentClientId={conn.state.currentClientId}
       userName={userName || 'Guest'}
       settings={conn.state.settings}
+      settingKeys={settingsFor(conn.state.layout)}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -806,7 +812,7 @@
             </span>
           {/each}
         </div>
-        <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {phaseHint(conn.state.phase, conn.state.layout)}</span>
+        <span class="text-slate-500 dark:text-slate-400 truncate min-w-0">— {phaseHint(conn.state.phase, showCanvas ? 'canvas' : isCanvas ? 'list' : 'columns')}</span>
         {#if conn.state.imported}
           {@const imp = conn.state.imported}
           <span
@@ -825,8 +831,24 @@
             {/if}
           </span>
         {/if}
-        {#if effectiveLead}
-          <div class="ml-auto flex items-center gap-1.5">
+        <div class="ml-auto flex items-center gap-1.5">
+          {#if isCanvas}
+            <div class="inline-flex rounded-md border border-slate-300 dark:border-slate-600 p-0.5" role="group" aria-label="Board view">
+              {#each [{ id: 'canvas', name: 'Canvas' }, { id: 'list', name: 'List' }] as const as v (v.id)}
+                <button
+                  type="button"
+                  class="px-2 py-0.5 rounded {canvasView === v.id
+                    ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'}"
+                  aria-pressed={canvasView === v.id}
+                  onclick={() => (canvasView = v.id)}
+                >
+                  {v.name}
+                </button>
+              {/each}
+            </div>
+          {/if}
+          {#if effectiveLead}
             {#if !isFirstPhase}
               <button
                 class="btn text-xs px-2.5 py-1 min-h-[32px]"
@@ -847,8 +869,8 @@
                 <ArrowRight size={13} aria-hidden="true" />
               </button>
             {/if}
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
     </div>
 
@@ -974,7 +996,7 @@
       </div>
     {/if}
 
-    {#if isCanvas}
+    {#if showCanvas}
       <CanvasSurface
         board={conn.state}
         {cardActions}
@@ -984,6 +1006,9 @@
         isLead={effectiveLead}
         namesMap={namesMapDisambiguated}
         {typingByCard}
+        {reducedMotion}
+        {coarsePointer}
+        onRenameColumn={renameColumnInline}
       />
     {:else}
       <ColumnsSurface
@@ -998,6 +1023,7 @@
         {reducedMotion}
         {coarsePointer}
         onRenameColumn={renameColumnInline}
+        arrangeable={!isCanvas}
       />
 
       <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
@@ -1023,6 +1049,7 @@
       columns={conn.state.columns}
       settings={conn.state.settings}
       {cardCounts}
+      layout={conn.state.layout}
       onClose={() => (editingBoard = false)}
       onSave={(edit) => saveBoardEdit(edit, 'dialog')}
     />
@@ -1038,7 +1065,7 @@
         class="pointer-events-auto flex items-center gap-2.5 max-w-sm w-full sm:w-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg px-4 py-2.5 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200"
         data-testid="columns-changed-notice"
       >
-        <span class="flex-1">The host changed the columns.</span>
+        <span class="flex-1">The host changed the {isCanvas ? 'prompts' : 'columns'}.</span>
         <button
           class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
           onclick={() => (columnsChangedNotice = false)}

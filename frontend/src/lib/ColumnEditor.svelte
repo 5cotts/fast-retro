@@ -24,7 +24,8 @@
     actionItems = $bindable(),
     idPrefix,
     reorderable = false,
-    actionItemsCards = 0
+    actionItemsCards = 0,
+    noun = 'column'
   } = $props<{
     rows: ColumnRow[];
     actionItems: boolean;
@@ -34,7 +35,11 @@
     reorderable?: boolean;
     // Cards in the board's Action items column, for the removal warning.
     actionItemsCards?: number;
+    // What these rows are called: a canvas board has prompts.
+    noun?: 'column' | 'prompt';
   }>();
+
+  const Noun = $derived(noun === 'prompt' ? 'Prompt' : 'Column');
 
   async function addRow() {
     if (rows.length >= MAX_INPUT_COLUMNS) return;
@@ -62,7 +67,7 @@
   }
 </script>
 
-<ol class="mt-2 space-y-1.5 max-h-60 overflow-y-auto pr-1" aria-label="Custom columns">
+<ol class="mt-2 space-y-1.5 max-h-60 overflow-y-auto pr-1" aria-label={noun === 'prompt' ? 'Prompts' : 'Custom columns'}>
   {#each rows as row, i (row.id)}
     <li class="flex items-center gap-1.5">
       <input
@@ -71,12 +76,12 @@
         type="text"
         maxlength={MAX_COLUMN_TITLE_LEN}
         autocomplete="off"
-        placeholder={i === 0 ? 'e.g. How might we speed up onboarding?' : `Column ${i + 1}`}
-        aria-label={`Column ${i + 1} name`}
+        placeholder={i === 0 ? 'e.g. How might we speed up onboarding?' : `${Noun} ${i + 1}`}
+        aria-label={`${Noun} ${i + 1} name`}
         class="input flex-1 min-w-0 px-2.5 py-2 text-sm"
       />
       {#if row.cards}
-        <span class="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap" title="Cards in this column">
+        <span class="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap" title={`Cards in this ${noun}`}>
           {cardsLabel(row.cards)}
         </span>
       {/if}
@@ -86,7 +91,7 @@
           class="btn-ghost text-slate-500 dark:text-slate-400 min-h-[32px] min-w-[28px] px-1"
           onclick={() => move(i, -1)}
           disabled={i === 0}
-          aria-label={`Move column ${i + 1} up`}
+          aria-label={`Move ${noun} ${i + 1} up`}
         >
           <ArrowUp size={14} aria-hidden="true" />
         </button>
@@ -95,7 +100,7 @@
           class="btn-ghost text-slate-500 dark:text-slate-400 min-h-[32px] min-w-[28px] px-1"
           onclick={() => move(i, 1)}
           disabled={i === rows.length - 1}
-          aria-label={`Move column ${i + 1} down`}
+          aria-label={`Move ${noun} ${i + 1} down`}
         >
           <ArrowDown size={14} aria-hidden="true" />
         </button>
@@ -105,7 +110,7 @@
         class="btn-ghost text-slate-500 dark:text-slate-400 min-h-[32px] min-w-[32px] px-1.5"
         onclick={() => removeRow(row.id)}
         disabled={rows.length <= 1}
-        aria-label={`Remove column ${i + 1}`}
+        aria-label={`Remove ${noun} ${i + 1}`}
       >
         <X size={14} aria-hidden="true" />
       </button>
@@ -115,7 +120,7 @@
     <label class="flex items-start gap-2 px-2.5 py-2 text-sm rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 cursor-pointer select-none">
       <input type="checkbox" bind:checked={actionItems} class="mt-0.5 rounded" />
       <span class="flex-1">
-        Action items column
+        Action items {noun === 'prompt' ? 'panel' : 'column'}
         <span class="block text-xs text-slate-500 dark:text-slate-400">Filled in during a final Actions phase. Leave it off to end at Discuss.</span>
       </span>
       {#if actionItemsCards}
@@ -127,6 +132,6 @@
 {#if rows.length < MAX_INPUT_COLUMNS}
   <button type="button" class="btn-ghost mt-1.5 text-xs px-2 py-1" onclick={addRow}>
     <Plus size={14} aria-hidden="true" />
-    Add column
+    Add {noun}
   </button>
 {/if}

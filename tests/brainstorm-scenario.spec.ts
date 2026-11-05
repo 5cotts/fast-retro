@@ -106,7 +106,7 @@ test.describe('fast-retro problem-solving brainstorm', () => {
       await host.page.getByRole('button', { name: 'Start a new retro' }).click();
       const dialog = host.page.getByRole('dialog', { name: 'Start a new retro' });
       await dialog.getByLabel('Retro name').fill(`Brainstorm ${suffix}`);
-      await dialog.getByRole('radiogroup', { name: 'Columns' }).getByText('Custom', { exact: true }).click();
+      await dialog.getByRole('radiogroup', { name: 'Board type' }).getByText('Custom', { exact: true }).click();
       await dialog.getByLabel('Column 1 name').fill(PROBLEMS[0]);
       for (let i = 1; i < PROBLEMS.length - 1; i++) {
         await dialog.getByRole('button', { name: 'Add column' }).click();

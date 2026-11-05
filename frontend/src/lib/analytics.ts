@@ -10,7 +10,7 @@ export type AnalyticsEvent =
   | { name: 'board_import'; params: { result: 'error'; reason: ImportErrorCode } }
   | { name: 'next_retro'; params: { carried_actions: number } }
   | { name: 'card_group'; params: { action: 'create' | 'join' | 'leave' | 'ungroup' | 'merge'; source: 'drag' | 'menu' } }
-  | { name: 'board_create'; params: { template: 'retro' | 'custom'; columns: number; action_items: boolean } }
+  | { name: 'board_create'; params: { template: 'retro' | 'custom' | 'canvas'; columns: number; action_items: boolean } }
   | {
       name: 'board_edit';
       params: {

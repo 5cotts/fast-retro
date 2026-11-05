@@ -1,8 +1,11 @@
+import type { CardPos } from './types';
+
 // Every write a card can make, in one object. Board.svelte builds it and hands
 // it to whichever surface is drawing the board, so a new card feature is added
 // here and in Card.svelte, not threaded through each surface's props.
 export interface CardActions {
-  add: (column: string, text: string) => void;
+  // `pos` places the card on a canvas; without it, it takes the next grid slot.
+  add: (column: string, text: string, pos?: CardPos) => void;
   edit: (column: string, cardId: string, text: string) => void;
   remove: (column: string, cardId: string) => void;
   toggleVote: (column: string, cardId: string) => void;

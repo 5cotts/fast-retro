@@ -16,6 +16,12 @@ export type BoardSettings = { [K in BoardSettingKey]: boolean };
 
 export const BOARD_SETTING_KEYS = Object.keys(BOARD_SETTING_DEFAULTS) as BoardSettingKey[];
 
+// Which settings apply to a board. Cards on a canvas never re-sort, so
+// auto-sort isn't offered there.
+export function settingsFor(layout: 'columns' | 'canvas'): BoardSettingKey[] {
+  return layout === 'canvas' ? BOARD_SETTING_KEYS.filter((k) => k !== 'autoSort') : BOARD_SETTING_KEYS;
+}
+
 export function readBoardSetting(meta: Y.Map<unknown>, key: BoardSettingKey): boolean {
   const def = BOARD_SETTING_DEFAULTS[key];
   return meta.get(key) === !def ? !def : def;

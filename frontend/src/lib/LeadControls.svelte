@@ -63,6 +63,7 @@
     timerRunning,
     timerExpired,
     settings,
+    settingKeys,
     onSet,
     onStart,
     onPause,
@@ -80,6 +81,8 @@
     timerRunning: boolean;
     timerExpired: boolean;
     settings: BoardSettings;
+    // The settings this board offers (see settingsFor).
+    settingKeys: BoardSettingKey[];
     onSet: () => void;
     onStart: () => void;
     onPause: () => void;
@@ -170,7 +173,7 @@
       <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onEditBoard}>
         <Settings2 size={14} aria-hidden="true" /> Edit board
       </button>
-      {#each TOGGLES as t (t.key)}
+      {#each TOGGLES.filter((x) => settingKeys.includes(x.key)) as t (t.key)}
         {@const on = settings[t.key]}
         {@const Icon = t.icon(on)}
         <button
@@ -267,7 +270,7 @@
     <span class="hidden lg:inline">Edit</span>
   </button>
 
-  {#each TOGGLES as t (t.key)}
+  {#each TOGGLES.filter((x) => settingKeys.includes(x.key)) as t (t.key)}
     {@const on = settings[t.key]}
     {@const Icon = t.icon(on)}
     <button
