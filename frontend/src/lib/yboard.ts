@@ -2,7 +2,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
-import { DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
+import { cleanClusterLabel, type ClusterMap, type ClusterRecord } from './clusters';
+import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
 import { BOARD_SETTING_KEYS, readBoardSetting, setBoardSetting, type BoardSettings } from './settings';
 import { newId } from './identity';
 import { readPhase, setPhase } from './phase';
@@ -21,6 +22,7 @@ export interface BoardState {
   names: Y.Map<string>;
   phase: Y.Map<unknown>;
   meta: Y.Map<unknown>;
+  clusters: ClusterMap;
   slug: string;
 }
 
@@ -65,6 +67,7 @@ export function createBoard(slug: string, seed?: SeedSource): BoardState {
   const names = doc.getMap<string>('names');
   const phase = doc.getMap<unknown>('phase');
   const meta = doc.getMap<unknown>('meta');
+  const clusters = doc.getMap<ClusterRecord>('clusters');
 
   // Wait for the initial server sync before deciding which columns are
   // "missing" and need a default empty array. Setting defaults eagerly
@@ -83,7 +86,7 @@ export function createBoard(slug: string, seed?: SeedSource): BoardState {
     if (setUpAfterSync({ doc, board, meta, names, phase }, pending) && pending) seed?.onApplied?.(pending);
   });
 
-  return { doc, provider, board, timer, names, phase, meta, slug };
+  return { doc, provider, board, timer, names, phase, meta, clusters, slug };
 }
 
 // Runs once per client after the first sync: applies the seed (only to a
@@ -389,6 +392,11 @@ function lastIndexOfCard(arr: Y.Array<Y.Map<unknown>>, cardId: string): number {
   return idx;
 }
 
+// Moves a card to just before beforeId, or to the end of toCol when beforeId is
+// null or no longer there. It takes a card rather than an index because what's
+// on screen isn't always in array order, and a peer can change the array
+// mid-drag; the position is looked up here, at drop time.
+//
 // Known limitation: moveCard snapshots the source card and rebuilds it at the
 // destination because Y.Array doesn't expose an atomic move. If two clients
 // move the same card concurrently, both may insert a rehydrated copy and the
@@ -401,8 +409,9 @@ export function moveCard(
   fromCol: string,
   cardId: string,
   toCol: string,
-  toIndex: number
+  beforeId: string | null
 ) {
+  if (beforeId === cardId) return;
   doc.transact(() => {
     const fromArr = board.get(fromCol);
     const toArr = board.get(toCol);
@@ -411,17 +420,15 @@ export function moveCard(
     const snapshot = fromIdx >= 0 ? cardFromY(fromArr.get(fromIdx)) : null;
     if (!snapshot) return;
 
+    const beforeIdx = beforeId === null ? -1 : lastIndexOfCard(toArr, beforeId);
+    let insertAt = beforeIdx < 0 ? toArr.length : beforeIdx;
     if (fromCol === toCol) {
-      const current = toIndex;
-      if (current === fromIdx) return;
-      fromArr.delete(fromIdx, 1);
-      const insertAt = current > fromIdx ? current - 1 : current;
-      fromArr.insert(Math.max(0, Math.min(insertAt, fromArr.length)), [cardToY(snapshot)]);
-    } else {
-      fromArr.delete(fromIdx, 1);
-      const clamped = Math.max(0, Math.min(toIndex, toArr.length));
-      toArr.insert(clamped, [cardToY(snapshot)]);
+      // Already there, so don't rebuild the card.
+      if (insertAt === fromIdx + 1) return;
+      if (insertAt > fromIdx) insertAt--;
     }
+    fromArr.delete(fromIdx, 1);
+    toArr.insert(insertAt, [cardToY(snapshot)]);
   });
 }
 
@@ -485,6 +492,68 @@ export function mergeCards(
     if (!merged) return;
     fromArr.delete(fromIdx, 1);
   });
+}
+
+export function createCluster(clusters: ClusterMap, label = '', now = Date.now()): string {
+  const id = newId();
+  clusters.set(id, { label: cleanClusterLabel(label), createdAt: now });
+  return id;
+}
+
+export function renameCluster(clusters: ClusterMap, clusterId: string, label: string): void {
+  const existing = clusters.get(clusterId);
+  if (!existing) return;
+  clusters.set(clusterId, { ...existing, label: cleanClusterLabel(label) });
+}
+
+// A single last-writer-wins field that doesn't rebuild the card, so it avoids
+// the duplicate-card race documented on moveCard. Action items can't be grouped.
+export function setCardCluster(
+  board: Y.Map<Y.Array<Y.Map<unknown>>>,
+  column: string,
+  cardId: string,
+  clusterId: string | null
+): void {
+  if (column === ACTIONS_COLUMN_KEY) return;
+  board.get(column)?.forEach((card) => {
+    if (card.get('id') !== cardId) return;
+    if (clusterId) card.set('clusterId', clusterId);
+    else card.delete('clusterId');
+  });
+}
+
+// Puts every member back in the ungrouped area. The record stays (see clusters.ts).
+export function dissolveCluster(doc: Y.Doc, board: Y.Map<Y.Array<Y.Map<unknown>>>, clusterId: string): void {
+  doc.transact(() => {
+    board.forEach((arr) => {
+      arr.forEach((card) => {
+        if (card.get('clusterId') === clusterId) card.delete('clusterId');
+      });
+    });
+  });
+}
+
+// The explicit, destructive merge: every member becomes one card, in the first
+// of columnKeys that has a member. Returns that column, or null if there was
+// nothing to merge.
+export function mergeCluster(
+  doc: Y.Doc,
+  board: Y.Map<Y.Array<Y.Map<unknown>>>,
+  clusterId: string,
+  columnKeys: string[]
+): string | null {
+  const members = columnKeys.flatMap((column) =>
+    readCards(board, column)
+      .filter((card) => card.clusterId === clusterId)
+      .map((card) => ({ column, id: card.id }))
+  );
+  if (members.length === 0) return null;
+  const [survivor, ...rest] = members;
+  doc.transact(() => {
+    for (const m of rest) mergeCards(doc, board, m.column, m.id, survivor.column, survivor.id);
+    setCardCluster(board, survivor.column, survivor.id, null);
+  });
+  return survivor.column;
 }
 
 export function readCards(board: Y.Map<Y.Array<Y.Map<unknown>>>, column: string): CardData[] {

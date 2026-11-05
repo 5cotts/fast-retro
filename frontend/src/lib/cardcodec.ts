@@ -31,13 +31,15 @@ export function cardFromY(card: Y.Map<unknown>): CardData | null {
     const parsed = commentFromY(c);
     if (parsed) comments.push(parsed);
   });
+  const clusterId = card.get('clusterId');
   return {
     id,
     text,
     authorId: typeof authorId === 'string' ? authorId : '',
     votes: votesArr ? votesArr.toArray() : [],
     reactions,
-    comments
+    comments,
+    ...(typeof clusterId === 'string' && clusterId ? { clusterId } : {})
   };
 }
 
@@ -68,5 +70,6 @@ export function cardToY(card: CardData): Y.Map<unknown> {
   const comments = new Y.Array<Y.Map<unknown>>();
   if (card.comments.length) comments.push(card.comments.map(commentToY));
   m.set('comments', comments);
+  if (card.clusterId) m.set('clusterId', card.clusterId);
   return m;
 }
