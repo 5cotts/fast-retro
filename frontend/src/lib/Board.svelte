@@ -45,6 +45,7 @@
   } from './timer';
   import { exportCSV } from './csv';
   import {
+    clustersInUse,
     exportBoardFile,
     newBoardSeed,
     downloadBoardFile,
@@ -790,7 +791,7 @@
   function downloadCSV(source: 'board' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'csv', source } });
     // The BOM makes Excel read the file as UTF-8 so emoji reactions survive.
-    const csv = '\uFEFF' + exportCSV(conn.state.cards, conn.state.columns);
+    const csv = '\uFEFF' + exportCSV(conn.state.cards, conn.state.columns, conn.state.clusters);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
     downloadBlob(blob, `${exportFileStem(conn.state.label)}.csv`);
   }
@@ -805,6 +806,7 @@
         autoSort: conn.state.settings.autoSort,
         hideCards: conn.state.settings.hideCards,
         columns: conn.state.columns,
+        clusters: conn.state.clusters,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
       })
@@ -841,6 +843,7 @@
     doc.transact(() => {
       setBoardEnded(meta, pickMotivationalMessage());
     });
+    const archiveClusters = clustersInUse(conn.state.clusters, conn.state.cards, conn.state.columns);
     try {
       await endBoard(
         slug,
@@ -853,7 +856,9 @@
           autoSort: conn.state.settings.autoSort,
           hideCards: conn.state.settings.hideCards,
           // Classic boards send no list, so their archives look as they always have.
-          columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns
+          columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns,
+          // Likewise for boards with no groups.
+          clusters: archiveClusters.length ? archiveClusters : undefined
         },
         { hostKey, leadToken }
       );

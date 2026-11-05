@@ -89,8 +89,8 @@ describe('CSV with custom columns', () => {
   it('uses the column titles and neutralizes formula-like titles', () => {
     const csv = exportCSV(source(custom).cards, custom);
     const lines = csv.split('\n');
-    expect(lines[1]).toBe('Problem A,one,0,,');
-    expect(lines[2]).toBe(`"'=HYPERLINK(""http://x"")",two,0,,`);
+    expect(lines[1]).toBe('Problem A,one,0,,,');
+    expect(lines[2]).toBe(`"'=HYPERLINK(""http://x"")",two,0,,,`);
     expect(csv).not.toContain('stray');
     expect(csv).not.toContain('classic');
   });

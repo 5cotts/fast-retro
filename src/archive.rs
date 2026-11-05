@@ -34,6 +34,8 @@ pub struct CardSnapshot {
     pub reactions: serde_json::Map<String, serde_json::Value>,
     #[serde(default)]
     pub comments: Vec<CommentSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cluster_id: Option<String>,
 }
 
 /// Cards keyed by column key. Classic boards use `wentWell`, `toImprove` and
@@ -51,6 +53,21 @@ pub struct ColumnSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
 }
+
+/// A group of cards across columns. Cards point at it with `cluster_id`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ClusterSnapshot {
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+}
+
+// Bounds on what a client can make the server store. Labels match the frontend
+// (clusters.ts).
+const MAX_CLUSTERS: usize = 1000;
+const MAX_CLUSTER_LABEL_CHARS: usize = 60;
+const MAX_CLUSTER_ID_LEN: usize = 64;
 
 // Matches the frontend (columns.ts): 50 input columns plus Action items. Not a
 // product limit, just a bound on what a client can make the server store.
@@ -87,6 +104,9 @@ pub struct ArchiveRequest {
     // Absent for classic three-column boards.
     #[serde(default)]
     pub columns: Option<Vec<ColumnSnapshot>>,
+    // Absent for boards with no groups.
+    #[serde(default)]
+    pub clusters: Option<Vec<ClusterSnapshot>>,
 }
 
 impl ArchiveRequest {
@@ -109,6 +129,29 @@ impl ArchiveRequest {
                     return Err("column title too long".into());
                 }
             }
+        }
+        if let Some(clusters) = &self.clusters {
+            if clusters.len() > MAX_CLUSTERS {
+                return Err("too many groups".into());
+            }
+            for c in clusters {
+                if c.id.is_empty() || c.id.len() > MAX_CLUSTER_ID_LEN {
+                    return Err("bad group id".into());
+                }
+                if c.label.chars().count() > MAX_CLUSTER_LABEL_CHARS {
+                    return Err("group name too long".into());
+                }
+            }
+        }
+        let long_cluster_id = self
+            .cards
+            .0
+            .values()
+            .flatten()
+            .filter_map(|card| card.cluster_id.as_ref())
+            .any(|id| id.len() > MAX_CLUSTER_ID_LEN);
+        if long_cluster_id {
+            return Err("bad group id".into());
         }
         Ok(())
     }
@@ -134,6 +177,8 @@ pub struct Archive {
     pub hide_cards: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub columns: Option<Vec<ColumnSnapshot>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clusters: Option<Vec<ClusterSnapshot>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -217,6 +262,7 @@ pub fn save(
         auto_sort: req.auto_sort,
         hide_cards: req.hide_cards,
         columns: req.columns,
+        clusters: req.clusters,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
@@ -410,6 +456,64 @@ mod tests {
         let req: ArchiveRequest =
             serde_json::from_value(serde_json::json!({ "cards": many })).unwrap();
         assert!(save(&db, "x", req, None).is_err());
+    }
+
+    #[test]
+    fn groups_round_trip_through_the_db() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_str(
+            r#"{
+                "cards": {
+                    "wentWell": [{ "id": "1", "text": "a", "clusterId": "g1" }],
+                    "toImprove": [{ "id": "2", "text": "b" }]
+                },
+                "clusters": [{ "id": "g1", "label": "Deploys" }]
+            }"#,
+        )
+        .unwrap();
+        let saved = save(&db, "groups", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().unwrap();
+        assert_eq!(loaded.cards.0["wentWell"][0].cluster_id.as_deref(), Some("g1"));
+        assert_eq!(loaded.cards.0["toImprove"][0].cluster_id, None);
+        let out = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(out["clusters"][0]["label"], "Deploys");
+        assert_eq!(out["cards"]["wentWell"][0]["clusterId"], "g1");
+        assert!(out["cards"]["toImprove"][0].get("clusterId").is_none());
+    }
+
+    #[test]
+    fn archive_without_groups_stores_no_group_fields() {
+        let db = test_db();
+        let req: ArchiveRequest =
+            serde_json::from_str(r#"{ "cards": { "wentWell": [{ "id": "1", "text": "a" }] } }"#).unwrap();
+        let saved = save(&db, "plain", req, None).unwrap();
+        let out = serde_json::to_value(&saved).unwrap();
+        assert!(out.get("clusters").is_none());
+    }
+
+    #[test]
+    fn rejects_oversized_groups() {
+        let db = test_db();
+        let cases = [
+            serde_json::json!({ "cards": {}, "clusters": [{ "id": "g", "label": "x".repeat(61) }] }),
+            serde_json::json!({ "cards": {}, "clusters": [{ "id": "x".repeat(65), "label": "ok" }] }),
+            serde_json::json!({ "cards": {}, "clusters": [{ "id": "", "label": "ok" }] }),
+            serde_json::json!({
+                "cards": { "wentWell": [{ "id": "1", "text": "a", "clusterId": "x".repeat(65) }] }
+            }),
+            serde_json::json!({
+                "cards": {},
+                "clusters": (0..1001).map(|i| serde_json::json!({ "id": format!("g{i}") })).collect::<Vec<_>>()
+            }),
+        ];
+        for case in cases {
+            let req: ArchiveRequest = serde_json::from_value(case).unwrap();
+            assert!(save(&db, "x", req, None).is_err());
+        }
+        let label_at_limit =
+            serde_json::json!({ "cards": {}, "clusters": [{ "id": "g", "label": "é".repeat(60) }] });
+        let req: ArchiveRequest = serde_json::from_value(label_at_limit).unwrap();
+        assert!(save(&db, "x", req, None).is_ok());
     }
 
     #[test]

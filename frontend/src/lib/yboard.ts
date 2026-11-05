@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
-import { cleanClusterLabel, type ClusterMap, type ClusterRecord } from './clusters';
+import { cleanClusterLabel, clusterMapOf, type ClusterMap } from './clusters';
 import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
 import { BOARD_SETTING_KEYS, readBoardSetting, setBoardSetting, type BoardSettings } from './settings';
 import { newId } from './identity';
@@ -67,7 +67,7 @@ export function createBoard(slug: string, seed?: SeedSource): BoardState {
   const names = doc.getMap<string>('names');
   const phase = doc.getMap<unknown>('phase');
   const meta = doc.getMap<unknown>('meta');
-  const clusters = doc.getMap<ClusterRecord>('clusters');
+  const clusters = clusterMapOf(doc);
 
   // Wait for the initial server sync before deciding which columns are
   // "missing" and need a default empty array. Setting defaults eagerly
@@ -605,7 +605,13 @@ export function seedBoard(
 ): void {
   const { doc, board, meta, names, phase } = state;
   const columns = boardFileColumns(file);
+  const clusters = clusterMapOf(doc);
   doc.transact(() => {
+    // Group IDs are regenerated like card IDs. createdAt keeps the file's order.
+    const clusterIds = new Map<string, string>();
+    (file.board.clusters ?? []).forEach((c, i) => {
+      clusterIds.set(c.id, createCluster(clusters, c.label, now + i));
+    });
     // The column list and every column's array land in this one transaction
     // (see setUpAfterSync). Classic boards store no list.
     if (!sameColumns(columns, DEFAULT_COLUMNS)) meta.set('columns', columns.map((c) => ({ ...c })));
@@ -615,13 +621,16 @@ export function seedBoard(
         arr = new Y.Array<Y.Map<unknown>>();
         board.set(col.key, arr);
       }
-      const cards = (file.cards[col.key] ?? []).map((card) =>
-        cardToY({
-          ...card,
+      const cards = (file.cards[col.key] ?? []).map((card) => {
+        const { clusterId, ...rest } = card;
+        const mapped = clusterId ? clusterIds.get(clusterId) : undefined;
+        return cardToY({
+          ...rest,
           id: newId(),
-          comments: card.comments.map((c) => ({ ...c, id: newId() }))
-        })
-      );
+          comments: card.comments.map((c) => ({ ...c, id: newId() })),
+          ...(mapped ? { clusterId: mapped } : {})
+        });
+      });
       if (cards.length) arr.push(cards);
     }
     setBoardLabel(meta, file.board.label);
