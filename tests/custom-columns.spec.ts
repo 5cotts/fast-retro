@@ -173,9 +173,14 @@ test.describe('fast-retro custom columns', () => {
       await joinIfAsked(guest.page, `Guest ${suffix}`);
       await expect(card(guest.page, PROBLEMS[4], ideas[4])).toBeVisible();
 
-      // Merging works across custom columns.
+      // Grouping and merging work across custom columns.
       await advance(host.page, 'Group');
       await card(host.page, PROBLEMS[1], ideas[1]).dragTo(card(host.page, PROBLEMS[0], ideas[0]));
+      await expect(column(host.page, PROBLEMS[1]).getByRole('list', { name: /^Group: / }).getByRole('group', { name: `Card: ${ideas[1]}` })).toBeVisible();
+      await expect(column(host.page, PROBLEMS[0]).getByRole('list', { name: /^Group: / }).getByRole('group', { name: `Card: ${ideas[0]}` })).toBeVisible();
+      await host.page.getByRole('button', { name: 'Merge Untitled group' }).first().click();
+      await expect(host.page.getByRole('alertdialog', { name: 'Confirm merge' })).toContainText(PROBLEMS[0]);
+      await host.page.getByRole('button', { name: 'Merge cards' }).click();
       const merged = column(host.page, PROBLEMS[0]).getByRole('group', { name: /^Card: / }).filter({ hasText: ideas[0] });
       await expect(merged).toContainText(ideas[1], { timeout: 10_000 });
       await expect(column(host.page, PROBLEMS[1]).getByRole('group', { name: /^Card: / })).toHaveCount(0);

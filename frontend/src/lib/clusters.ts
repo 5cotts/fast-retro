@@ -72,6 +72,7 @@ export interface ClusterActions {
   leave: (column: string, cardId: string) => void;
   rename: (clusterId: string, label: string) => void;
   dissolve: (clusterId: string) => void;
+  merge: (clusterId: string) => void;
 }
 
 export interface ClusterLane {
@@ -182,4 +183,65 @@ export function reorderTarget(section: CardData[], cardId: string, delta: -1 | 1
   const j = i + delta;
   if (i < 0 || j < 0 || j >= section.length) return null;
   return { beforeId: delta < 0 ? section[j].id : (section[j + 1]?.id ?? null) };
+}
+
+// Where a dragged card would land. A section is a lane's cell (sectionId is the
+// cluster) or a column's loose area (null).
+export type DropTarget =
+  | { kind: 'card'; column: string; cardId: string; clusterId: string | null }
+  | { kind: 'group'; column: string; clusterId: string }
+  | { kind: 'slot'; column: string; beforeId: string | null; sectionId: string | null };
+
+export type DropPlan =
+  | { kind: 'none' }
+  // moveCard: the card keeps its group.
+  | { kind: 'reorder'; column: string; beforeId: string | null }
+  // Only the card's clusterId changes. It doesn't move or get rebuilt.
+  | { kind: 'setCluster'; clusterId: string | null }
+  // moveCard into another column's loose area, leaving any group.
+  | { kind: 'moveLoose'; column: string; beforeId: string | null }
+  | { kind: 'newClusterWith'; column: string; cardId: string };
+
+export interface DropSource {
+  column: string;
+  cardId: string;
+  // The group it's showing in, if any.
+  clusterId: string | null;
+}
+
+// Every rule for what a drop does. The main one: grouping never changes a
+// card's column. To change column, drop in that column's loose area.
+// canGroup is false outside the Group phase and for action items; a drop is then
+// a plain move, and a card's group doesn't change.
+export function planDrop(source: DropSource, target: DropTarget, canGroup: boolean): DropPlan {
+  if (target.kind === 'slot' && !canGroup) {
+    return { kind: 'reorder', column: target.column, beforeId: target.beforeId };
+  }
+  if (!canGroup) return { kind: 'none' };
+
+  if (target.kind === 'card') {
+    if (target.cardId === source.cardId) return { kind: 'none' };
+    if (!target.clusterId) return { kind: 'newClusterWith', column: target.column, cardId: target.cardId };
+    return target.clusterId === source.clusterId ? { kind: 'none' } : { kind: 'setCluster', clusterId: target.clusterId };
+  }
+  if (target.kind === 'group') {
+    return target.clusterId === source.clusterId ? { kind: 'none' } : { kind: 'setCluster', clusterId: target.clusterId };
+  }
+
+  const sameColumn = target.column === source.column;
+  if (target.sectionId) {
+    if (target.sectionId !== source.clusterId) return { kind: 'setCluster', clusterId: target.sectionId };
+    return sameColumn ? { kind: 'reorder', column: target.column, beforeId: target.beforeId } : { kind: 'none' };
+  }
+  if (!sameColumn) return { kind: 'moveLoose', column: target.column, beforeId: target.beforeId };
+  return source.clusterId
+    ? { kind: 'setCluster', clusterId: null }
+    : { kind: 'reorder', column: target.column, beforeId: target.beforeId };
+}
+
+export function sameDropTarget(a: DropTarget | null, b: DropTarget | null): boolean {
+  if (a === null || b === null) return a === b;
+  if (a.kind === 'card') return b.kind === 'card' && a.cardId === b.cardId;
+  if (a.kind === 'group') return b.kind === 'group' && a.column === b.column && a.clusterId === b.clusterId;
+  return b.kind === 'slot' && a.column === b.column && a.beforeId === b.beforeId && a.sectionId === b.sectionId;
 }

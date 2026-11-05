@@ -14,7 +14,7 @@ export const PHASE_LABEL: Record<Phase, string> = {
 
 export const PHASE_HINT: Record<Phase, string> = {
   brainstorm: 'Add cards in each column.',
-  group: 'Lead can drag a card onto another to merge duplicates.',
+  group: 'Drag a card onto another to group them, across columns too. Each card stays in its column.',
   vote: 'Vote on what to discuss.',
   discuss: 'Talk through the top votes.',
   actions: 'Decide what to do next.'

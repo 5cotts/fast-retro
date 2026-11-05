@@ -19,8 +19,7 @@
     readOnly = false,
     anonymous = false,
     namesMap,
-    mergeMode = false,
-    isMergeTarget = false,
+    isGroupTarget = false,
     canReorder = true,
     onEdit,
     onDelete,
@@ -33,9 +32,6 @@
     onDragEnd,
     onKeydown,
     onFocusCard,
-    onMergeDragOver,
-    onMergeDragLeave,
-    onMergeDrop,
     actions
   } = $props<{
     card: CardData;
@@ -47,8 +43,7 @@
     readOnly?: boolean;
     anonymous?: boolean;
     namesMap: Record<string, string>;
-    mergeMode?: boolean;
-    isMergeTarget?: boolean;
+    isGroupTarget?: boolean;
     canReorder?: boolean;
     onEdit: (cardId: string, text: string) => void;
     onDelete: (cardId: string) => void;
@@ -61,9 +56,6 @@
     onDragEnd: () => void;
     onKeydown?: (e: KeyboardEvent) => void;
     onFocusCard?: () => void;
-    onMergeDragOver?: () => void;
-    onMergeDragLeave?: () => void;
-    onMergeDrop?: () => void;
     // Extra controls for the card's action row.
     actions?: Snippet;
   }>();
@@ -188,7 +180,7 @@
   tabindex="0"
   role="group"
   aria-label={`Card: ${card.text.slice(0, 80)}`}
-  class="card group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-3 text-sm shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-1 dark:focus:ring-offset-slate-900 transition-[box-shadow,border-color,transform,opacity] duration-200 ease-out cursor-grab active:cursor-grabbing active:scale-[0.99] {dragging ? 'opacity-50 scale-[1.02] rotate-[0.6deg] shadow-xl border-sky-400 dark:border-sky-500 ring-2 ring-sky-200 dark:ring-sky-900' : ''} {isMergeTarget ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700 shadow-md' : ''}"
+  class="card group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-3 text-sm shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-sky-400 focus:ring-offset-1 dark:focus:ring-offset-slate-900 transition-[box-shadow,border-color,transform,opacity] duration-200 ease-out cursor-grab active:cursor-grabbing active:scale-[0.99] {dragging ? 'opacity-50 scale-[1.02] rotate-[0.6deg] shadow-xl border-sky-400 dark:border-sky-500 ring-2 ring-sky-200 dark:ring-sky-900' : ''} {isGroupTarget ? 'border-violet-400 dark:border-violet-500 ring-2 ring-violet-300 dark:ring-violet-700 shadow-md' : ''}"
   ondragstart={(e) => {
     dragging = true;
     onDragStart(e, card.id, column);
@@ -196,20 +188,6 @@
   ondragend={() => {
     dragging = false;
     onDragEnd();
-  }}
-  ondragover={(e) => {
-    if (!mergeMode || !onMergeDragOver) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    onMergeDragOver();
-  }}
-  ondragleave={() => onMergeDragLeave?.()}
-  ondrop={(e) => {
-    if (!mergeMode || !onMergeDrop) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onMergeDrop();
   }}
   onkeydown={(e) => onKeydown?.(e)}
   onfocus={() => onFocusCard?.()}

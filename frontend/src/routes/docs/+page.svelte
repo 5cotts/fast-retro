@@ -114,9 +114,11 @@
             </li>
             <li>
               <strong class="text-sky-700 dark:text-sky-300">2. Group.</strong>
-              The lead clusters related cards, and may <strong>merge duplicates</strong> by
-              dragging one card onto another — the merged card keeps everyone's votes,
-              reactions, and comments. You can drag cards too, or use
+              Everyone can <strong>group</strong> related cards by dragging one onto another,
+              even across columns. Each card stays in its column. The lead can also
+              <strong>merge</strong> a group into one card, which keeps everyone's votes,
+              reactions, and comments. To move a card to another column, drag it below that
+              column's groups, or use
               <kbd class="kbd-inline">Shift</kbd>+<kbd class="kbd-inline">←/→</kbd> with a card
               focused.
             </li>
@@ -223,7 +225,7 @@
           </p>
           <ul class="space-y-2 list-disc pl-5">
             <li><strong>Brainstorm — 10 min.</strong> Start the timer (click the clock pill, set the minutes, hit Start). Everyone silently adds cards.</li>
-            <li><strong>Group — 5 min.</strong> Click <em>Next phase</em>. Cluster related cards by dragging. To collapse duplicates, drag one card onto another — they <strong>merge</strong> and the target keeps the combined votes, reactions, and comments.</li>
+            <li><strong>Group — 5 min.</strong> Click <em>Next phase</em>. Drag a card onto another to <strong>group</strong> them, even across columns, or use the <em>Group</em> button on a card. To reorder, drop near a card's top or bottom edge. Click a group's name to rename it. To collapse true duplicates, use <em>Merge</em> on the group: the cards become one and keep the combined votes, reactions, and comments.</li>
             <li><strong>Vote — 5 min.</strong> Advance again. Everyone votes; the highest counts surface what to talk about.</li>
             <li><strong>Discuss — 20 min.</strong> Walk through cards in vote order. Use comments to capture insights you want to keep.</li>
             <li><strong>Actions — 5 min.</strong> Capture concrete next steps with owners and dates.</li>
@@ -238,7 +240,7 @@
             <li><strong>Hide cards.</strong> Tick <em>Hide others' cards while brainstorming</em> when you start a retro, or toggle <em>Hide cards</em> in the header. During Brainstorm everyone sees only their own cards (others show as placeholders); moving to Group reveals them all at once. Action items are never hidden. It stops people being influenced by each other's ideas, but it isn't a security feature: the board's data still reaches every browser.</li>
             <li><strong>Timer.</strong> Click the timer pill in the header — set minutes, Start, Pause, Reset. Engineers see the same countdown.</li>
             <li><strong>Next / Previous phase.</strong> Advance when the room is ready. The <em>← Previous</em> button is there for misclicks — phases don't lose data when you go back.</li>
-            <li><strong>Merge cards</strong> (Group phase). Drag one card onto another to collapse duplicates; the combined votes, reactions, and comments carry over.</li>
+            <li><strong>Merge a group</strong> (Group phase). Use <em>Merge</em> on a group to collapse duplicates into one card; the combined votes, reactions, and comments carry over. This can't be undone. <em>Ungroup</em> keeps the cards separate.</li>
             <li><strong>Anonymous mode.</strong> Toggle in the header to hide all bylines on cards and comments board-wide. Authorship is still recorded on the server — it's a display switch, not a guarantee — so use it to lower the bar for honest feedback.</li>
             <li><strong>Export → Save board file.</strong> A full <code class="font-mono text-xs">.fastretro.json</code> copy of the board: cards in order, who voted and reacted, comments, the label, phase and settings. Keep it as a backup, or import it with <em>Start a new retro → Import from file…</em> (or drop the file anywhere on the homepage) to get a new board that looks the same, with votes, reactions, comments, phase and settings restored. Anonymous boards leave names out of the file. Importing doesn't need Google sign-in. Imported boards show an <em>Imported from a file</em> note, since the file decides who voted and wrote what.</li>
             <li><strong>Export → Spreadsheet (CSV).</strong> Card text, vote counts, reactions and comments for reading in Sheets or Excel. It's a one-way export; it can't be imported back.</li>
