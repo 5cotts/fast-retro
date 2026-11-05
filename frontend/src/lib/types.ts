@@ -12,6 +12,8 @@ export interface CardData {
   votes: string[];
   reactions: Record<string, string[]>;
   comments: CommentData[];
+  // The group this card belongs to (see clusters.ts). Absent means none.
+  clusterId?: string;
 }
 
 export interface PresenceUser {

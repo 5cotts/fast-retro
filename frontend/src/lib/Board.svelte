@@ -60,6 +60,7 @@
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
+  import { reorderTarget, sortedByVotes } from './clusters';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
@@ -647,14 +648,15 @@
       onDragEnd();
       return;
     }
-    const toIndex = dragOverIndex < 0 ? cardsIn(col).length : dragOverIndex;
+    // dragOverIndex is a position on screen; the card there is what's stable.
+    const beforeId = dragOverIndex < 0 ? null : (cardsIn(col)[dragOverIndex]?.id ?? null);
     moveCard(
       conn.state.board.doc,
       conn.state.board.board,
       dragFromCol,
       dragCardId,
       col,
-      toIndex
+      beforeId
     );
     onDragEnd();
   }
@@ -681,26 +683,16 @@
     if (!focusedCardId || !conn.state.board || !canReorder) return;
     const loc = findCard(focusedCardId);
     if (!loc) return;
-    const { col, index } = loc;
+    const { col } = loc;
     if (direction === 'up' || direction === 'down') {
-      const delta = direction === 'up' ? -1 : 1;
-      const newIdx = Math.max(0, Math.min(cardsIn(col).length - 1, index + delta));
-      if (newIdx === index) return;
-      // moveCard treats target index relative to current sequence; when
-      // moving within a column, pass the target slot index.
-      moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, col, newIdx);
+      const target = reorderTarget(cardsIn(col), focusedCardId, direction === 'up' ? -1 : 1);
+      if (!target) return;
+      moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, col, target.beforeId);
     } else {
       const dir = direction === 'left' ? -1 : 1;
       const target = neighborColumn(col, dir);
       if (!target) return;
-      moveCard(
-        conn.state.board.doc,
-        conn.state.board.board,
-        col,
-        focusedCardId,
-        target,
-        cardsIn(target).length
-      );
+      moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, target, null);
     }
   }
 
@@ -794,12 +786,6 @@
   // get overridden by the next sort on re-render.
   const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.settings.autoSort);
   const canReorder = $derived(!sortActive);
-  function sortedByVotes(cards: CardData[]): CardData[] {
-    return cards
-      .map((card, index) => ({ card, index }))
-      .sort((a, b) => b.card.votes.length - a.card.votes.length || a.index - b.index)
-      .map((entry) => entry.card);
-  }
 
   function downloadCSV(source: 'board' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'csv', source } });
