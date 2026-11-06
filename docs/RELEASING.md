@@ -12,7 +12,7 @@ Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). 
 
 ## What needs Scott's explicit go-ahead
 
-Approval for one deploy doesn't carry over to the next.
+Approval for one deploy doesn't carry over to the next. The one exception is the [nightly auto-deploy](#nightly-auto-deploy), which has Scott's standing approval for its exact path only.
 
 - Any `make prod-deploy` or `make rollback`
 - `FORCE=1`, `SKIP_QA=1` or `ALLOW_LOCAL_BUILD=1`
@@ -73,8 +73,6 @@ This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>`
 
 ## Deploy to prod (Scott's go-ahead for every deploy)
 
-The first scripted prod deploy hasn't happened yet, and `prod.prev` won't exist until it does. Do it with Scott watching: dry run, deploy, a deliberate `make rollback`, then redeploy (`release-plan.md` §5, PR 5). Delete this paragraph once that's done.
-
 Prerequisites: the build was QA'd (`make qa-deploy`) and its commit's tree is what `main` has now (merge the PR first; a stack tip's build qualifies once the stack is merged).
 
 ```sh
@@ -89,6 +87,24 @@ Overrides, each needing Scott's explicit OK: `FORCE=1` (deploy with live partici
 After verify passes, it creates a GitHub release `prod-<build id>`, tagged at the `origin/main` commit, with the binary and `BUILD_INFO.json` attached and the PRs merged since the previous prod release listed. It's marked Latest, so the repo's Releases list is the history of what went live. Redeploying a build that already has a release (after a rollback, say) adds a "Redeployed" note to that release and marks it Latest instead of creating another. This step is best effort: prod is already live, so a failure only warns (`gh-release ... result=fail` in `release.log`). To redo it by hand, use `gh release create prod-<id> --target <main sha> ...` with the same assets. `NO_GH_RELEASE=1` skips it. QA and drills never create releases.
 
 Report back: prod URL, build id and sha, the restore-point path, the GitHub release URL, and the verify result.
+
+## Nightly auto-deploy
+
+**Anything merged to `main` goes live at the next 3 AM ET run.** To keep a merge out of prod, pause the "fast-retro nightly auto-deploy" automation first.
+
+The automation runs `Skills/fast-retro-release/scripts/nightly-deploy.sh`. If prod's tree differs from `origin/main`'s, it runs `make release-fetch`, `make qa-deploy` and `make prod-deploy` on main's CI build, using main's own release scripts from a throwaway export, so the dev checkout's branch doesn't matter. All the normal guards apply, including the automated QA verify. Nobody clicks through QA first, and QA ends up on the same build as prod. It never passes `FORCE`, `SKIP_QA`, `ALLOW_LOCAL_BUILD` or `SEED`. Its `release.log` lines have the actor `nightly`.
+
+| Status | What happened | Email |
+|---|---|---|
+| `up_to_date` | Prod matches `main`; nothing touched | None |
+| `deployed` | Prod verified on `main` | What changed, the release link, how to roll back |
+| `blocked` | Someone is on a board (idle tabs count) or another release is running; QA is left alone if the check catches it before QA. Retries the next night | Yes |
+| `held` | `main` is code prod already rolled back from or failed to verify on | Yes |
+| `failed` | See `stage` and `reason`; the usual auto-restore applies | Yes, plus an SMS if prod looks down |
+
+`held` stops the job undoing a rollback at 3 AM. It clears when `main` changes, or after a deploy by hand.
+
+Each run writes `fast-retro-releases/logs/nightly-<ts>.json` and `.log`; `logs/nightly-latest.json` links to the last finished run.
 
 ## Rollback (Scott's go-ahead)
 
