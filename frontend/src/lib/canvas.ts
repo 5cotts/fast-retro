@@ -140,6 +140,21 @@ export function panToReveal(view: View, rect: Rect, viewport: Size, margin = 16)
   };
 }
 
+// Puts a world rect in the middle of the viewport, at the current zoom.
+export function centerOn(view: View, rect: Rect, viewport: Size): View {
+  return {
+    ...view,
+    panX: viewport.width / 2 - (rect.x + rect.width / 2) * view.zoom,
+    panY: viewport.height / 2 - (rect.y + rect.height / 2) * view.zoom
+  };
+}
+
+// What to talk about next: cards with votes, most first. Equal counts keep the
+// order given, so the list doesn't shuffle as ties come and go.
+export function rankByVotes<T extends { votes: readonly string[] }>(cards: readonly T[]): T[] {
+  return cards.filter((c) => c.votes.length > 0).sort((a, b) => b.votes.length - a.votes.length);
+}
+
 // Centers the bounds in the viewport. Never zooms in past 100%, so a nearly
 // empty board doesn't open with giant cards.
 export function fitToBounds(bounds: Rect | null, viewport: Size, padding = 32): View {

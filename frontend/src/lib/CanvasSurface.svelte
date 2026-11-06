@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onDestroy, onMount, untrack } from 'svelte';
-  import { Maximize, Minus, Plus } from 'lucide-svelte';
+  import { ListOrdered, Maximize, Minus, Plus } from 'lucide-svelte';
   import CanvasCard from './CanvasCard.svelte';
   import CanvasComposer from './CanvasComposer.svelte';
   import CanvasDock from './CanvasDock.svelte';
   import CanvasDraftCard from './CanvasDraftCard.svelte';
   import CanvasLabel from './CanvasLabel.svelte';
   import CanvasLabelInput from './CanvasLabelInput.svelte';
+  import TopVotedPanel from './TopVotedPanel.svelte';
   import EditableHeading from './EditableHeading.svelte';
   import {
     CARD_SLOT_HEIGHT,
@@ -16,12 +17,14 @@
     MIN_FIT_SLOTS,
     boundsOf,
     cardSlotHeight,
+    centerOn,
     compareStack,
     fitToBounds,
     gridSlots,
     headingPosition,
     nextZ,
     panToReveal,
+    rankByVotes,
     sanitizePos,
     screenToWorld,
     zoomAt,
@@ -31,6 +34,7 @@
   } from './canvas';
   import { DRAG_FRAME_MS, DRAG_HEARTBEAT_MS, LiveMoves, parseDragFrame } from './canvasLive';
   import { setCardPos } from './yboard';
+  import { track } from './analytics';
   import { clustersVisible } from './clusters';
   import { MAX_LABELS, createLabel, deleteLabel, editLabel, labelRect, moveLabel } from './labels';
   import { COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, isActionsColumn, type ColumnDef } from './columns';
@@ -146,6 +150,36 @@
   const labels = $derived(clustersVisible(board.phase, ended) ? board.labels : []);
   const canAddLabel = $derived(!ended && board.phase !== 'brainstorm' && board.labels.length < MAX_LABELS);
   let editingLabel = $state<string | null>(null);
+
+  // Top voted: from Discuss on. It opens by itself in Discuss, and everywhere
+  // else (the Actions dock, an ended board) it's one click away.
+  const canShowTopVoted = $derived(ended || board.phase === 'discuss' || board.phase === 'actions');
+  const opensTopVoted = $derived(!ended && board.phase === 'discuss');
+  let topVotedOpen = $state(false);
+  let selectedTopCard = $state<string | null>(null);
+  let highlightHandle: ReturnType<typeof setTimeout> | null = null;
+  const HIGHLIGHT_MS = 2500;
+
+  $effect(() => {
+    topVotedOpen = opensTopVoted;
+  });
+
+  const topVoted = $derived(
+    rankByVotes(placed.map((p) => ({ id: p.card.id, text: p.card.text, votes: p.card.votes, color: p.column.color }))).map((r) => ({
+      ...r,
+      votes: r.votes.length
+    }))
+  );
+
+  function selectTopCard(id: string) {
+    const hit = placedById(id);
+    if (!hit) return;
+    moveView(centerOn(view, { x: hit.x, y: hit.y, width: CARD_WIDTH, height: hit.height }, viewportSize()));
+    selectedTopCard = id;
+    if (highlightHandle !== null) clearTimeout(highlightHandle);
+    highlightHandle = setTimeout(() => (selectedTopCard = null), HIGHLIGHT_MS);
+    track({ name: 'canvas_view', params: { action: 'top_voted' } });
+  }
   let labelDraftAt = $state<Point | null>(null);
 
   const rankOf = $derived.by(() => {
@@ -607,6 +641,7 @@
     abortItemDrag();
     stopFrames();
     if (wheelEndHandle !== null) clearTimeout(wheelEndHandle);
+    if (highlightHandle !== null) clearTimeout(highlightHandle);
   });
 </script>
 
@@ -696,6 +731,7 @@
           {namesMap}
           {cardActions}
           typers={typingByCard.get(p.card.id) ?? []}
+          highlighted={selectedTopCard === p.card.id}
         />
       {/each}
       {#if draftAt && activePrompt}
@@ -704,11 +740,20 @@
     </div>
   </div>
 
+  {#if canShowTopVoted && topVotedOpen}
+    <TopVotedPanel rows={topVoted} selectedId={selectedTopCard} onSelect={selectTopCard} onClose={() => (topVotedOpen = false)} />
+  {/if}
+
   <div
     class="absolute bottom-3 right-3 z-10 flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/95 shadow-sm p-1 text-xs"
     role="group"
     aria-label="Canvas view"
   >
+    {#if canShowTopVoted && !topVotedOpen}
+      <button class="btn-ghost px-2 py-1 min-h-[32px] inline-flex items-center gap-1" onclick={() => (topVotedOpen = true)}>
+        <ListOrdered size={14} aria-hidden="true" /> Top voted
+      </button>
+    {/if}
     <button class="btn-ghost px-2 py-1 min-h-[32px]" onclick={() => zoomBy(1 / BUTTON_ZOOM_STEP)} aria-label="Zoom out">
       <Minus size={14} aria-hidden="true" />
     </button>
@@ -716,7 +761,13 @@
     <button class="btn-ghost px-2 py-1 min-h-[32px]" onclick={() => zoomBy(BUTTON_ZOOM_STEP)} aria-label="Zoom in">
       <Plus size={14} aria-hidden="true" />
     </button>
-    <button class="btn-ghost px-2 py-1 min-h-[32px] inline-flex items-center gap-1" onclick={fit}>
+    <button
+      class="btn-ghost px-2 py-1 min-h-[32px] inline-flex items-center gap-1"
+      onclick={() => {
+        fit();
+        track({ name: 'canvas_view', params: { action: 'fit' } });
+      }}
+    >
       <Maximize size={14} aria-hidden="true" /> Fit
     </button>
   </div>
@@ -758,6 +809,9 @@
 
 <style>
   :global(.canvas-card[data-active]) {
+    z-index: 1000000 !important;
+  }
+  :global(.canvas-card[data-highlighted]) {
     z-index: 1000000 !important;
   }
   /* Whoever is moving it, a card or label in motion is on top. */

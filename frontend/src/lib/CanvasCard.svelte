@@ -27,6 +27,8 @@
     namesMap: Record<string, string>;
     cardActions: CardActions;
     typers: string[];
+    // Just picked in Top voted.
+    highlighted: boolean;
   }
 
   let {
@@ -45,7 +47,8 @@
     anonymous,
     namesMap,
     cardActions,
-    typers
+    typers,
+    highlighted
   }: Props = $props();
 
   let el = $state<HTMLElement | null>(null);
@@ -65,13 +68,14 @@
 
 <div
   bind:this={el}
-  class="canvas-card absolute top-0 left-0 rounded-xl border p-1 {COLUMN_STYLE[column.color].accent}"
+  class="canvas-card absolute top-0 left-0 rounded-xl border p-1 {COLUMN_STYLE[column.color].accent} {highlighted ? 'ring-4 ring-sky-400' : ''}"
   style:width="{CARD_WIDTH}px"
   style:z-index={rank}
   data-canvas-card={id}
   data-column={column.key}
   data-color={column.color}
   data-testid="canvas-card"
+  data-highlighted={highlighted ? '' : undefined}
 >
   {#if hidden}
     <HiddenCard />

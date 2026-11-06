@@ -1,6 +1,6 @@
 # Discovery: canvas mode
 
-Status: approved through PR 7, decisions recorded 2026-11-05 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
+Status: PRs 1–7 built, waiting for QA (`docs/qa-canvas.md`), decisions recorded 2026-11-05 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
 
 ## Goal
 

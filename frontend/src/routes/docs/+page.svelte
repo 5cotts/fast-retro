@@ -154,6 +154,7 @@
             <li><strong>Labels.</strong> From Group onward, double-click empty space to add a label, such as a theme's name. Anyone can drag one, click it to change the text, or clear the text to delete it. A label owns nothing, so moving it moves no cards. Labels are hidden in Brainstorm and stored without an author.</li>
             <li><strong>Getting around.</strong> Drag empty space or scroll to pan. Pinch, or hold <kbd class="kbd-inline">Ctrl</kbd>/<kbd class="kbd-inline">⌘</kbd> and scroll, to zoom. <em>Fit</em> shows every card. Your view is your own and doesn't affect anyone else's.</li>
             <li><strong>Keyboard.</strong> <kbd class="kbd-inline">Shift</kbd>+arrow keys nudge a focused card.</li>
+            <li><strong>Discussing.</strong> Cards don't re-sort on a canvas. In Discuss, the <em>Top voted</em> panel lists cards by votes, and picking one pans to it and highlights it, for you only.</li>
             <li><strong>Action items</strong> sit in a panel beside the canvas, not on it.</li>
             <li><strong>List view.</strong> The <em>List</em> button in the phase bar shows the same cards in columns, where you can add, vote and comment but not move them. Phones start here; tap <em>Canvas</em> to switch.</li>
           </ul>

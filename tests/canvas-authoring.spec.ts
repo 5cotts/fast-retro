@@ -441,6 +441,36 @@ test.describe('running a canvas board', () => {
     }
   });
 
+  test('Top voted opens in Discuss, ranks cards live, can be closed, and offers no votes as empty', async ({ browser }) => {
+    test.setTimeout(60_000);
+    const s = Math.random().toString(36).slice(2, 6);
+    const { ctx, page } = await newPage(browser);
+    try {
+      await importCanvas(page, canvasFile(`Top ${s}`, { ok: [{ text: `Card ${s}` }] }, { phase: 'group' }));
+      await expect(page.getByTestId('top-voted')).toBeHidden();
+      await expect(page.getByRole('button', { name: 'Top voted' })).toHaveCount(0);
+
+      await nextPhase(page, 2);
+      const panel = page.getByTestId('top-voted');
+      await expect(panel).toContainText('No votes yet');
+
+      await page.getByRole('button', { name: 'Close Top voted' }).click();
+      await expect(panel).toBeHidden();
+      await page.getByRole('button', { name: 'Top voted' }).click();
+      await expect(panel).toBeVisible();
+
+      // A vote left over from going back shows up straight away.
+      await page.getByRole('button', { name: /Go back to Vote/ }).click();
+      await cardEl(page, `Card ${s}`).getByRole('button', { name: /vote/i }).first().click();
+      await nextPhase(page);
+      await expect(panel.getByRole('listitem')).toHaveCount(1);
+      await expect(panel.getByRole('listitem')).toContainText(`Card ${s}`);
+      await expect(panel.getByRole('listitem').getByLabel('1 vote')).toBeVisible();
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('a host edits prompts, not columns: no auto-sort, inline rename, and cards keep their place in Discuss', async ({ browser }) => {
     test.setTimeout(60_000);
     const s = Math.random().toString(36).slice(2, 6);
