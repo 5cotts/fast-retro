@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import BoardColumn from './BoardColumn.svelte';
-  import ClusterRow from './ClusterRow.svelte';
+  import ColumnsSurface from './ColumnsSurface.svelte';
   import BoardHeader from './BoardHeader.svelte';
   import ExportMenu from './ExportMenu.svelte';
   import NamePrompt from './NamePrompt.svelte';
@@ -15,15 +14,9 @@
     toggleReaction,
     addComment,
     deleteComment,
-    moveCard,
     setBoardLabel,
     setBoardEnded,
     applyBoardEdit,
-    createCluster,
-    renameCluster,
-    setCardCluster,
-    dissolveCluster,
-    mergeCluster,
     type BoardEdit,
     countCards,
     type SeedSource
@@ -66,9 +59,9 @@
   import { useBoardConnection } from './useBoardConnection.svelte';
   import { setBoardSetting, type BoardSettingKey } from './settings';
   import { isHidingCards } from './visibility';
-  import { alignedRows, canEditClusters, clustersVisible, layoutBoard, planDrop, reorderTarget, sameDropTarget, sectionOf, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
+  import type { CardActions } from './cardActions';
   import type { CardData } from './types';
-  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, boardGridClass, hasActionsColumn, isWideBoard, renameColumn, sameColumns } from './columns';
+  import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
   import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
@@ -77,10 +70,7 @@
     PHASE_HINT,
     nextPhase,
     prevPhase,
-    setPhase,
-    canAddCardInColumn,
-    canVoteInPhase,
-    canSortByVotes
+    setPhase
   } from './phase';
 
   let {
@@ -124,14 +114,8 @@
   let tickHandle: ReturnType<typeof setInterval> | null = null;
 
   let timerInputMin = $state<string>('5');
-  let dragCardId = $state<string | null>(null);
-  let dragFromCol = $state<string | null>(null);
-  let dropTarget = $state<DropTarget | null>(null);
   let coarsePointer = $state<boolean>(false);
   let reducedMotion = $state<boolean>(false);
-  // Group rows line up across columns only where columns sit side by side. The
-  // fallback for a browser without subgrid is the stacked layout phones use.
-  let canAlignRows = $state<boolean>(false);
   let prevTimerExpired = $state<boolean>(false);
   let timerJustExpired = $state<boolean>(false);
   let timerExpiredHandle: ReturnType<typeof setTimeout> | null = null;
@@ -158,7 +142,6 @@
   let prevTimerPaused = $state<boolean>(false);
   let prevTimerDuration = $state<number>(0);
 
-  let focusedCardId = $state<string | null>(null);
   let endConfirm = $state<boolean>(false);
 
   const remainingSec = $derived(computeTimerRemaining(conn.state.timerState, nowTick));
@@ -209,13 +192,6 @@
 
       coarsePointer = window.matchMedia('(pointer: coarse)').matches;
       reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (CSS.supports('grid-template-rows', 'subgrid')) {
-        const desktop = window.matchMedia('(min-width: 768px)');
-        const onChange = () => (canAlignRows = desktop.matches);
-        onChange();
-        desktop.addEventListener('change', onChange);
-        onDestroy(() => desktop.removeEventListener('change', onChange));
-      }
     }
 
     const storedName = getName();
@@ -542,184 +518,37 @@
     return new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   }
 
-  function setTyping(target: string | null) {
-    if (!conn.state.board) return;
-    updateAwarenessUser(conn.state.board.provider, { typing: target });
-  }
-
   function cardsIn(col: string): CardData[] {
     return conn.state.cards[col] ?? [];
   }
 
-  function handleAddCard(col: string, text: string) {
-    if (!conn.state.board) return;
-    addCard(conn.state.board.board, col, text, userId);
-  }
-
-  function handleEdit(col: string, cardId: string, text: string) {
-    if (!conn.state.board) return;
-    editCardText(conn.state.board.board, col, cardId, text);
-  }
-
-  function handleDelete(col: string, cardId: string) {
-    if (!conn.state.board) return;
-    deleteCard(conn.state.board.board, col, cardId);
-  }
-
-  function handleVote(col: string, cardId: string) {
-    if (!conn.state.board) return;
-    toggleVote(conn.state.board.board, col, cardId, userId);
-  }
-
-  function handleReact(col: string, cardId: string, emoji: string) {
-    if (!conn.state.board) return;
-    toggleReaction(conn.state.board.board, col, cardId, emoji, userId);
-  }
-
-  function handleAddComment(col: string, cardId: string, text: string) {
-    if (!conn.state.board) return;
-    addComment(conn.state.board.board, col, cardId, text, userId);
-  }
-
-  function handleDeleteComment(col: string, cardId: string, commentId: string) {
-    if (!conn.state.board) return;
-    deleteComment(conn.state.board.board, col, cardId, commentId);
-  }
-
-  function onDragStart(e: DragEvent, cardId: string, fromCol: string) {
-    dragCardId = cardId;
-    dragFromCol = fromCol;
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', cardId);
+  // Every card write, in one object, so a surface doesn't need a prop for each.
+  const cardActions: CardActions = {
+    add(column, text) {
+      if (conn.state.board) addCard(conn.state.board.board, column, text, userId);
+    },
+    edit(column, cardId, text) {
+      if (conn.state.board) editCardText(conn.state.board.board, column, cardId, text);
+    },
+    remove(column, cardId) {
+      if (conn.state.board) deleteCard(conn.state.board.board, column, cardId);
+    },
+    toggleVote(column, cardId) {
+      if (conn.state.board) toggleVote(conn.state.board.board, column, cardId, userId);
+    },
+    toggleReaction(column, cardId, emoji) {
+      if (conn.state.board) toggleReaction(conn.state.board.board, column, cardId, emoji, userId);
+    },
+    addComment(column, cardId, text) {
+      if (conn.state.board) addComment(conn.state.board.board, column, cardId, text, userId);
+    },
+    deleteComment(column, cardId, commentId) {
+      if (conn.state.board) deleteComment(conn.state.board.board, column, cardId, commentId);
+    },
+    setTyping(target) {
+      if (conn.state.board) updateAwarenessUser(conn.state.board.provider, { typing: target });
     }
-  }
-
-  function onDragEnd() {
-    dragCardId = null;
-    dragFromCol = null;
-    dropTarget = null;
-  }
-
-  // Where the dragged card is shown landing. Set from BoardColumn, which knows
-  // the geometry; this only allows the drop and records it.
-  function onTargetDragOver(e: DragEvent, target: DropTarget) {
-    if (!dragCardId || !canReorder) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    if (!sameDropTarget(dropTarget, target)) dropTarget = target;
-  }
-
-  // Over a column but not over anything in it. Keeps the last position while the
-  // pointer crosses a gap, so the indicator doesn't flicker.
-  function onColumnDragOver(e: DragEvent, col: string) {
-    if (!dragCardId || !canReorder) return;
-    e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-    if (dropTarget?.column !== col) dropTarget = { kind: 'slot', column: col, beforeId: null, sectionId: null };
-  }
-
-  function onColumnDrop(e: DragEvent, col: string) {
-    e.preventDefault();
-    const state = conn.state.board;
-    if (!state || !dragCardId || !dragFromCol || !canReorder) {
-      onDragEnd();
-      return;
-    }
-    const target = dropTarget ?? { kind: 'slot' as const, column: col, beforeId: null, sectionId: null };
-    const source = { column: dragFromCol, cardId: dragCardId, clusterId: laneOfCard(dragCardId) };
-    const plan = planDrop(source, target, dragCanGroup);
-    switch (plan.kind) {
-      case 'reorder':
-        moveCard(state.doc, state.board, source.column, source.cardId, plan.column, plan.beforeId);
-        break;
-      case 'setCluster':
-        setCardCluster(state.board, source.column, source.cardId, plan.clusterId);
-        track({ name: 'card_group', params: { action: plan.clusterId ? 'join' : 'leave', source: 'drag' } });
-        break;
-      case 'moveLoose':
-        state.doc.transact(() => {
-          setCardCluster(state.board, source.column, source.cardId, null);
-          moveCard(state.doc, state.board, source.column, source.cardId, plan.column, plan.beforeId);
-        });
-        if (source.clusterId) track({ name: 'card_group', params: { action: 'leave', source: 'drag' } });
-        break;
-      case 'newClusterWith':
-        state.doc.transact(() => {
-          const id = createCluster(state.clusters);
-          setCardCluster(state.board, plan.column, plan.cardId, id);
-          setCardCluster(state.board, source.column, source.cardId, id);
-        });
-        track({ name: 'card_group', params: { action: 'create', source: 'drag' } });
-        break;
-    }
-    onDragEnd();
-  }
-
-  // Keyboard-driven card move: shift+arrow on a focused card moves it
-  // within or between columns. Mirrors drag-and-drop without the mouse.
-  function findCard(cardId: string): { col: string; index: number } | null {
-    for (const col of conn.state.columns) {
-      const idx = cardsIn(col.key).findIndex((c: CardData) => c.id === cardId);
-      if (idx >= 0) return { col: col.key, index: idx };
-    }
-    return null;
-  }
-
-  function neighborColumn(col: string, direction: -1 | 1): string | null {
-    const columns = conn.state.columns;
-    const i = columns.findIndex((c) => c.key === col);
-    const j = i + direction;
-    if (i < 0 || j < 0 || j >= columns.length) return null;
-    return columns[j].key;
-  }
-
-  function moveFocused(direction: 'up' | 'down' | 'left' | 'right') {
-    if (!focusedCardId || !conn.state.board || !canReorder) return;
-    const loc = findCard(focusedCardId);
-    if (!loc) return;
-    const { col } = loc;
-    if (direction === 'up' || direction === 'down') {
-      const target = reorderTarget(sectionOf(layout, col, focusedCardId), focusedCardId, direction === 'up' ? -1 : 1);
-      if (!target) return;
-      moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, col, target.beforeId);
-    } else {
-      const dir = direction === 'left' ? -1 : 1;
-      const target = neighborColumn(col, dir);
-      if (!target) return;
-      moveCard(conn.state.board.doc, conn.state.board.board, col, focusedCardId, target, null);
-    }
-  }
-
-  function onCardKeydown(e: KeyboardEvent, cardId: string) {
-    if (!e.shiftKey) return;
-    if (e.target instanceof HTMLElement) {
-      const tag = e.target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-    }
-    let handled = true;
-    switch (e.key) {
-      case 'ArrowUp':
-        focusedCardId = cardId;
-        moveFocused('up');
-        break;
-      case 'ArrowDown':
-        focusedCardId = cardId;
-        moveFocused('down');
-        break;
-      case 'ArrowLeft':
-        focusedCardId = cardId;
-        moveFocused('left');
-        break;
-      case 'ArrowRight':
-        focusedCardId = cardId;
-        moveFocused('right');
-        break;
-      default:
-        handled = false;
-    }
-    if (handled) e.preventDefault();
-  }
+  };
 
   function leadSetTimer() {
     if (!conn.state.board || !isLead) return;
@@ -768,70 +597,6 @@
   const phaseIndex = $derived(phases.indexOf(conn.state.phase));
   const isLastPhase = $derived(phaseIndex === phases.length - 1);
   const isFirstPhase = $derived(phaseIndex === 0);
-  const canVote = $derived(canVoteInPhase(conn.state.phase));
-
-  // Display-only: never rewrites the underlying Y.Array, so this adds no new
-  // CRDT conflict surface. Active once the lead moves into Discuss (and
-  // stays active through Actions) — not during Vote itself, so the card
-  // someone's about to vote on doesn't jump position mid-cast. Lead can also
-  // turn it off entirely via the autoSort meta flag (on by default). Ties
-  // keep original array position via stable sort. Manual drag-to-reorder is
-  // disabled whenever the sort is actually active, since a drag would just
-  // get overridden by the next sort on re-render.
-  const sortActive = $derived(canSortByVotes(conn.state.phase) && conn.state.settings.autoSort);
-  const canReorder = $derived(!sortActive);
-
-  const layout = $derived(
-    layoutBoard(conn.state.columns, conn.state.cards, conn.state.clusters, {
-      showClusters: clustersVisible(conn.state.phase, ended),
-      sortByVotes: sortActive
-    })
-  );
-  const aligned = $derived(canAlignRows && layout.lanes.length > 0);
-  const inputColumnCount = $derived(conn.state.columns.filter((c) => c.key !== ACTIONS_COLUMN_KEY).length);
-  const canCluster = $derived(canEditClusters(conn.state.phase, ended));
-  const canMergeClusters = $derived(canCluster && effectiveLead);
-  const dragCanGroup = $derived(canCluster && dragFromCol !== null && dragFromCol !== ACTIONS_COLUMN_KEY);
-  function laneOfCard(cardId: string): string | null {
-    return layout.lanes.find((lane) => Object.values(lane.cards).some((list) => list.some((c) => c.id === cardId)))?.cluster.id ?? null;
-  }
-  const dragIsGrouped = $derived(dragCardId !== null && laneOfCard(dragCardId) !== null);
-  function mergeTitle(lane: ClusterLane): string {
-    return conn.state.columns.find((c) => (lane.cards[c.key]?.length ?? 0) > 0)?.title ?? '';
-  }
-  const clusterActions: ClusterActions = {
-    join(column, cardId, clusterId) {
-      if (!conn.state.board) return;
-      setCardCluster(conn.state.board.board, column, cardId, clusterId);
-      track({ name: 'card_group', params: { action: 'join', source: 'menu' } });
-    },
-    create(column, cardId, label) {
-      const state = conn.state.board;
-      if (!state) return;
-      state.doc.transact(() => {
-        setCardCluster(state.board, column, cardId, createCluster(state.clusters, label));
-      });
-      track({ name: 'card_group', params: { action: 'create', source: 'menu' } });
-    },
-    leave(column, cardId) {
-      if (!conn.state.board) return;
-      setCardCluster(conn.state.board.board, column, cardId, null);
-      track({ name: 'card_group', params: { action: 'leave', source: 'menu' } });
-    },
-    rename(clusterId, label) {
-      if (conn.state.board) renameCluster(conn.state.board.clusters, clusterId, label);
-    },
-    dissolve(clusterId) {
-      if (!conn.state.board) return;
-      dissolveCluster(conn.state.board.doc, conn.state.board.board, clusterId);
-      track({ name: 'card_group', params: { action: 'ungroup', source: 'menu' } });
-    },
-    merge(clusterId) {
-      if (!conn.state.board) return;
-      mergeCluster(conn.state.board.doc, conn.state.board.board, clusterId, conn.state.columns.map((c) => c.key));
-      track({ name: 'card_group', params: { action: 'merge', source: 'menu' } });
-    }
-  };
 
   function downloadCSV(source: 'board' | 'ended' = 'board') {
     track({ name: 'board_export', params: { format: 'csv', source } });
@@ -1215,84 +980,19 @@
       </div>
     {/if}
 
-    <main
-      class="flex-1 w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 {isWideBoard(conn.state.columns.length) ? 'max-w-none' : 'max-w-7xl'}"
-    >
-      <div
-        class={boardGridClass(conn.state.columns.length)}
-        style="--board-cols: {conn.state.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}"
-        data-testid="board-columns"
-      >
-        {#each conn.state.columns as col, columnIndex (col.key)}
-          <BoardColumn
-            column={col}
-            cards={layout.loose[col.key] ?? []}
-            lanes={layout.lanes}
-            cardCount={cardsIn(col.key).length}
-            {aligned}
-            {columnIndex}
-            {canCluster}
-            canMerge={canMergeClusters}
-            {mergeTitle}
-            {clusterActions}
-            canAdd={canAddCardInColumn(col, conn.state.phase) && !ended}
-            phase={conn.state.phase}
-            {userId}
-            {userName}
-            isLead={effectiveLead}
-            readOnly={ended}
-            {canVote}
-            anonymous={conn.state.settings.anonymous}
-            namesMap={namesMapDisambiguated}
-            {canReorder}
-            hideCards={conn.state.settings.hideCards}
-            {dragCardId}
-            {dragCanGroup}
-            {dragIsGrouped}
-            {dropTarget}
-            {typingByCard}
-            {reducedMotion}
-            {coarsePointer}
-            onAddCard={(text) => handleAddCard(col.key, text)}
-            onTyping={setTyping}
-            onEdit={(id, text) => handleEdit(col.key, id, text)}
-            onDelete={(id) => handleDelete(col.key, id)}
-            onToggleVote={(id) => handleVote(col.key, id)}
-            onToggleReaction={(id, e) => handleReact(col.key, id, e)}
-            onAddComment={(id, t) => handleAddComment(col.key, id, t)}
-            onDeleteComment={(id, cid) => handleDeleteComment(col.key, id, cid)}
-            {onCardKeydown}
-            onFocusCard={(id) => (focusedCardId = id)}
-            {onDragStart}
-            {onDragEnd}
-            {onTargetDragOver}
-            onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
-            onColumnDrop={(e) => onColumnDrop(e, col.key)}
-            onRename={(t) => renameColumnInline(col.key, t)}
-          />
-        {/each}
-        {#if aligned}
-          {#each layout.lanes as lane, i (lane.cluster.id)}
-            <ClusterRow
-              {lane}
-              titleRow={alignedRows(layout.lanes.length).titleRow(i)}
-              columnSpan={inputColumnCount}
-              wide={isWideBoard(conn.state.columns.length)}
-              canEdit={canCluster}
-              canMerge={canMergeClusters}
-              mergeInto={mergeTitle(lane)}
-              {clusterActions}
-              highlighted={dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id}
-              onDragOver={(e) => {
-                if (!dragCanGroup) return;
-                onTargetDragOver(e, { kind: 'group', column: conn.state.columns[0].key, clusterId: lane.cluster.id });
-              }}
-              onDrop={(e) => onColumnDrop(e, conn.state.columns[0].key)}
-            />
-          {/each}
-        {/if}
-      </div>
-    </main>
+    <ColumnsSurface
+      board={conn.state}
+      {cardActions}
+      {ended}
+      {userId}
+      {userName}
+      isLead={effectiveLead}
+      namesMap={namesMapDisambiguated}
+      {typingByCard}
+      {reducedMotion}
+      {coarsePointer}
+      onRenameColumn={renameColumnInline}
+    />
 
     <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
       Joined as <span class="font-medium text-slate-500 dark:text-slate-400">{userName}</span>
