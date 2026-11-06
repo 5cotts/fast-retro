@@ -111,6 +111,7 @@ export async function endBoard(
     hideCards?: boolean;
     columns?: { key: string; title: string; color: string }[];
     clusters?: { id: string; label: string }[];
+    layout?: 'canvas';
   },
   auth: { hostKey?: string; leadToken?: string }
 ): Promise<{ archiveId: string }> {

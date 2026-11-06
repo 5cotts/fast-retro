@@ -10,6 +10,8 @@ import them.
   columns (version 2). Checked by `boardfile-v2.spec.ts`.
 - `board-v3.fastretro.json`: a three-column board with groups across columns
   (version 3). Checked by `boardfile-v3.spec.ts`.
+- `board-v4.fastretro.json`: a canvas board with moved and unmoved cards
+  (version 4). Checked by `boardfile-v4.spec.ts`.
 
 Never edit them to make a test pass. If the format changes in a way an older
 reader would silently lose data, bump `BOARD_FILE_VERSION`, add the next

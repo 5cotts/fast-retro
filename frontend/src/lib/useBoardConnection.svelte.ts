@@ -16,6 +16,7 @@ import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
 import { readClusters, type ClusterDef } from './clusters';
+import { readLayout, type BoardLayout } from './canvas';
 import { BOARD_SETTING_DEFAULTS, readBoardSettings, sameSettings, type BoardSettings } from './settings';
 
 export interface UseBoardConnectionInit {
@@ -47,6 +48,7 @@ export interface UseBoardConnectionState {
   phase: Phase;
   label: string;
   settings: BoardSettings;
+  layout: BoardLayout;
   endedAt: number | null;
   // True only if the retro ended while this client was connected and synced,
   // as opposed to the board already being ended when it loaded. Drives the
@@ -82,6 +84,7 @@ export function useBoardConnection() {
     phase: 'brainstorm',
     label: '',
     settings: { ...BOARD_SETTING_DEFAULTS },
+    layout: 'columns',
     endedAt: null,
     endedLive: false,
     endedMessage: '',
@@ -118,6 +121,7 @@ export function useBoardConnection() {
         recomputePhase();
       }
       state.label = readBoardLabel(meta);
+      state.layout = readLayout(meta);
       const settings = readBoardSettings(meta);
       if (!sameSettings(settings, state.settings)) state.settings = settings;
       const endedAt = readBoardEndedAt(meta);

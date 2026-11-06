@@ -22,6 +22,7 @@
     hideCards?: boolean;
     columns?: unknown;
     clusters?: unknown;
+    layout?: unknown;
   }
 
   let ok = $state<boolean | null>(null);
@@ -182,6 +183,13 @@
                 <span class="font-mono">· {archive.slug}</span>
               {/if}
               · read-only snapshot
+              {#if archive.layout === 'canvas'}
+                <span
+                  class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                  title="This board was a canvas. It's shown here as columns. Save the board file to keep where the cards were."
+                  data-testid="archive-canvas-tag"
+                >Canvas</span>
+              {/if}
             </div>
           </div>
           <button class="btn text-xs px-3 py-1.5" onclick={downloadJSON} title="Full copy you can import later">

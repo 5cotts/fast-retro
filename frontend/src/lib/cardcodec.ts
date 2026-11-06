@@ -1,4 +1,5 @@
 import * as Y from 'yjs';
+import { sanitizePos } from './canvas';
 import type { CardData, CommentData } from './types';
 
 // The one place that knows how a card is laid out in the Yjs doc. Every
@@ -32,6 +33,7 @@ export function cardFromY(card: Y.Map<unknown>): CardData | null {
     if (parsed) comments.push(parsed);
   });
   const clusterId = card.get('clusterId');
+  const pos = sanitizePos(card.get('pos'));
   return {
     id,
     text,
@@ -39,7 +41,8 @@ export function cardFromY(card: Y.Map<unknown>): CardData | null {
     votes: votesArr ? votesArr.toArray() : [],
     reactions,
     comments,
-    ...(typeof clusterId === 'string' && clusterId ? { clusterId } : {})
+    ...(typeof clusterId === 'string' && clusterId ? { clusterId } : {}),
+    ...(pos ? { pos } : {})
   };
 }
 
@@ -71,5 +74,6 @@ export function cardToY(card: CardData): Y.Map<unknown> {
   if (card.comments.length) comments.push(card.comments.map(commentToY));
   m.set('comments', comments);
   if (card.clusterId) m.set('clusterId', card.clusterId);
+  if (card.pos) m.set('pos', { ...card.pos });
   return m;
 }

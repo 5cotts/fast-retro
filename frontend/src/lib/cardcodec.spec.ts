@@ -28,6 +28,18 @@ describe('card codec', () => {
     expect(roundTrip(empty)).toEqual(empty);
   });
 
+  it('round-trips a canvas position', () => {
+    const moved = { ...card, pos: { x: 12.5, y: -40, z: 3 } };
+    expect(roundTrip(moved)).toEqual(moved);
+  });
+
+  it('reads a bad position as unmoved', () => {
+    const arr = new Y.Doc().getArray<Y.Map<unknown>>('a');
+    arr.push([cardToY(card)]);
+    arr.get(0).set('pos', { x: 'left', y: 3, z: 1 });
+    expect(cardFromY(arr.get(0))).not.toHaveProperty('pos');
+  });
+
   it('skips cards without an id or text, and comments missing fields', () => {
     const doc = new Y.Doc();
     const arr = doc.getArray<Y.Map<unknown>>('a');

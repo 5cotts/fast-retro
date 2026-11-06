@@ -5,6 +5,13 @@ export interface CommentData {
   createdAt: number;
 }
 
+// Where a card sits on a canvas board, in world coordinates. See canvas.ts.
+export interface CardPos {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface CardData {
   id: string;
   text: string;
@@ -14,6 +21,8 @@ export interface CardData {
   comments: CommentData[];
   // The group this card belongs to (see clusters.ts). Absent means none.
   clusterId?: string;
+  // Canvas boards only. Absent means it's still in its starting grid slot.
+  pos?: CardPos;
 }
 
 export interface PresenceUser {

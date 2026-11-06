@@ -617,6 +617,7 @@
         hideCards: conn.state.settings.hideCards,
         columns: conn.state.columns,
         clusters: conn.state.clusters,
+        layout: conn.state.layout,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
       })
@@ -668,7 +669,8 @@
           // Classic boards send no list, so their archives look as they always have.
           columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns,
           // Likewise for boards with no groups.
-          clusters: archiveClusters.length ? archiveClusters : undefined
+          clusters: archiveClusters.length ? archiveClusters : undefined,
+          layout: conn.state.layout === 'canvas' ? 'canvas' : undefined
         },
         { hostKey, leadToken }
       );
@@ -700,7 +702,8 @@
   const actionCount = $derived(hasActionsColumn(conn.state.columns) ? cardsIn(ACTIONS_COLUMN_KEY).length : 0);
 
   function carryOverFile(label: string) {
-    const actions = cardsIn(ACTIONS_COLUMN_KEY).slice(0, MAX_IMPORT_CARDS).map((card) => ({
+    // Positions stay behind: this is a new board's starting layout.
+    const actions = cardsIn(ACTIONS_COLUMN_KEY).slice(0, MAX_IMPORT_CARDS).map(({ pos: _pos, ...card }) => ({
       ...card,
       votes: [],
       reactions: {},
@@ -714,6 +717,7 @@
       hideCards: conn.state.settings.hideCards,
       // The next retro keeps this board's columns and settings.
       columns: conn.state.columns,
+      layout: conn.state.layout,
       cards: { [ACTIONS_COLUMN_KEY]: actions },
       namesMap: {}
     });
@@ -733,7 +737,7 @@
       const carried = carryActions ? actionCount : 0;
       const seeded = carried > 0 && setPendingSeed(res.slug, carryOverFile(base), { kind: 'carryover', from: base });
       if (!seeded) {
-        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, hideCards: conn.state.settings.hideCards, columns: conn.state.columns }), { kind: 'new' });
+        setPendingSeed(res.slug, newBoardSeed({ label: base, anonymous: true, hideCards: conn.state.settings.hideCards, columns: conn.state.columns, layout: conn.state.layout }), { kind: 'new' });
       }
       track({ name: 'next_retro', params: { carried_actions: carried } });
       goto(`/board/${res.slug}`);

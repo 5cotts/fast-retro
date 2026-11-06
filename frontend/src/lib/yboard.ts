@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
-import type { CardData } from './types';
+import type { CardData, CardPos } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
 import { cleanClusterLabel, clusterMapOf, type ClusterMap } from './clusters';
 import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
@@ -522,6 +522,20 @@ export function setCardCluster(
   });
 }
 
+// One last-writer-wins field per drop. It doesn't rebuild the card, so a move
+// and a concurrent comment or vote both survive, and it can't duplicate a card
+// the way moveCard can.
+export function setCardPos(
+  board: Y.Map<Y.Array<Y.Map<unknown>>>,
+  column: string,
+  cardId: string,
+  pos: CardPos
+): void {
+  board.get(column)?.forEach((card) => {
+    if (card.get('id') === cardId) card.set('pos', { x: pos.x, y: pos.y, z: pos.z });
+  });
+}
+
 // Puts every member back in the ungrouped area. The record stays (see clusters.ts).
 export function dissolveCluster(doc: Y.Doc, board: Y.Map<Y.Array<Y.Map<unknown>>>, clusterId: string): void {
   doc.transact(() => {
@@ -633,6 +647,7 @@ export function seedBoard(
       });
       if (cards.length) arr.push(cards);
     }
+    if (file.board.layout === 'canvas') meta.set('layout', 'canvas');
     setBoardLabel(meta, file.board.label);
     setBoardSetting(meta, 'anonymous', file.board.anonymous);
     setBoardSetting(meta, 'autoSort', file.board.autoSort);
