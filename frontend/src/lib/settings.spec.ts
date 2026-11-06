@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { BOARD_SETTING_DEFAULTS, readBoardSettings, setBoardSetting } from './settings';
+import { BOARD_SETTING_DEFAULTS, BOARD_SETTING_KEYS, readBoardSettings, setBoardSetting, settingsFor } from './settings';
 import { exportBoardFile, newBoardSeed, parseBoardFile, serializeBoardFile } from './boardfile';
 import { setUpAfterSync } from './yboard';
 
@@ -63,5 +63,15 @@ describe('hideCards in board files', () => {
   it('is part of a new board seed', () => {
     expect(newBoardSeed({ label: '', anonymous: true, hideCards: true }).board.hideCards).toBe(true);
     expect(newBoardSeed({ label: '', anonymous: true }).board).not.toHaveProperty('hideCards');
+  });
+});
+
+describe('settingsFor', () => {
+  it('offers everything on a column board', () => {
+    expect(settingsFor('columns')).toEqual(BOARD_SETTING_KEYS);
+  });
+
+  it('drops auto-sort on a canvas, where cards never re-sort', () => {
+    expect(settingsFor('canvas')).toEqual(BOARD_SETTING_KEYS.filter((k) => k !== 'autoSort'));
   });
 });

@@ -27,6 +27,7 @@
     currentClientId,
     userName,
     settings,
+    settingKeys,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -56,6 +57,7 @@
     currentClientId: number;
     userName: string;
     settings: BoardSettings;
+    settingKeys: BoardSettingKey[];
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -208,6 +210,7 @@
             {timerRunning}
             {timerExpired}
             {settings}
+            {settingKeys}
             onSet={onSetTimer}
             onStart={onStartTimer}
             onPause={onPauseTimer}
@@ -253,6 +256,7 @@
           {timerRunning}
           {timerExpired}
           {settings}
+          {settingKeys}
           onSet={onSetTimer}
           onStart={onStartTimer}
           onPause={onPauseTimer}

@@ -1,6 +1,6 @@
 # Discovery: canvas mode
 
-Status: approved through the PR 4 preview, decisions recorded 2026-11-05 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
+Status: approved through PR 7, decisions recorded 2026-11-05 · checked against `main` at `2e97998`, on top of `docs/card-groups-plan.md` (#52)
 
 ## Goal
 
@@ -95,7 +95,7 @@ Scott accepted the recommendations on 2026-11-05.
 
 | # | Question | Decision | Why |
 | --- | --- | --- | --- |
-| **C1** | Build it now? | **Group rows first, then PRs 1–4 as a preview, then decide** | Stops at a real test with little sunk cost. See Bottom line. |
+| **C1** | Build it now? | **Group rows first, then PRs 1–4 as a preview, then decide.** Later changed: build through PR 7, then QA (see Rollout). | Stops at a real test with little sunk cost. See Bottom line. |
 | **C2** | Pure proximity, or also derive clusters? | **Pure proximity plus floating labels** | It's what she described. A distance threshold brings the binary back, and its boundaries would flicker during a drag. Deriving clusters later is cheap (0.38 ms at 300 cards), so nothing is ruled out. Still worth asking her, since she knows Metro Retro's Topics. |
 | **C3** | Can a board switch between columns and canvas? | **Chosen at creation.** People can still use List view. | Switching is cheap in the data, since it's one key and no conversion. The product question is what happens to group rows, so wait until someone asks. |
 | **C4** | Who can move cards, and when? | **Anyone, in every phase, until the board ends** | This matches the existing rule that drag-to-reorder stays available in all phases (`phase.ts:63`). The risk is an accidental move during discussion with no undo. |
@@ -227,7 +227,11 @@ Stacked PRs off `main`, **after the group rows stack merges**, because its PR 1 
 - PR 4 tests the idea with the least work, including the real-device check.
 - Labels and Top voted are separate so either can be cut if the preview changes what's wanted.
 
-**Release:** `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`, with the `e2e` label on each PR. The QA service is private, so Valentina needs a preview tunnel for PR 4.
+**Release:** `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`, with the `e2e` label on each PR. QA is public now (Zo's private proxy blocks WebSockets), so a preview doesn't need a tunnel.
+
+Scott chose on 2026-11-05 to skip the PR 4 preview and QA once the canvas is fully functional, so PRs 5–7 are being built without Valentina's feedback on PR 4.
+
+**Starting grid, as built in PR 5.** The plan had fixed-size slots, but a long card then covered the card below it. Slots now grow with an estimate from the text (`cardSlotHeight`). It's not measured, so it comes out the same for everyone and opening a card's comments doesn't push others. Editing a long card's text can still shift the unmoved cards below it. Hidden cards use the fixed size, so a placeholder doesn't give away the card's length.
 
 ### Tests
 

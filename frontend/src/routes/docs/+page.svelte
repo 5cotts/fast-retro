@@ -142,6 +142,23 @@
         </section>
 
         <section>
+          <h2 class="font-semibold text-lg mb-2">Canvas boards</h2>
+          <p class="mb-3">
+            On a canvas, cards can go anywhere, and how close two cards sit is the grouping.
+            A card keeps the color of the prompt it was written under, wherever you put it. The
+            phases work the same way.
+          </p>
+          <ul class="space-y-1 list-disc pl-5">
+            <li><strong>Adding cards.</strong> In Brainstorm, pick a prompt in the bar at the bottom and write your card, or double-click the canvas to put it right there.</li>
+            <li><strong>Arranging.</strong> Drag a card to move it, at any point until the retro ends. Everyone sees it move. Dropping a card on another card overlaps them and never merges them.</li>
+            <li><strong>Getting around.</strong> Drag empty space or scroll to pan. Pinch, or hold <kbd class="kbd-inline">Ctrl</kbd>/<kbd class="kbd-inline">⌘</kbd> and scroll, to zoom. <em>Fit</em> shows every card. Your view is your own and doesn't affect anyone else's.</li>
+            <li><strong>Keyboard.</strong> <kbd class="kbd-inline">Shift</kbd>+arrow keys nudge a focused card.</li>
+            <li><strong>Action items</strong> sit in a panel beside the canvas, not on it.</li>
+            <li><strong>List view.</strong> The <em>List</em> button in the phase bar shows the same cards in columns, where you can add, vote and comment but not move them. Phones start here; tap <em>Canvas</em> to switch.</li>
+          </ul>
+        </section>
+
+        <section>
           <h2 class="font-semibold text-lg mb-2">Card actions</h2>
           <ul class="space-y-1 list-disc pl-5">
             <li><strong>Vote</strong> (Vote phase) — click ▲ to upvote, click again to undo.</li>
@@ -235,7 +252,8 @@
         <section>
           <h2 class="font-semibold text-lg mb-2">Lead-only controls</h2>
           <ul class="space-y-1 list-disc pl-5">
-            <li><strong>Custom columns.</strong> In <em>Start a new retro</em>, pick <em>Custom</em> under <em>Columns</em> and name as many columns as you like, for example one per problem statement for a brainstorm. Everyone can add cards to every column during Brainstorm. An <em>Action items</em> column is added as the last column unless you untick it; without it, the board ends at Discuss instead of Actions. <em>Start next retro</em> keeps the same columns.</li>
+            <li><strong>Custom columns.</strong> In <em>Start a new retro</em>, pick <em>Custom</em> under <em>Board type</em> and name as many columns as you like, for example one per problem statement for a brainstorm. Everyone can add cards to every column during Brainstorm. An <em>Action items</em> column is added as the last column unless you untick it; without it, the board ends at Discuss instead of Actions. <em>Start next retro</em> keeps the same columns.</li>
+            <li><strong>Canvas boards.</strong> In <em>Start a new retro</em>, pick <em>Canvas</em> to let people place cards freely. Name your prompts, or leave them blank for a single <em>Notes</em> prompt. A board stays a canvas or a column board for its whole life, and <em>Start next retro</em> keeps it the same. Each prompt's heading can be renamed by clicking it, and <em>Edit board</em> changes prompts the way it changes columns. Auto-sort isn't offered, because cards on a canvas never re-sort. The <em>Canvas boards</em> section of the participant guide covers the rest.</li>
             <li><strong>Edit board.</strong> The gear button in the header (<em>Edit board</em> in the mobile menu) reopens the board's setup at any point until the retro ends: rename it, add, rename, reorder or remove columns, turn the <em>Action items</em> column on or off, and change the options. Cards stay with their column when you rename or reorder it. Removing a column that has cards deletes those cards; the dialog says how many before you save. Everyone on the board sees the change at once. Classic retro boards can be edited too, so you can add a column to one. To just rename a column, click its title on the board, type, and press Enter (Escape cancels).</li>
             <li><strong>Hide cards.</strong> Tick <em>Hide others' cards while brainstorming</em> when you start a retro, or toggle <em>Hide cards</em> in the header. During Brainstorm everyone sees only their own cards (others show as placeholders); moving to Group reveals them all at once. Action items are never hidden. It stops people being influenced by each other's ideas, but it isn't a security feature: the board's data still reaches every browser.</li>
             <li><strong>Timer.</strong> Click the timer pill in the header — set minutes, Start, Pause, Reset. Engineers see the same countdown.</li>

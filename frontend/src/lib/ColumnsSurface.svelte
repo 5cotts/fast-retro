@@ -26,6 +26,9 @@
     reducedMotion: boolean;
     coarsePointer: boolean;
     onRenameColumn: (key: string, title: string) => void;
+    // False for a canvas board's List view: same cards, nothing to rearrange,
+    // because moving a card here would rebuild it and lose its canvas position.
+    arrangeable?: boolean;
   }
 
   let {
@@ -39,7 +42,8 @@
     typingByCard,
     reducedMotion,
     coarsePointer,
-    onRenameColumn
+    onRenameColumn,
+    arrangeable = true
   }: Props = $props();
 
   let dragCardId = $state<string | null>(null);
@@ -70,17 +74,17 @@
   // disabled whenever the sort is actually active, since a drag would just
   // get overridden by the next sort on re-render.
   const sortActive = $derived(canSortByVotes(board.phase) && board.settings.autoSort);
-  const canReorder = $derived(!sortActive);
+  const canReorder = $derived(arrangeable && !sortActive);
 
   const layout = $derived(
     layoutBoard(board.columns, board.cards, board.clusters, {
-      showClusters: clustersVisible(board.phase, ended),
+      showClusters: arrangeable && clustersVisible(board.phase, ended),
       sortByVotes: sortActive
     })
   );
   const aligned = $derived(canAlignRows && layout.lanes.length > 0);
   const inputColumnCount = $derived(board.columns.filter((c) => c.key !== ACTIONS_COLUMN_KEY).length);
-  const canCluster = $derived(canEditClusters(board.phase, ended));
+  const canCluster = $derived(arrangeable && canEditClusters(board.phase, ended));
   const canMergeClusters = $derived(canCluster && isLead);
   const dragCanGroup = $derived(canCluster && dragFromCol !== null && dragFromCol !== ACTIONS_COLUMN_KEY);
 

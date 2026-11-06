@@ -12,12 +12,14 @@ const MAX_Z = 1_000_000_000;
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 2;
 
-// The starting grid. Slots are a fixed size, not measured, so a card's slot
-// never depends on the height of the cards above it.
+// The starting grid.
 export const CARD_WIDTH = 260;
 export const CARD_SLOT_HEIGHT = 190;
 export const GRID_GAP_X = 40;
 export const HEADING_HEIGHT = 56;
+// What Fit always leaves room for under a heading, so a nearly empty board
+// opens with its headings near the top, not floating mid-screen.
+export const MIN_FIT_SLOTS = 3;
 
 export interface Point {
   x: number;
@@ -69,13 +71,33 @@ export function headingPosition(columnIndex: number): Point {
   return { x: columnIndex * (CARD_WIDTH + GRID_GAP_X), y: 0 };
 }
 
-// `slot` is the card's index in its column's array, counting moved cards, so a
-// moved card leaves a gap and the cards around it stay put.
-export function gridPosition(columnIndex: number, slot: number): Point {
-  return {
-    x: headingPosition(columnIndex).x,
-    y: HEADING_HEIGHT + slot * CARD_SLOT_HEIGHT
-  };
+const GRID_CHARS_PER_LINE = 26;
+const GRID_LINE_HEIGHT = 18;
+// Everything on a card and around it that isn't its text.
+const GRID_CARD_CHROME = 150;
+
+// The room a card takes in the grid, so a long card doesn't cover the next one.
+// Estimated from the text, never measured: it comes out the same for everyone,
+// and opening a card's comments doesn't push the cards below it.
+export function cardSlotHeight(text: string): number {
+  const lines = text
+    .split('\n')
+    .reduce((n, line) => n + Math.max(1, Math.ceil(line.length / GRID_CHARS_PER_LINE)), 0);
+  return Math.max(CARD_SLOT_HEIGHT, GRID_CARD_CHROME + lines * GRID_LINE_HEIGHT);
+}
+
+// Where each card in a column starts, from every card's height in array order,
+// counting moved cards, so a moved card leaves a gap and the cards around it
+// stay put. There's one more entry than heights: the next free slot.
+export function gridSlots(columnIndex: number, heights: readonly number[]): Point[] {
+  const x = headingPosition(columnIndex).x;
+  let y = HEADING_HEIGHT;
+  const slots = [{ x, y }];
+  for (const height of heights) {
+    y += height;
+    slots.push({ x, y });
+  }
+  return slots;
 }
 
 export function screenToWorld(view: View, p: Point): Point {
@@ -100,6 +122,22 @@ export function boundsOf(rects: readonly Rect[]): Rect | null {
   const right = Math.max(...rects.map((r) => r.x + r.width));
   const bottom = Math.max(...rects.map((r) => r.y + r.height));
   return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+// The smallest pan that brings a world rect on screen at the current zoom. A
+// rect too big for the viewport lines up with its top-left corner.
+export function panToReveal(view: View, rect: Rect, viewport: Size, margin = 16): View {
+  const shift = (start: number, length: number, port: number): number => {
+    if (start < margin || length + margin * 2 > port) return margin - start;
+    if (start + length > port - margin) return port - margin - start - length;
+    return 0;
+  };
+  const at = worldToScreen(view, rect);
+  return {
+    ...view,
+    panX: view.panX + shift(at.x, rect.width * view.zoom, viewport.width),
+    panY: view.panY + shift(at.y, rect.height * view.zoom, viewport.height)
+  };
 }
 
 // Centers the bounds in the viewport. Never zooms in past 100%, so a nearly

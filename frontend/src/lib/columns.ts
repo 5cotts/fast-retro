@@ -239,11 +239,21 @@ export function boardGridClass(columnCount: number): string {
     : 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(0,1fr))]';
 }
 
-export type BoardTemplateId = 'retro' | 'custom';
+// A canvas with no prompts still needs one, because a board without a column
+// falls back to the classic retro (see sanitizeColumns).
+export const DEFAULT_CANVAS_PROMPT = 'Notes';
+
+export function newCanvasColumns(titles: string[], opts: { actionItems?: boolean } = {}): ColumnDef[] {
+  const named = titles.map((t) => t.trim()).filter(Boolean);
+  return newCustomColumns(named.length ? named : [DEFAULT_CANVAS_PROMPT], opts);
+}
+
+export type BoardTemplateId = 'retro' | 'custom' | 'canvas';
 
 // What "Start a new retro" offers. A preset (Start/Stop/Continue, …) is one
 // more entry with a fixed column list.
 export const BOARD_TEMPLATES: { id: BoardTemplateId; name: string }[] = [
   { id: 'retro', name: 'Retro' },
-  { id: 'custom', name: 'Custom' }
+  { id: 'custom', name: 'Custom' },
+  { id: 'canvas', name: 'Canvas' }
 ];

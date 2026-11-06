@@ -99,7 +99,7 @@ async function openNewRetroDialog(page: Page) {
 
 // The radios are visually hidden inside their labels; click what a person sees.
 async function chooseColumns(dialog: Locator, name: 'Retro' | 'Custom') {
-  await dialog.getByRole('radiogroup', { name: 'Columns' }).getByText(name, { exact: true }).click();
+  await dialog.getByRole('radiogroup', { name: 'Board type' }).getByText(name, { exact: true }).click();
   await expect(dialog.getByRole('radio', { name })).toBeChecked();
 }
 

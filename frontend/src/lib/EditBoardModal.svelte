@@ -3,7 +3,8 @@
   import { Settings2, TriangleAlert, X } from 'lucide-svelte';
   import ColumnEditor, { type ColumnRow } from './ColumnEditor.svelte';
   import { ACTIONS_COLUMN_KEY, diffColumns, editColumns, hasActionsColumn, isActionsColumn, type ColumnDef } from './columns';
-  import { BOARD_SETTING_KEYS, BOARD_SETTING_LABELS, type BoardSettings } from './settings';
+  import { BOARD_SETTING_LABELS, settingsFor, type BoardSettings } from './settings';
+  import type { BoardLayout } from './canvas';
   import type { BoardEdit } from './yboard';
 
   let {
@@ -11,6 +12,7 @@
     columns,
     settings,
     cardCounts,
+    layout = 'columns',
     onClose,
     onSave
   } = $props<{
@@ -20,6 +22,7 @@
     columns: ColumnDef[];
     settings: BoardSettings;
     cardCounts: Record<string, number>;
+    layout?: BoardLayout;
     onClose: () => void;
     onSave: (edit: Required<BoardEdit>) => void;
   }>();
@@ -31,6 +34,8 @@
     settings: { ...settings },
     cardCounts
   };
+
+  const noun = $derived(layout === 'canvas' ? 'prompt' : 'column');
 
   let labelInput = $state(initial.label);
   let actionItems = $state(hasActionsColumn(initial.columns));
@@ -124,22 +129,23 @@
       />
 
       <fieldset class="mt-4 min-w-0">
-        <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">Columns</legend>
+        <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">{noun === 'prompt' ? 'Prompts' : 'Columns'}</legend>
         <ColumnEditor
           bind:rows
           bind:actionItems
           idPrefix="edit-board-column"
           reorderable
           actionItemsCards={initial.cardCounts[ACTIONS_COLUMN_KEY] ?? 0}
+          {noun}
         />
         {#if !next}
-          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Name at least one column.</p>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Name at least one {noun}.</p>
         {/if}
       </fieldset>
 
       <fieldset class="mt-4 min-w-0 space-y-2">
         <legend class="text-xs font-medium text-slate-700 dark:text-slate-200">Options</legend>
-        {#each BOARD_SETTING_KEYS as key (key)}
+        {#each settingsFor(layout) as key (key)}
           <label class="flex items-start gap-2 text-xs text-slate-700 dark:text-slate-200 cursor-pointer select-none">
             <input type="checkbox" bind:checked={draftSettings[key]} class="mt-0.5 rounded" />
             <span>
