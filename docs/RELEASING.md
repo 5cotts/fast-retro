@@ -90,17 +90,20 @@ Report back: prod URL, build id and sha, the restore-point path, the GitHub rele
 
 ## Nightly auto-deploy
 
-**Anything merged to `main` goes live at the next 3 AM ET run.** To keep a merge out of prod, pause the "fast-retro nightly auto-deploy" automation first.
+**Merging ships nothing by itself. A build of `main`'s code that's on QA at 3 AM ET goes live.** To ship: merge, get `main`'s code onto QA (`make qa-deploy`), test it, and leave it there. To hold a release, put something else on QA, or pause the "fast-retro nightly auto-deploy" automation.
 
-The automation runs `Skills/fast-retro-release/scripts/nightly-deploy.sh`. If prod's tree differs from `origin/main`'s, it runs `make release-fetch`, `make qa-deploy` and `make prod-deploy` on main's CI build, using main's own release scripts from a throwaway export, so the dev checkout's branch doesn't matter. All the normal guards apply, including the automated QA verify. Nobody clicks through QA first, and QA ends up on the same build as prod. It never passes `FORCE`, `SKIP_QA`, `ALLOW_LOCAL_BUILD` or `SEED`. Its `release.log` lines have the actor `nightly`.
+A stack tip's build counts as `main`'s code once the stack is merged, if nothing else merged in between (the check compares git trees), so it doesn't need another QA deploy. Don't put `main`'s build on QA unless it's OK to ship that night: the job can't tell whether anyone actually tested it.
+
+The automation runs `Skills/fast-retro-release/scripts/nightly-deploy.sh`. It reads the build QA is serving and, if that's `main`'s code and prod isn't on it, runs `make prod-deploy` on that build, using `main`'s own release scripts from a throwaway export, so the dev checkout's branch doesn't matter. It never fetches a build or changes QA. All the normal guards apply, and guard (c) means a PR build can never ship. It never passes `FORCE`, `SKIP_QA`, `ALLOW_LOCAL_BUILD` or `SEED`. Its `release.log` lines have the actor `nightly`.
 
 | Status | What happened | Email |
 |---|---|---|
 | `up_to_date` | Prod matches `main`; nothing touched | None |
-| `deployed` | Prod verified on `main` | What changed, the release link, how to roll back |
-| `blocked` | Someone is on a board (idle tabs count) or another release is running; QA is left alone if the check catches it before QA. Retries the next night | Yes |
+| `waiting` | `main` has code prod doesn't, but QA isn't on it; nothing touched | Once per `main` commit |
+| `deployed` | Prod verified on QA's build | What changed, the release link, how to roll back |
+| `blocked` | Someone is on a board (idle tabs count) or another release is running. Retries the next night | Yes |
 | `held` | `main` is code prod already rolled back from or failed to verify on | Yes |
-| `failed` | See `stage` and `reason`; the usual auto-restore applies | Yes, plus an SMS if prod looks down |
+| `failed` | See `stage` and `reason`; includes QA being down while prod is behind. The usual auto-restore applies | Yes, plus an SMS if prod looks down |
 
 `held` stops the job undoing a rollback at 3 AM. It clears when `main` changes, or after a deploy by hand.
 
