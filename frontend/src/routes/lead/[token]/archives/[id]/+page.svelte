@@ -23,6 +23,7 @@
     columns?: unknown;
     clusters?: unknown;
     layout?: unknown;
+    labels?: unknown;
   }
 
   let ok = $state<boolean | null>(null);

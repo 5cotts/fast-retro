@@ -2,6 +2,7 @@ import type { CardData, CommentData } from './types';
 import { DEFAULT_COLUMNS, isActionsColumn, sameColumns, sanitizeColumns, type ColumnDef } from './columns';
 import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
 import { cleanClusterLabel, type ClusterDef } from './clusters';
+import { sanitizeFileLabels, type LabelRecord } from './labels';
 import { sanitizePos, type BoardLayout } from './canvas';
 
 // Round-trippable board export. `cards` deliberately matches the archive
@@ -16,7 +17,8 @@ import { sanitizePos, type BoardLayout } from './canvas';
 // (groups), which an older reader would silently drop, so only boards with
 // groups are written as v3. Version 4 adds `board.layout` and card `pos`, which
 // an older reader would silently turn back into columns, so only canvas boards
-// are written as v4. Optional, ignorable fields don't bump the version.
+// are written as v4, including their floating labels (`board.labels`). Optional,
+// ignorable fields don't bump the version.
 export const BOARD_FILE_FORMAT = 'fast-retro';
 export const BOARD_FILE_VERSION = 4;
 export const BOARD_FILE_EXTENSION = '.fastretro.json';
@@ -44,6 +46,8 @@ export interface BoardFile {
     clusters?: BoardFileCluster[];
     // Written only for canvas boards. Absent means columns.
     layout?: 'canvas';
+    // Only on a canvas board that has some.
+    labels?: LabelRecord[];
   };
   names?: Record<string, string>;
   cards: Record<string, CardData[]>;
@@ -62,6 +66,8 @@ export interface BoardFileSource {
   clusters?: ClusterDef[] | BoardFileCluster[];
   // Without this, the file is a column board and cards lose their positions.
   layout?: BoardLayout;
+  // Without this, the file has no floating labels. Ignored on a column board.
+  labels?: readonly LabelRecord[];
   cards: Record<string, CardData[]>;
   namesMap: Record<string, string>;
 }
@@ -148,6 +154,7 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
   const clusters = clustersInUse(src.clusters ?? [], src.cards, columns);
   const layout = src.layout ?? 'columns';
   const cards = copyCards(src.cards, columns, clusters, layout);
+  const labels = layout === 'canvas' ? sanitizeFileLabels(src.labels) : [];
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
     version: fileVersion(custom, clusters, layout),
@@ -160,7 +167,8 @@ export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFi
       ...(src.hideCards ? { hideCards: true } : {}),
       ...(custom ? { columns: columns.map((c) => ({ ...c })) } : {}),
       ...(clusters.length ? { clusters } : {}),
-      ...(layout === 'canvas' ? { layout } : {})
+      ...(layout === 'canvas' ? { layout } : {}),
+      ...(labels.length ? { labels } : {})
     },
     cards
   };
@@ -244,6 +252,7 @@ export interface ArchiveLike {
   columns?: unknown;
   clusters?: unknown;
   layout?: unknown;
+  labels?: unknown;
   endedAt: number;
 }
 
@@ -278,6 +287,7 @@ export function boardFileFromArchive(archive: ArchiveLike, now = Date.now()): Bo
       columns: sanitizeColumns(archive.columns) ?? DEFAULT_COLUMNS,
       clusters: sanitizeFileClusters(archive.clusters),
       layout: archive.layout === 'canvas' ? 'canvas' : 'columns',
+      labels: sanitizeFileLabels(archive.labels),
       cards: Object.fromEntries(
         Object.entries(archive.cards).map(([key, list]) => [key, list ?? []])
       ),
@@ -497,6 +507,7 @@ export function parseBoardFile(text: string): ParseResult {
   if (unknownClusterCards) warnings.push(`${plural(unknownClusterCards, 'card')} referred to a group this file doesn't define, and will be ungrouped.`);
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
   const clusters = clustersInUse(declaredClusters, cards, columns);
+  const labels = layout === 'canvas' ? sanitizeFileLabels(rawBoard.labels) : [];
 
   const file: BoardFile = {
     format: BOARD_FILE_FORMAT,
@@ -510,7 +521,8 @@ export function parseBoardFile(text: string): ParseResult {
       ...(hideCards ? { hideCards } : {}),
       ...(custom ? { columns } : {}),
       ...(clusters.length ? { clusters } : {}),
-      ...(layout === 'canvas' ? { layout } : {})
+      ...(layout === 'canvas' ? { layout } : {}),
+      ...(labels.length ? { labels } : {})
     },
     cards
   };

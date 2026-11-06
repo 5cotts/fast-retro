@@ -624,6 +624,7 @@
         columns: conn.state.columns,
         clusters: conn.state.clusters,
         layout: conn.state.layout,
+        labels: conn.state.labels,
         cards: conn.state.cards,
         namesMap: conn.state.namesMap
       })
@@ -671,7 +672,11 @@
           columns: sameColumns(conn.state.columns, DEFAULT_COLUMNS) ? undefined : conn.state.columns,
           // Likewise for boards with no groups.
           clusters: archiveClusters.length ? archiveClusters : undefined,
-          layout: conn.state.layout === 'canvas' ? 'canvas' : undefined
+          layout: conn.state.layout === 'canvas' ? 'canvas' : undefined,
+          labels:
+            conn.state.layout === 'canvas' && conn.state.labels.length
+              ? conn.state.labels.map(({ text, x, y }) => ({ text, x, y }))
+              : undefined
         },
         { hostKey, leadToken }
       );

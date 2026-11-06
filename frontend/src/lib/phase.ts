@@ -22,7 +22,7 @@ export const PHASE_HINT: Record<Phase, string> = {
 
 const CANVAS_PHASE_HINT: Partial<Record<Phase, string>> = {
   brainstorm: 'Add cards below, or double-click the canvas to place one.',
-  group: 'Drag cards near each other to cluster them. Each card keeps its prompt color.'
+  group: 'Drag cards near each other to cluster them. Double-click to add a label.'
 };
 
 // List view shows a canvas board's cards in columns, where they can't be moved.

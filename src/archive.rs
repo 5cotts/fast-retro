@@ -75,6 +75,15 @@ pub struct ClusterSnapshot {
     pub label: String,
 }
 
+/// Text placed on a canvas board. It owns nothing and stores no author.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelSnapshot {
+    pub text: String,
+    pub x: f64,
+    pub y: f64,
+}
+
 // Bounds on what a client can make the server store. Labels match the frontend
 // (clusters.ts).
 const MAX_CLUSTERS: usize = 1000;
@@ -85,6 +94,9 @@ const MAX_CLUSTER_ID_LEN: usize = 64;
 const WORLD_LIMIT: f64 = 20_000.0;
 const MAX_Z: f64 = 1_000_000_000.0;
 const CANVAS_LAYOUT: &str = "canvas";
+// Matches the frontend (labels.ts).
+const MAX_LABELS: usize = 200;
+const MAX_LABEL_CHARS: usize = 60;
 
 // Matches the frontend (columns.ts): 50 input columns plus Action items. Not a
 // product limit, just a bound on what a client can make the server store.
@@ -128,6 +140,9 @@ pub struct ArchiveRequest {
     // Absent for column boards.
     #[serde(default)]
     pub layout: Option<String>,
+    // Absent unless a canvas board has floating labels.
+    #[serde(default)]
+    pub labels: Option<Vec<LabelSnapshot>>,
     // Shown to everyone when the retro ends. Not part of the archive.
     #[serde(default)]
     pub ended_message: Option<String>,
@@ -197,6 +212,19 @@ impl ArchiveRequest {
         if bad_pos {
             return Err("card position out of bounds".into());
         }
+        if let Some(labels) = &self.labels {
+            if labels.len() > MAX_LABELS {
+                return Err("too many labels".into());
+            }
+            for l in labels {
+                if l.text.chars().count() > MAX_LABEL_CHARS {
+                    return Err("label too long".into());
+                }
+                if l.x.abs() > WORLD_LIMIT || l.y.abs() > WORLD_LIMIT {
+                    return Err("label position out of bounds".into());
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -225,6 +253,8 @@ pub struct Archive {
     pub clusters: Option<Vec<ClusterSnapshot>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layout: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub labels: Option<Vec<LabelSnapshot>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -310,6 +340,7 @@ pub fn save(
         columns: req.columns,
         clusters: req.clusters,
         layout: req.layout,
+        labels: req.labels,
     };
     db.save_archive(&archive, created_by).map_err(|e| e.to_string())?;
     Ok(archive)
@@ -590,6 +621,42 @@ mod tests {
         assert_eq!(out["layout"], "canvas");
         assert_eq!(out["cards"]["wentWell"][0]["pos"]["x"], -120.5);
         assert!(out["cards"]["wentWell"][1].get("pos").is_none());
+    }
+
+    #[test]
+    fn canvas_labels_round_trip_and_old_archives_have_none() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_value(serde_json::json!({
+            "cards": { "wentWell": [] },
+            "layout": "canvas",
+            "labels": [{ "text": "Deploys", "x": -40.5, "y": 12 }]
+        }))
+        .unwrap();
+        let saved = save(&db, "x", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().expect("archive");
+        let out = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(out["labels"][0]["text"], "Deploys");
+        assert_eq!(out["labels"][0]["x"], -40.5);
+
+        let req: ArchiveRequest = serde_json::from_value(serde_json::json!({ "cards": {} })).unwrap();
+        let plain = save(&db, "y", req, None).unwrap();
+        let plain = serde_json::to_value(load(&db, &plain.id).unwrap().expect("archive")).unwrap();
+        assert!(plain.get("labels").is_none());
+    }
+
+    #[test]
+    fn rejects_too_many_labels_long_labels_and_out_of_bounds_labels() {
+        for bad in [
+            serde_json::json!({ "cards": {}, "labels": [{ "text": "x".repeat(61), "x": 0, "y": 0 }] }),
+            serde_json::json!({ "cards": {}, "labels": [{ "text": "ok", "x": 20001, "y": 0 }] }),
+            serde_json::json!({
+                "cards": {},
+                "labels": (0..201).map(|_| serde_json::json!({ "text": "l", "x": 0, "y": 0 })).collect::<Vec<_>>()
+            }),
+        ] {
+            let req: ArchiveRequest = serde_json::from_value(bad).unwrap();
+            assert!(save(&test_db(), "x", req, None).is_err());
+        }
     }
 
     #[test]
