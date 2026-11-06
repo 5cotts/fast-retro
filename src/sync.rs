@@ -183,6 +183,24 @@ impl Doc {
         Ok(update_v1.to_vec())
     }
 
+    /// Record that the board has ended, unless a client already did (a tab still
+    /// running an older frontend writes this itself). Returns the update to
+    /// persist and broadcast, if anything changed.
+    pub fn mark_ended(&mut self, ended_at_ms: i64, message: &str) -> Option<Vec<u8>> {
+        let meta = self.doc.get_or_insert_map("meta");
+        let mut txn = self.doc.transact_mut();
+        if meta.get(&txn, "endedAt").is_some() {
+            return None;
+        }
+        // A float: yrs encodes an i64 as a BigInt, and the client only accepts a
+        // JS number here (readBoardEndedAt).
+        meta.insert(&mut txn, "endedAt", ended_at_ms as f64);
+        if !message.is_empty() {
+            meta.insert(&mut txn, "endedMessage", message);
+        }
+        Some(txn.encode_update_v1())
+    }
+
     /// Read a lightweight summary of the board (label, total cards, phase, anonymous mode).
     /// Used by the host dashboard to list active boards without subscribing to each room.
     pub fn read_summary(&self) -> BoardSummary {
@@ -295,6 +313,43 @@ impl Awareness {
 mod tests {
     use super::*;
     use yrs::ArrayPrelim;
+
+    fn ended_fields(update: &[u8]) -> (Option<Out>, Option<Out>) {
+        let peer = YDoc::new();
+        peer.transact_mut()
+            .apply_update(Update::decode_v1(update).unwrap())
+            .unwrap();
+        let meta = peer.get_or_insert_map("meta");
+        let txn = peer.transact();
+        (meta.get(&txn, "endedAt"), meta.get(&txn, "endedMessage"))
+    }
+
+    #[test]
+    fn mark_ended_writes_a_js_number_once() {
+        let mut doc = Doc::new();
+        let update = doc.mark_ended(1_700_000_000_000, "Nice").unwrap();
+        let (at, message) = ended_fields(&update);
+        assert!(matches!(at, Some(Out::Any(Any::Number(n))) if n == 1_700_000_000_000.0));
+        assert!(matches!(message, Some(Out::Any(Any::String(s))) if &*s == "Nice"));
+        assert!(doc.mark_ended(2, "Again").is_none());
+    }
+
+    #[test]
+    fn mark_ended_without_a_message_leaves_it_unset() {
+        let update = Doc::new().mark_ended(1, "").unwrap();
+        assert!(ended_fields(&update).1.is_none());
+    }
+
+    #[test]
+    fn mark_ended_keeps_what_an_older_client_wrote() {
+        let src = YDoc::new();
+        let meta = src.get_or_insert_map("meta");
+        meta.insert(&mut src.transact_mut(), "endedAt", 5.0);
+        let update = src.transact().encode_state_as_update_v1(&StateVector::default());
+        let mut doc = Doc::new();
+        doc.apply_update_v1(&update).unwrap();
+        assert!(doc.mark_ended(9, "Nice").is_none());
+    }
 
     #[test]
     fn card_count_includes_every_column() {

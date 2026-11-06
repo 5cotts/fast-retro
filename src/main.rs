@@ -58,6 +58,10 @@ struct Room {
     ended: AtomicBool,
 }
 
+/// Sender of updates the server writes itself. Client ids start at 1, so every
+/// connected client receives these.
+const SERVER_CLIENT_ID: ClientId = 0;
+
 #[derive(Clone)]
 enum BroadcastMsg {
     DocUpdate { from: ClientId, update: Vec<u8> },
@@ -95,6 +99,23 @@ impl Room {
 
     fn is_ended(&self) -> bool {
         self.ended.load(Ordering::Relaxed)
+    }
+
+    /// Tell everyone the board has ended, then make it read-only. In this order
+    /// because the host's own socket can't carry the news: nothing guarantees
+    /// its frames beat the REST call that lands here, and frames that arrive
+    /// after the flip are dropped.
+    fn end(&self, ended_at_ms: i64, message: &str) {
+        let update = self.doc.lock().unwrap().mark_ended(ended_at_ms, message);
+        if let Some(update) = update {
+            self.persist_update(&update);
+            let _ = self.broadcast.send(BroadcastMsg::DocUpdate {
+                from: SERVER_CLIENT_ID,
+                update,
+            });
+        }
+        self.ended.store(true, Ordering::Relaxed);
+        self.compact();
     }
 
     fn next_client_id(&self) -> ClientId {
@@ -988,6 +1009,7 @@ async fn end_board(
     let user = state.session_user(&headers);
     let created_by = user.as_ref().map(|u| u.id.as_str());
     let label = req.label.clone();
+    let ended_message = req.ended_message.clone().unwrap_or_default();
     let archive = match archive::save(&state.db, &slug, req, created_by) {
         Ok(a) => a,
         Err(e) => {
@@ -999,10 +1021,9 @@ async fn end_board(
     if !label.is_empty() {
         state.db.set_board_label(&slug, &label);
     }
-    // Flip the live room to read-only and snapshot its final state.
+    // Announce the end, flip the live room to read-only and snapshot its final state.
     if let Some(room) = state.rooms.read().await.get(&slug) {
-        room.ended.store(true, Ordering::Relaxed);
-        room.compact();
+        room.end(archive.ended_at, &ended_message);
     }
     Json(serde_json::json!({ "archiveId": archive.id })).into_response()
 }
@@ -1284,6 +1305,34 @@ mod tests {
         req.extensions_mut()
             .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 12345))));
         req
+    }
+
+    #[tokio::test]
+    async fn ending_a_board_tells_connected_clients_and_saves_it() {
+        let state = test_state();
+        let room = get_or_create_room(&state, "ending").await;
+        let mut rx = room.broadcast.subscribe();
+        let req = with_peer(
+            Request::builder()
+                .method("POST")
+                .uri("/api/boards/ending/end")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer test-lead-token")
+                .body(Body::from(r#"{"cards":{},"endedMessage":"Nice"}"#))
+                .unwrap(),
+        );
+        let res = build_router(state.clone()).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        assert!(room.is_ended());
+        let Ok(BroadcastMsg::DocUpdate { from, .. }) = rx.try_recv() else {
+            panic!("expected a doc update");
+        };
+        assert_eq!(from, SERVER_CLIENT_ID);
+
+        // A reload rebuilds the room from the database and still knows.
+        let reloaded = Room::new("ending".to_string(), state.db.clone());
+        assert!(reloaded.doc.lock().unwrap().mark_ended(1, "").is_none());
     }
 
     #[tokio::test]

@@ -16,7 +16,6 @@
     addComment,
     deleteComment,
     setBoardLabel,
-    setBoardEnded,
     applyBoardEdit,
     type BoardEdit,
     countCards,
@@ -311,8 +310,8 @@
   }
 
   // Fires for every connected client — not just the lead who clicked End —
-  // the moment endedAt shows up on the meta map while they're connected (see setBoardEnded in
-  // confirmEndBoard). Also flips the local `ended` flag so participants see
+  // the moment endedAt shows up on the meta map while they're connected (written by
+  // the server, see Room::end in main.rs). Also flips the local `ended` flag so participants see
   // the read-only banner live instead of only after a reload.
   $effect(() => {
     const endedAt = conn.state.endedAt;
@@ -648,19 +647,14 @@
     if (opts.exportFirst) downloadJSON('end');
     archiveError = '';
     archiving = true;
-    // Broadcast the end + a motivational message to every connected client
-    // before the archive REST call flips the room read-only server-side —
-    // once that happens the server silently drops further doc writes (see
-    // main.rs `room.is_ended()`), so this has to land first.
-    const { doc, meta } = conn.state.board;
-    doc.transact(() => {
-      setBoardEnded(meta, pickMotivationalMessage());
-    });
+    // The server tells every connected client, this one included, once the
+    // archive is saved (Room::end in main.rs).
     const archiveClusters = clustersInUse(conn.state.clusters, conn.state.cards, conn.state.columns);
     try {
       await endBoard(
         slug,
         {
+          endedMessage: pickMotivationalMessage(),
           label: conn.state.label,
           cards: Object.fromEntries(conn.state.columns.map((c) => [c.key, cardsIn(c.key)])),
           names: conn.state.settings.anonymous ? {} : conn.state.namesMap,
@@ -677,13 +671,7 @@
         { hostKey, leadToken }
       );
     } catch (e) {
-      // Archive failed — the retro is still open. Revert the broadcast so a
-      // future joiner (or a still-connected client) doesn't see a stale
-      // "ended" signal for a board that's actually still live.
-      doc.transact(() => {
-        meta.delete('endedAt');
-        meta.delete('endedMessage');
-      });
+      // Archive failed, so the retro is still open and nobody was told otherwise.
       archiveError = 'Ending failed. The retro is still open — try again.';
       archiving = false;
       return;

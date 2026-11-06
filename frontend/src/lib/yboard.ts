@@ -178,11 +178,6 @@ export function readBoardEndedMessage(meta: Y.Map<unknown>): string {
   return typeof v === 'string' ? v : '';
 }
 
-export function setBoardEnded(meta: Y.Map<unknown>, message: string): void {
-  meta.set('endedAt', Date.now());
-  meta.set('endedMessage', message);
-}
-
 export interface BoardEdit {
   label?: string;
   columns?: ColumnDef[];
