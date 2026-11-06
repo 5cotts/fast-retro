@@ -244,6 +244,16 @@ Shift+Up/Down within a section. Group names hidden when going back to Brainstorm
 Voter counts and sorted groups in Discuss. Export, CSV, re-import, ending and the
 archive viewer.
 
+`canvas.spec.ts` — canvas boards, imported from a v4 file (two browsers, `page.mouse`
+drives real pointer events). A drag shows live for the other person and saves on
+drop. Pan and zoom stay local, a drop while zoomed out lands in the right place, and
+Fit shows every card. A card dropped on a card overlaps it and never merges. A card
+keeps its prompt color. A tiny movement or a press on a button doesn't drag. Shift +
+arrows nudge, and tabbing to an off-screen card pans instead of scrolling. Hidden
+cards are placeholders that can't be dragged. An anonymous board shows no names during
+a drag. Cutting off the dragger leaves no ghost card. An ended canvas is read-only but
+still pans, zooms and exports.
+
 `canvas-persistence.spec.ts` — a canvas board's layout and card positions survive
 Export, re-import, ending, the archive viewer's download (needs `RETRO_LEAD_TOKEN`)
 and Start next retro, which stays a canvas but starts carried action items from the

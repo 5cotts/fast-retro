@@ -11,7 +11,7 @@ import {
 } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
-import { updateAwarenessUser } from './awareness';
+import { samePresence, updateAwarenessUser } from './awareness';
 import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
@@ -184,7 +184,7 @@ export function useBoardConnection() {
         }
       });
       out.sort((a, b) => a.name.localeCompare(b.name));
-      state.presence = out;
+      if (!samePresence(out, state.presence)) state.presence = out;
     };
     aw.on('change', refreshPresence);
     refreshPresence();
