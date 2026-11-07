@@ -249,6 +249,11 @@ Shift+Up/Down within a section. Group names hidden when going back to Brainstorm
 Voter counts and sorted groups in Discuss. Export, CSV, re-import, ending and the
 archive viewer.
 
+`guide.spec.ts` — the user guide: every page in `lib/guide/pages.ts` loads directly and
+from the sidebar, previous/next links, old `?role=` links redirect, the board's links
+reach the right page, phones get a menu, no console or CSP errors, and `guide_view` and
+`canvas_drop` fire. Changed a flow? Update its guide page too.
+
 `canvas-scenario.spec.ts` — the session that prompted canvas mode, start to finish
 (host plus two people): private writing, cards from different prompts placed side by
 side keeping their colors, labels, votes, Top voted, the Action items dock, ending, a
