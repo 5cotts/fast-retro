@@ -53,6 +53,7 @@
     MAX_IMPORT_COMMENTS_PER_CARD
   } from './boardfile';
   import { track } from './analytics';
+  import { boardGuidePath } from './guide/pages';
   import { getOrCreateUserId, setDisplayName } from './identity';
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
@@ -63,7 +64,7 @@
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { Download, ArrowLeft, ArrowRight, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
+  import { Download, ArrowLeft, ArrowRight, CircleHelp, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     phasesFor,
     PHASE_LABEL,
@@ -108,6 +109,7 @@
   // a phone, so phones start in the list.
   let canvasView = $state<'canvas' | 'list'>('canvas');
   const showCanvas = $derived(isCanvas && canvasView === 'canvas');
+  const howToUse = $derived(boardGuidePath({ layout: conn.state.layout, customColumns: !sameColumns(conn.state.columns, DEFAULT_COLUMNS), isHost: isLead }));
 
   let themePref = $state<ThemePref>('auto');
   let systemDark = $state<boolean>(false);
@@ -837,6 +839,18 @@
           </span>
         {/if}
         <div class="ml-auto flex items-center gap-1.5">
+          {#if howToUse}
+            <a
+              href={howToUse}
+              target="_blank"
+              rel="noopener"
+              class="inline-flex items-center gap-1 px-1.5 py-1 rounded text-sky-700 dark:text-sky-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 whitespace-nowrap"
+              onclick={() => track({ name: 'guide_open', params: { from: 'board_link' } })}
+            >
+              <CircleHelp size={13} aria-hidden="true" />
+              How to use
+            </a>
+          {/if}
           {#if isCanvas}
             <div class="inline-flex rounded-md border border-slate-300 dark:border-slate-600 p-0.5" role="group" aria-label="Board view">
               {#each [{ id: 'canvas', name: 'Canvas' }, { id: 'list', name: 'List' }] as const as v (v.id)}
@@ -1039,6 +1053,7 @@
         <span aria-hidden="true">·</span>
         <a
           href={isLead ? '/docs/run' : '/docs/join'}
+          onclick={() => track({ name: 'guide_open', params: { from: 'footer' } })}
           class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
         >
           User guide

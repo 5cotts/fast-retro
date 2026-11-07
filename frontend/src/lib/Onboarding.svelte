@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Pencil, ChevronUp, ArrowLeftRight, X } from 'lucide-svelte';
+  import { track } from './analytics';
 
   let { onDismiss } = $props<{ onDismiss: () => void }>();
 
@@ -107,7 +108,7 @@
 
     <p class="mt-3 text-center text-xs text-slate-500 dark:text-slate-400">
       Want more?
-      <a href="/docs/join" class="text-sky-600 dark:text-sky-400 hover:underline">
+      <a href="/docs/join" class="text-sky-600 dark:text-sky-400 hover:underline" onclick={() => track({ name: 'guide_open', params: { from: 'onboarding' } })}>
         Read the full guide
       </a>.
     </p>

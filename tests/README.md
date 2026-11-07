@@ -251,8 +251,16 @@ archive viewer.
 
 `guide.spec.ts` — the user guide: every page in `lib/guide/pages.ts` loads directly and
 from the sidebar, previous/next links, old `?role=` links redirect, the board's links
-reach the right page, phones get a menu, no console or CSP errors, and `guide_view` and
-`canvas_drop` fire. Changed a flow? Update its guide page too.
+reach the right page, the How to use link on canvas and custom-column boards, clips
+decode and can be paused, phones get a menu, no console or CSP errors, and the analytics
+events fire. Changed a flow? Update its guide page and clip.
+
+`tests/guide-clips/*.clip.ts` — the flows the guide's clips show, with their own config,
+so they stay out of `./test-local.sh`. `make guide-clips` re-records them on a scratch
+instance (`CLIP=<name>` for one; needs ffmpeg and a built frontend), and
+`make guide-clips-check` runs the same flows without recording. Clips are compiled into
+the binary and kept in git history, so re-record only the ones a change affects. CI's
+quick tier enforces the size budget in `scripts/check-guide-clips.sh`.
 
 `canvas-scenario.spec.ts` — the session that prompted canvas mode, start to finish
 (host plus two people): private writing, cards from different prompts placed side by

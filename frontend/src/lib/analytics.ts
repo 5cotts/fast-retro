@@ -14,6 +14,7 @@ export type AnalyticsEvent =
   | { name: 'canvas_view'; params: { action: 'fit' | 'list' | 'top_voted' } }
   | { name: 'canvas_drop'; params: { on_card: boolean } }
   | { name: 'guide_view'; params: { page: GuideSlug | 'home' } }
+  | { name: 'guide_open'; params: { from: 'board_link' | 'footer' | 'onboarding' | 'home' } }
   | { name: 'board_create'; params: { template: 'retro' | 'custom' | 'canvas'; columns: number; action_items: boolean } }
   | {
       name: 'board_edit';
