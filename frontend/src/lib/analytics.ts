@@ -1,4 +1,5 @@
 import type { ImportErrorCode } from './boardfile';
+import type { GuideSlug } from './guide/pages';
 
 // Thin wrapper over the GA4 tag in app.html. The tag is stripped server-side
 // when GA_MEASUREMENT_ID is unset, so every call is a no-op without it.
@@ -11,6 +12,8 @@ export type AnalyticsEvent =
   | { name: 'next_retro'; params: { carried_actions: number } }
   | { name: 'card_group'; params: { action: 'create' | 'join' | 'leave' | 'ungroup' | 'merge'; source: 'drag' | 'menu' } }
   | { name: 'canvas_view'; params: { action: 'fit' | 'list' | 'top_voted' } }
+  | { name: 'canvas_drop'; params: { on_card: boolean } }
+  | { name: 'guide_view'; params: { page: GuideSlug | 'home' } }
   | { name: 'board_create'; params: { template: 'retro' | 'custom' | 'canvas'; columns: number; action_items: boolean } }
   | {
       name: 'board_edit';
