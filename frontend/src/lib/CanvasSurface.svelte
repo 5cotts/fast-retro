@@ -17,6 +17,7 @@
     MIN_FIT_SLOTS,
     boundsOf,
     cardSlotHeight,
+    overlapsAny,
     centerOn,
     compareStack,
     fitToBounds,
@@ -434,6 +435,8 @@
         const state = board.board;
         if (!state) return;
         setCardPos(state.board, hit.column.key, hit.card.id, { ...at, z: nextZ(placed.map((p) => p.card.pos)) });
+        const others = placed.filter((p) => p.card.id !== hit.card.id).map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height }));
+        track({ name: 'canvas_drop', params: { on_card: overlapsAny({ ...at, width: CARD_WIDTH, height: hit.height }, others) } });
       });
       return;
     }

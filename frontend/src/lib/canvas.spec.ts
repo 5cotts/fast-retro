@@ -5,6 +5,7 @@ import {
   DEFAULT_VIEW,
   MAX_ZOOM,
   MIN_ZOOM,
+  overlapsAny,
   WORLD_LIMIT,
   boundsOf,
   compareStack,
@@ -327,6 +328,19 @@ describe('rankByVotes', () => {
     const cards = [card('a', 2), card('b', 2), card('c', 2)];
     expect(rankByVotes(cards).map((c) => c.id)).toEqual(['a', 'b', 'c']);
     expect(cards.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('overlapsAny', () => {
+  const box = (x: number, y: number) => ({ x, y, width: 100, height: 50 });
+
+  it('finds a partial overlap with any of the rects', () => {
+    expect(overlapsAny(box(0, 0), [box(500, 500), box(90, 40)])).toBe(true);
+  });
+
+  it('does not count rects that only touch, or none at all', () => {
+    expect(overlapsAny(box(0, 0), [box(100, 0), box(0, 50)])).toBe(false);
+    expect(overlapsAny(box(0, 0), [])).toBe(false);
   });
 });
 
