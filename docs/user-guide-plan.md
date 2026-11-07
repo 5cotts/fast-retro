@@ -1,12 +1,12 @@
 # User guide: use-case pages with short clips
 
-Status: plan, G1–G4 decided 2026-11-07, G5 open · checked against `main` at `b002576` · researched 2026-11-06
+Status: plan, G1–G5 decided 2026-11-07 · checked against `main` at `b002576` · researched 2026-11-06
 
 ## Why
 
 Scott dropped cards onto each other on a canvas in Group, expecting them to group or merge. On a canvas that only overlaps them, by design (`docs/canvas-mode-plan.md`). Rather than change that behavior, this plan makes the guide good enough to explain it: separate pages per use case, with clips of the actions.
 
-**One limit to plan for.** The guide already says "Dropping a card on another card overlaps them and never merges them", and the phase bar already says "Drag cards near each other to cluster them". Neither prevented this, because nobody opens a guide in the middle of a drag. Better pages don't change that, and Scott decided to leave the Group hint as it is (G3). So PR 1 adds a count of drops onto cards, which tells us whether the guide alone was enough.
+**One limit to plan for.** The guide already says "Dropping a card on another card overlaps them and never merges them", and the phase bar already says "Drag cards near each other to cluster them". Neither prevented this, because nobody opens a guide in the middle of a drag. Better pages don't change that on their own, and Scott decided to leave the Group hint as it is (G3). So PR 2 puts a **How to use** link on canvas and custom-column boards (G5), and PR 1 adds a count of drops onto cards, which tells us whether that was enough.
 
 ## Bottom line
 
@@ -138,12 +138,23 @@ Found by comparing the guide with the UI at `b002576`. PR 1 fixes these, and eac
 
 **Old links keep working.** `/docs?role=lead` redirects to `/docs/run` and `/docs?role=participant` to `/docs/join`. `Board.svelte` and `Onboarding.svelte` use those links today, `routes/+page.svelte` links plain `/docs`, and older copies may be in chat history. The app's own links move to the new pages.
 
-**In-context help.** None added to the phase hints: the Group hint on a canvas stays "Drag cards near each other to cluster them. Double-click to add a label." with no link (G3). That leaves one gap. The board's only guide link is the footer, and the footer is in the `{:else}` of `{#if showCanvas}` (`Board.svelte:1007`), so once the first-visit onboarding dialog is dismissed, the canvas surface has no way to reach the guide. G5 decides whether to add one.
+**In-context help.** None added to the phase hints: the Group hint on a canvas stays "Drag cards near each other to cluster them. Double-click to add a label." with no link (G3). That left a gap: the board's only permanent guide link is the footer, which is in the `{:else}` of `{#if showCanvas}` (`Board.svelte:1007`), so a canvas has no way to reach the guide once the first-visit onboarding dialog is dismissed.
+
+G5 closes it with a **How to use** link in the phase bar's right-hand group (`ml-auto`), separate from the hint, opening in a new tab so nobody leaves the board. One function in `lib/guide/pages.ts` picks the target, with unit tests:
+
+| Board | Who | Opens |
+| --- | --- | --- |
+| Canvas, in Canvas or List view (`layout === 'canvas'`) | Everyone | `/docs/canvas` |
+| Custom columns (`!sameColumns(columns, DEFAULT_COLUMNS)`) | Host | `/docs/setup` |
+| Custom columns | Participant | `/docs/join`, because `/docs/setup` is written for hosts |
+| Classic Retro | Everyone | No new link. The footer stays. |
+
+"Custom" has to be worked out from the columns, because the template choice isn't stored on the board. A Retro board edited to different columns therefore counts as custom, and one edited back doesn't.
 
 **Analytics.** GA is on in prod. Add to `AnalyticsEvent`, using fixed enums only, as that file requires:
 
 - `guide_view { page }`
-- `guide_open { from: 'footer' | 'onboarding' | 'home' }`
+- `guide_open { from: 'board_link' | 'footer' | 'onboarding' | 'home' }`
 - `canvas_drop { on_card: boolean }`
 
 `canvas_drop` is what answers whether the guide worked. If a large share of canvas drops still land on another card after this ships, the snap idea and the hint change are both worth revisiting.
@@ -168,12 +179,12 @@ Stacked PRs off `main`, each passing the usual gates (`cargo test`, `cargo clipp
 | --- | --- | --- |
 | 0 | This plan | |
 | 1 | Pages, `pages.ts`, layout, redirects, all text moved and corrected, `guide_view`, `canvas_drop`, `guide.spec.ts` | Yes: readable, correct guide with no clips |
-| 2 | `GuideClip`, the clip pipeline and size check, the 3 canvas clips, `guide_open` | Yes: shows the canvas actions that started this. Scott checks on an iPhone here. |
+| 2 | `GuideClip`, the clip pipeline and size check, the 3 canvas clips, the **How to use** link, `guide_open` | Yes: answers the question that started this, one click from the board. Scott checks clips and the link on an iPhone here. |
 | 3 | The other 7 clips, and CI running clip scripts | Yes |
 
 PR 2 is the riskiest, because of the recording pipeline and Safari. If WebP or the recipe disappoints there, we've spent little and PR 1 still stands.
 
-**Done when:** someone new to the app can find why cards don't merge on `/docs/canvas`, starting from the guide's landing page, and `canvas_drop` starts reporting.
+**Done when:** someone new to the app can go from a canvas board to why cards don't merge in one click, a custom-column board's link opens the right page for host and participant, and `canvas_drop` starts reporting.
 
 ## Decisions
 
@@ -183,7 +194,7 @@ PR 2 is the riskiest, because of the recording pipeline and Safari. If WebP or t
 | **G2** | Are these the right 8 pages? | **Yes** (Scott), including `/docs/brainstorm` as its own page. |
 | **G3** | Change the Group hint to say "They never merge", and link from it? | **No** (Scott). The hint keeps its current text and gets no link. |
 | **G4** | Record clips in light mode only, or also dark? | **Light only** (Scott), with a border in dark mode. Two sets double the size and the re-recording. |
-| **G5** | Open: add a small "User guide" link to the canvas surface, separate from the hint? | **Recommend yes**, opening `/docs/canvas` in a new tab, in PR 2. Column boards and List view already have this link in their footer; without it, a canvas user has to leave the board to find the guide. |
+| **G5** | Add a guide link to the board, separate from the hint? | **Yes** (Scott): a **How to use** link on both canvas and custom-column boards, in PR 2. See In-context help. |
 
 ## Not in this plan
 
