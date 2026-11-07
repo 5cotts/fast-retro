@@ -155,6 +155,132 @@ test.describe('user guide', () => {
     }
   });
 
+  test('every clip decodes as served, with no console or CSP errors', async ({ page }) => {
+    const problems = collectProblems(page);
+    let total = 0;
+    for (const p of GUIDE_PAGES) {
+      await page.goto(`/docs/${p.slug}`);
+      await expect(page.getByRole('heading', { level: 1, name: p.title })).toBeVisible();
+      const clips = page.getByTestId('guide-clip').locator('img');
+      for (let i = 0; i < (await clips.count()); i++) {
+        const img = clips.nth(i);
+        await img.scrollIntoViewIfNeeded();
+        await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth), { message: `${p.slug} clip ${i}` }).toBeGreaterThan(0);
+        expect((await img.getAttribute('alt'))?.length).toBeGreaterThan(20);
+        total++;
+      }
+    }
+    expect(total).toBeGreaterThanOrEqual(3);
+    expect(problems).toEqual([]);
+  });
+
+  test('a clip pauses to its still poster and plays again, by keyboard', async ({ page }) => {
+    await page.goto('/docs/canvas');
+    const clip = page.getByTestId('guide-clip').first();
+    const img = clip.locator('img');
+    const playing = await img.getAttribute('src');
+    await clip.scrollIntoViewIfNeeded();
+
+    await clip.getByRole('button', { name: 'Pause clip' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(clip.getByRole('button', { name: 'Play clip' })).toBeFocused();
+    await expect(img).not.toHaveAttribute('src', playing!);
+    await expect.poll(() => img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+
+    await page.keyboard.press('Space');
+    await expect(img).toHaveAttribute('src', playing!);
+  });
+
+  test('with reduced motion, clips start on the poster with a Play button', async ({ browser }) => {
+    const ctx = await browser.newContext({ reducedMotion: 'reduce' });
+    try {
+      const page = await ctx.newPage();
+      await page.goto('/docs/canvas');
+      const clip = page.getByTestId('guide-clip').first();
+      await expect(clip.getByRole('button', { name: 'Play clip' })).toBeVisible();
+      await expect(clip.locator('img')).toHaveAttribute('src', /poster/);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('How to use opens the right page in a new tab, on canvas and custom boards only', async ({ browser }) => {
+    const host = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    const guest = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    try {
+      const page = await host.newPage();
+      await recordAnalytics(page);
+      await page.addInitScript(() => localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])));
+      const howToUse = (p: Page) => p.getByRole('link', { name: 'How to use' });
+      const newBoard = async (template: 'Retro' | 'Custom' | 'Canvas') => {
+        await page.goto('/');
+        await page.getByRole('button', { name: 'Start a new retro' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+        await dialog.getByRole('radiogroup', { name: 'Board type' }).locator('label', { hasText: template }).click();
+        if (template === 'Custom') await dialog.getByLabel('Column 1 name').fill('Problem one');
+        await dialog.getByRole('button', { name: 'Create retro' }).click();
+        await page.waitForURL(/\/board\//);
+        const name = page.getByLabel('Your display name');
+        const gotIt = page.getByRole('button', { name: 'Got it' });
+        await expect(name.or(gotIt).or(page.getByRole('list', { name: 'Phases' })).first()).toBeVisible();
+        if (await name.isVisible()) {
+          await name.fill('Host');
+          await page.getByRole('button', { name: 'Join the retro' }).click();
+        }
+        await expect(page.getByRole('list', { name: 'Phases' })).toBeVisible();
+        await page.waitForTimeout(300);
+        if (await gotIt.isVisible()) await gotIt.click();
+      };
+
+      await newBoard('Retro');
+      await expect(howToUse(page)).toHaveCount(0);
+
+      await newBoard('Canvas');
+      await expect(howToUse(page)).toHaveAttribute('href', '/docs/canvas');
+      await expect(howToUse(page)).toHaveAttribute('target', '_blank');
+      await page.getByRole('button', { name: 'List', exact: true }).click();
+      await expect(howToUse(page)).toHaveAttribute('href', '/docs/canvas');
+
+      await newBoard('Custom');
+      await expect(howToUse(page)).toHaveAttribute('href', '/docs/setup');
+      const [opened] = await Promise.all([page.context().waitForEvent('page'), howToUse(page).click()]);
+      await expect(opened.getByRole('heading', { level: 1, name: 'Set up and change a board' })).toBeVisible();
+      await opened.close();
+      expect((await analytics(page)).filter(([name]) => name === 'guide_open').map(([, params]) => params)).toEqual([{ from: 'board_link' }]);
+
+      const other = await guest.newPage();
+      await other.goto(page.url());
+      await other.getByLabel('Your display name').fill('Guest');
+      await other.getByRole('button', { name: 'Join the retro' }).click();
+      await expect(howToUse(other)).toHaveAttribute('href', '/docs/join');
+    } finally {
+      await host.close();
+      await guest.close();
+    }
+  });
+
+  test('How to use stays on screen on a phone', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+    try {
+      const page = await ctx.newPage();
+      await page.addInitScript(() => localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])));
+      await page.goto('/');
+      await page.getByRole('button', { name: 'Start a new retro' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
+      await dialog.getByRole('radiogroup', { name: 'Board type' }).locator('label', { hasText: 'Canvas' }).click();
+      await dialog.getByRole('button', { name: 'Create retro' }).click();
+      await page.waitForURL(/\/board\//);
+      await page.getByLabel('Your display name').fill('Host');
+      await page.getByRole('button', { name: 'Join the retro' }).click();
+      await page.getByRole('button', { name: 'Got it' }).click();
+      const box = await page.getByRole('link', { name: 'How to use' }).boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test('guide_view reports each page once, using fixed names', async ({ page }) => {
     await recordAnalytics(page);
     await page.goto('/docs');
