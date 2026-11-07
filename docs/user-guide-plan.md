@@ -138,7 +138,7 @@ Found by comparing the guide with the UI at `b002576`. PR 1 fixes these, and eac
 
 **Old links keep working.** `/docs?role=lead` redirects to `/docs/run` and `/docs?role=participant` to `/docs/join`. `Board.svelte` and `Onboarding.svelte` use those links today, `routes/+page.svelte` links plain `/docs`, and older copies may be in chat history. The app's own links move to the new pages.
 
-**In-context help.** None added to the phase hints: the Group hint on a canvas stays "Drag cards near each other to cluster them. Double-click to add a label." with no link (G3). That leaves one gap. The board's only guide link is the footer, and the footer is in the `{:else}` of `{#if showCanvas}` (`Board.svelte:1007`), so the canvas surface has no way to reach the guide. G5 decides whether to add one.
+**In-context help.** None added to the phase hints: the Group hint on a canvas stays "Drag cards near each other to cluster them. Double-click to add a label." with no link (G3). That leaves one gap. The board's only guide link is the footer, and the footer is in the `{:else}` of `{#if showCanvas}` (`Board.svelte:1007`), so once the first-visit onboarding dialog is dismissed, the canvas surface has no way to reach the guide. G5 decides whether to add one.
 
 **Analytics.** GA is on in prod. Add to `AnalyticsEvent`, using fixed enums only, as that file requires:
 
