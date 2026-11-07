@@ -25,20 +25,35 @@ const RECORD = process.env.GUIDE_CLIPS_RECORD === '1';
 const OUT_DIR = join(process.cwd(), 'frontend/src/lib/guide/clips');
 const HOLD_LAST_FRAME_MS = 1500;
 const FPS = 15;
+const MAX_CLIP_MS = 10_500;
+const HIDE_NOTE_STYLE = 'clip-hide-import-note';
 // About as wide as the guide's text column, so clips show near full size. Below
 // 768px a canvas board opens in List view.
 const VIEWPORT = { width: 800, height: 720 };
 
 export interface SeedCard {
   text: string;
-  x: number;
-  y: number;
+  // Where it sits on a canvas.
+  x?: number;
+  y?: number;
+  clusterId?: string;
 }
 
 export interface SeedBoard {
+  layout?: 'canvas' | 'columns';
   phase: 'brainstorm' | 'group' | 'vote' | 'discuss';
-  columns: { key: string; title: string; color: string }[];
+  // Leave out for the classic retro columns: wentWell, toImprove, actions.
+  columns?: { key: string; title: string; color: string }[];
   cards: Record<string, SeedCard[]>;
+  clusters?: { id: string; label: string }[];
+  hideCards?: boolean;
+  // Larger than the default, for a clip that needs it.
+  viewport?: { width: number; height: number };
+  // The clip shows the header, whose presence list still has the closed setup
+  // session until the server times it out.
+  showsHeader?: boolean;
+  // Runs before recording, for what other people have already done.
+  prepare?: (browser: Browser, url: string) => Promise<void>;
 }
 
 export interface Crop {
@@ -62,15 +77,35 @@ function boardFile(seed: SeedBoard) {
     format: 'fast-retro',
     version: 4,
     exportedAt: 1,
-    board: { label: 'Sprint 42', anonymous: true, phase: seed.phase, autoSort: true, layout: 'canvas', columns: seed.columns },
+    board: {
+      label: 'Sprint 42',
+      anonymous: true,
+      phase: seed.phase,
+      autoSort: true,
+      ...(seed.layout === 'columns' ? {} : { layout: 'canvas' }),
+      ...(seed.columns ? { columns: seed.columns } : {}),
+      ...(seed.clusters ? { clusters: seed.clusters } : {}),
+      ...(seed.hideCards ? { hideCards: true } : {})
+    },
     cards: Object.fromEntries(
       Object.entries(seed.cards).map(([key, list]) => [
         key,
-        list.map((c, i) => ({ id: `${key}${i}`, text: c.text, authorId: '', votes: [], reactions: {}, comments: [], pos: { x: c.x, y: c.y, z: i + 1 } }))
+        list.map((c, i) => ({
+          id: `${key}${i}`,
+          text: c.text,
+          authorId: '',
+          votes: [],
+          reactions: {},
+          comments: [],
+          ...(c.x === undefined ? {} : { pos: { x: c.x, y: c.y, z: i + 1 } }),
+          ...(c.clusterId ? { clusterId: c.clusterId } : {})
+        }))
       ])
     )
   };
 }
+
+const surface = (page: Page) => page.getByTestId('board-canvas').or(page.getByTestId('board-columns'));
 
 async function dismissTips(page: Page) {
   const gotIt = page.getByRole('button', { name: 'Got it' });
@@ -82,7 +117,6 @@ async function dismissTips(page: Page) {
 async function createBoard(browser: Browser, seed: SeedBoard) {
   const ctx = await browser.newContext({ viewport: VIEWPORT });
   const page = await ctx.newPage();
-  await page.addInitScript(() => localStorage.setItem('retro-recent-boards', JSON.stringify([{ slug: 'seeded', lastVisited: Date.now() }])));
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a new retro' }).click();
   const dialog = page.getByRole('dialog', { name: 'Start a new retro' });
@@ -92,12 +126,26 @@ async function createBoard(browser: Browser, seed: SeedBoard) {
   await page.waitForURL(/\/board\//);
   await page.getByLabel('Your display name').fill('Host');
   await page.getByRole('button', { name: 'Join the retro' }).click();
-  await expect(page.getByTestId('board-canvas')).toBeVisible();
+  await expect(surface(page)).toBeVisible();
   await dismissTips(page);
   const state = await ctx.storageState();
   const url = page.url();
   await ctx.close();
   return { state, url };
+}
+
+// For clips that start on the homepage: a returning person, no board yet.
+async function returningVisitor(browser: Browser) {
+  const ctx = await browser.newContext({ viewport: VIEWPORT });
+  const page = await ctx.newPage();
+  await page.goto('/');
+  await page.evaluate(() => {
+    localStorage.setItem('retro-name', 'Host');
+    localStorage.setItem('retro-onboarded', '1');
+  });
+  const state = await ctx.storageState();
+  await ctx.close();
+  return state;
 }
 
 function installCursor() {
@@ -112,6 +160,9 @@ function installCursor() {
     addEventListener('pointermove', (e) => { at = `translate(${e.clientX - 9}px,${e.clientY - 9}px)`; draw(); }, true);
     addEventListener('pointerdown', () => { pressed = true; draw(); }, true);
     addEventListener('pointerup', () => { pressed = false; draw(); }, true);
+    // Column boards use native drag and drop, which stops pointer events.
+    addEventListener('dragover', (e) => { at = `translate(${e.clientX - 9}px,${e.clientY - 9}px)`; draw(); }, true);
+    addEventListener('dragend', () => { pressed = false; draw(); }, true);
   });
 }
 
@@ -154,7 +205,7 @@ function encode(name: string, video: string, startSec: number, endSec: number, c
   const quiet = ['-y', '-hide_banner', '-loglevel', 'error'];
   execFileSync('ffmpeg', [
     ...quiet, '-ss', String(startSec), '-to', String(endSec), '-i', video,
-    '-vf', `${box},fps=${FPS}`, '-an', '-c:v', 'libwebp_anim', '-lossless', '0', '-q:v', '60', '-compression_level', '6', '-loop', '0', clipPath
+    '-vf', `${box},fps=${FPS}`, '-an', '-c:v', 'libwebp_anim', '-lossless', '0', '-q:v', '50', '-compression_level', '6', '-loop', '0', clipPath
   ]);
   // The poster is the result of the action, so a paused clip still shows it.
   execFileSync('ffmpeg', [
@@ -165,23 +216,72 @@ function encode(name: string, video: string, startSec: number, endSec: number, c
   console.log(`${name}: ${even(crop.width)}x${even(crop.height)}, ${(endSec - startSec).toFixed(1)}s, ${kb(clipPath)} KB, poster ${kb(posterPath)} KB`);
 }
 
-export function clip(name: string, seed: SeedBoard, body: (c: Clip) => Promise<void>) {
+// A person joins a board and adds cards, before recording starts.
+export async function guestAddsCards(browser: Browser, url: string, cards: { column: string; text: string }[]) {
+  const ctx = await browser.newContext({ viewport: VIEWPORT });
+  const page = await ctx.newPage();
+  await page.goto(url);
+  await page.getByLabel('Your display name').fill('Ana');
+  await page.getByRole('button', { name: 'Join the retro' }).click();
+  await dismissTips(page);
+  for (const { column, text } of cards) {
+    const draft = page.getByLabel(`Add a card to ${column}`, { exact: true });
+    await draft.fill(text);
+    await draft.press('Enter');
+    await expect(page.getByRole('group', { name: `Card: ${text}` })).toBeVisible();
+  }
+  await ctx.close();
+}
+
+// For the clip about importing, where the note is the point.
+export async function showImportNote(page: Page) {
+  await page.evaluate((id) => document.getElementById(id)?.remove(), HIDE_NOTE_STYLE);
+}
+
+// Where a locator's middle is, for pointing the cursor at it.
+export async function middleOf(el: Locator) {
+  await el.scrollIntoViewIfNeeded();
+  const box = await el.boundingBox();
+  if (!box) throw new Error('not on screen');
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+// Glides to a control and clicks it, the way a person would.
+export async function clickOn(page: Page, from: { x: number; y: number }, el: Locator, ms = 450) {
+  const to = await middleOf(el);
+  await glide(page, from, to, ms);
+  await page.waitForTimeout(120);
+  await page.mouse.click(to.x, to.y);
+  return to;
+}
+
+export function clip(name: string, seed: SeedBoard | 'homepage', body: (c: Clip) => Promise<void>) {
   test(name, async ({ browser }) => {
-    const { state, url } = await createBoard(browser, seed);
+    const { state, url } = seed === 'homepage' ? { state: await returningVisitor(browser), url: '/' } : await createBoard(browser, seed);
+    if (seed !== 'homepage') await seed.prepare?.(browser, url);
     const videoDir = RECORD ? mkdtempSync(join(tmpdir(), 'guide-clip-')) : null;
     let ctx: BrowserContext | null = null;
     try {
+      const viewport = (seed !== 'homepage' && seed.viewport) || VIEWPORT;
       ctx = await browser.newContext({
-        viewport: VIEWPORT,
+        viewport,
         storageState: state,
-        ...(videoDir ? { recordVideo: { dir: videoDir, size: VIEWPORT } } : {})
+        ...(videoDir ? { recordVideo: { dir: videoDir, size: viewport } } : {})
       });
       const page = await ctx.newPage();
       await page.addInitScript(installCursor);
       const opened = Date.now();
       await page.goto(url);
-      await expect(page.getByTestId('board-canvas')).toBeVisible();
-      await dismissTips(page);
+      if (seed === 'homepage') {
+        await expect(page.getByRole('button', { name: 'Start a new retro' })).toBeVisible();
+      } else {
+        await expect(surface(page)).toBeVisible();
+        await dismissTips(page);
+        // Seeded boards are imported only to make takes repeatable.
+        const style = await page.addStyleTag({ content: '[data-testid="imported-note"]{display:none}' });
+        await style.evaluate((el, id) => (el.id = id), HIDE_NOTE_STYLE);
+        if (RECORD && seed.showsHeader) await expect(page.getByText('Host (2)')).toHaveCount(0, { timeout: 45_000 });
+      }
 
       let startMs: number | null = null;
       let region: Crop | null = null;
@@ -194,7 +294,8 @@ export function clip(name: string, seed: SeedBoard, body: (c: Clip) => Promise<v
       await page.waitForTimeout(HOLD_LAST_FRAME_MS);
       const endMs = Date.now() - opened;
 
-      if (!startMs || !region) throw new Error(`${name} must call action() and crop()`);
+      if (startMs === null || !region) throw new Error(`${name} must call action() and crop()`);
+      if (RECORD && endMs - startMs > MAX_CLIP_MS) throw new Error(`${name} runs ${endMs - startMs} ms, over the ${MAX_CLIP_MS} ms limit`);
       if (videoDir) {
         const video = await page.video()!.path();
         await ctx.close();

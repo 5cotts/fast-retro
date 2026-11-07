@@ -112,6 +112,10 @@ jobs:
         if: env.FULL == 'true'
         run: bunx playwright install --with-deps chromium
 
+      - name: User guide clip flows, without recording
+        if: env.FULL == 'true'
+        run: FASTRETRO_BIN=target/release/fast-retro scripts/guide-clips.sh
+
       - name: e2e against the release binary
         if: env.FULL == 'true'
         run: FASTRETRO_BIN=target/release/fast-retro ./test-local.sh
