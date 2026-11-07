@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <section>
   <h2>Start and share</h2>
   <ol>
@@ -12,13 +16,14 @@
   <h2>Walk through the phases</h2>
   <p class="mb-3">A suggested 45 minutes for 4–8 people:</p>
   <ul>
-    <li><strong>Brainstorm, 10 min.</strong> Start the timer: click the timer button in the header, set the minutes, then press play. Everyone adds cards quietly.</li>
+    <li><strong>Brainstorm, 10 min.</strong> Start the timer: click the timer button in the header, enter the minutes, click <em>Set</em>, then press play. Everyone adds cards quietly.</li>
     <li><strong>Group, 5 min.</strong> Click <em>Next phase</em> in the phase bar. The team pulls related cards together, and you can merge true duplicates. See <a href="/docs/group">Group and merge cards</a>.</li>
     <li><strong>Vote, 5 min.</strong> Advance again. Everyone votes, and the totals show what to talk about.</li>
     <li><strong>Discuss, 20 min.</strong> Work through the top votes. Cards sort by votes from here on unless you turn <em>Auto-sort</em> off. Use comments for anything worth keeping.</li>
     <li><strong>Actions, 5 min.</strong> Capture next steps with owners and dates. A board without an Action items column ends at Discuss, so it has four phases.</li>
   </ul>
   <p class="mt-3">Going back with <em>Previous</em> doesn't lose anything, so a misclick is harmless.</p>
+  <GuideClip name="run-phases" />
 </section>
 
 <section>

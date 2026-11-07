@@ -10,7 +10,7 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: 'list',
-  timeout: 60_000,
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   outputDir: '../../test-results/guide-clips',
   use: {
