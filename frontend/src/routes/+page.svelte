@@ -24,6 +24,7 @@
   import type { PendingSeed } from '$lib/yboard';
   import GoogleSignIn from '$lib/GoogleSignIn.svelte';
   import { getTheme } from '$lib/storage';
+  import { track } from '$lib/analytics';
   import { LogOut, Loader2 } from 'lucide-svelte';
 
   let recents = $state<RecentBoard[]>([]);
@@ -262,7 +263,7 @@
 
       <p class="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
         New here?
-        <a href="/docs" class="text-sky-600 dark:text-sky-400 hover:underline">Read the user guide</a>.
+        <a href="/docs" class="text-sky-600 dark:text-sky-400 hover:underline" onclick={() => track({ name: 'guide_open', params: { from: 'home' } })}>Read the user guide</a>.
       </p>
     </div>
   </div>

@@ -33,6 +33,16 @@ export function adjacentGuidePages(slug: GuideSlug): { previous: GuidePage | nul
   return { previous: GUIDE_PAGES[i - 1] ?? null, next: GUIDE_PAGES[i + 1] ?? null };
 }
 
+// Which page a board's "How to use" link opens. Classic retro boards have no
+// such link. A board's template isn't stored, so "custom" means its columns
+// differ from the defaults. /docs/setup is written for hosts, so everyone else
+// gets the page about taking part.
+export function boardGuidePath(board: { layout: 'columns' | 'canvas'; customColumns: boolean; isHost: boolean }): string | null {
+  if (board.layout === 'canvas') return guidePath('canvas');
+  if (!board.customColumns) return null;
+  return guidePath(board.isHost ? 'setup' : 'join');
+}
+
 // Before the guide had pages, /docs?role=... picked a tab. Those links are in
 // older copies of the app and in chat history, so they keep working.
 export function legacyGuideRedirect(role: string | null): string | null {

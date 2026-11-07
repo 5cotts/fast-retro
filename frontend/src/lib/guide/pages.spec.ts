@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adjacentGuidePages, GUIDE_PAGES, guidePageFor, guidePath, legacyGuideRedirect } from './pages';
+import { adjacentGuidePages, boardGuidePath, GUIDE_PAGES, guidePageFor, guidePath, legacyGuideRedirect } from './pages';
 
 describe('guide pages', () => {
   it('has 8 pages with unique slugs', () => {
@@ -19,6 +19,15 @@ describe('guide pages', () => {
     expect(adjacentGuidePages('join').next?.slug).toBe('run');
     expect(adjacentGuidePages('run').previous?.slug).toBe('join');
     expect(adjacentGuidePages('reference').next).toBeNull();
+  });
+
+  it('picks the board link by layout, columns and role', () => {
+    for (const isHost of [true, false]) {
+      expect(boardGuidePath({ layout: 'canvas', customColumns: true, isHost })).toBe('/docs/canvas');
+      expect(boardGuidePath({ layout: 'columns', customColumns: false, isHost })).toBeNull();
+    }
+    expect(boardGuidePath({ layout: 'columns', customColumns: true, isHost: true })).toBe('/docs/setup');
+    expect(boardGuidePath({ layout: 'columns', customColumns: true, isHost: false })).toBe('/docs/join');
   });
 
   it('sends the old role links to the matching page', () => {
