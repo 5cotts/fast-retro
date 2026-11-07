@@ -170,7 +170,7 @@ test.describe('user guide', () => {
         total++;
       }
     }
-    expect(total).toBeGreaterThanOrEqual(3);
+    expect(total).toBe(10);
     expect(problems).toEqual([]);
   });
 

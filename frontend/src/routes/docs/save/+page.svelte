@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <section>
   <h2>Save a copy</h2>
   <p class="mb-3">Hosts open the <strong>Export</strong> menu in the header. After a retro ends, anyone with its link can use the <strong>Export</strong> menu in the "This retro has ended" banner, with no name needed. The files are the same either way.</p>
@@ -14,6 +18,7 @@
     <li>Check the preview, then click <strong>Import retro</strong>.</li>
   </ol>
   <p class="mt-3">You get a new board that looks the same, with votes, reactions, comments, phase and settings restored. Importing doesn't need Google sign-in. The board shows an <em>Imported from a file</em> note, since the file decides who voted and wrote what.</p>
+  <GuideClip name="save-import" />
 </section>
 
 <section>

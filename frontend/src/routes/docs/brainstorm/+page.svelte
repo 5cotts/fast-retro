@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <p>Use this when you want ideas on several questions without people influencing each other, for example: "Here are 5 problem statements. Generate ideas for 10 minutes, in private, then we'll reveal, group and discuss."</p>
 
 <section>
@@ -18,6 +22,7 @@
     <li><strong>Group.</strong> The team pulls similar ideas together, across columns too. See <a href="/docs/group">Group and merge cards</a>.</li>
     <li><strong>Vote and discuss.</strong> Advance through Vote and Discuss, and talk through the top ideas.</li>
   </ol>
+  <GuideClip name="hide-reveal" />
 </section>
 
 <section>

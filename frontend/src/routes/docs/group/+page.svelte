@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <p>This page is about column boards. On a canvas, cards group by sitting close together: see <a href="/docs/canvas">Use a canvas board</a>.</p>
 
 <section>
@@ -9,6 +13,7 @@
     <li>Click the group's name to rename it.</li>
   </ol>
   <p class="mt-3">Without dragging, or on a phone, use the <strong>Group</strong> button on a card. From there you can pick a group, choose <strong>New group…</strong>, or <strong>Remove from group</strong>.</p>
+  <GuideClip name="group-across" />
 </section>
 
 <section>
@@ -19,6 +24,7 @@
     <li>Click <strong>Merge</strong> on the group, then confirm with <strong>Merge cards</strong>. They become one card that keeps the combined votes, reactions and comments.</li>
   </ol>
   <p class="mt-3">A merge can't be undone. If you only want to take a group apart, use <strong>Ungroup</strong>, which leaves every card in its column.</p>
+  <GuideClip name="group-merge" />
 </section>
 
 <section>

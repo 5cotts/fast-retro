@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <section>
   <h2>Choose a board type</h2>
   <p class="mb-3">Click <strong>Start a new retro</strong> on the homepage, then pick one under <em>Board type</em>:</p>
@@ -10,6 +14,7 @@
     </tbody>
   </table>
   <p class="mt-3">An <em>Action items</em> column comes last unless you untick it. Without it, the board has four phases and ends at Discuss.</p>
+  <GuideClip name="new-custom" />
 </section>
 
 <section>
@@ -21,6 +26,7 @@
   </ol>
   <p class="mt-3">Cards stay with their column when you rename or reorder it. <strong>Removing a column that has cards deletes those cards.</strong> The dialog says how many before you save.</p>
   <p class="mt-3">Editing works until the retro ends, on classic boards too. A canvas changes its prompts the same way.</p>
+  <GuideClip name="edit-board" />
 </section>
 
 <section>
