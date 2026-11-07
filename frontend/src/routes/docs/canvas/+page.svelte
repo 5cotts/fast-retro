@@ -1,3 +1,7 @@
+<script lang="ts">
+  import GuideClip from '$lib/guide/GuideClip.svelte';
+</script>
+
 <section>
   <h2>Why don't cards merge when I drop them?</h2>
   <p>On a canvas, dropping a card on another card only overlaps them. It never groups or merges them. Closeness is the grouping: put related cards near each other, and add a label if the cluster needs a name. To group or merge cards the way a column board does, start a column board instead.</p>
@@ -6,6 +10,7 @@
 <section>
   <h2>Add cards</h2>
   <p>In Brainstorm, pick a prompt in the bar at the bottom and write your card, or double-click the canvas to put it right there. A card keeps its prompt's color wherever it goes.</p>
+  <GuideClip name="canvas-add" />
 </section>
 
 <section>
@@ -15,6 +20,7 @@
     <li>From Group onward, double-click empty space to add a label, such as a theme's name.</li>
     <li>Drag a label to move it, click it to change the text, or clear the text to delete it. A label owns nothing, so moving it moves no cards.</li>
   </ol>
+  <GuideClip name="canvas-cluster" />
 </section>
 
 <section>
@@ -25,6 +31,7 @@
     <li><strong>Fit.</strong> Click <em>Fit</em> to see every card. Your view is your own and doesn't affect anyone else's.</li>
     <li><strong>Keyboard.</strong> <kbd>Shift</kbd>+arrow keys nudge a focused card.</li>
   </ul>
+  <GuideClip name="canvas-navigate" />
 </section>
 
 <section>
