@@ -124,6 +124,12 @@ export function boundsOf(rects: readonly Rect[]): Rect | null {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+export function overlapsAny(rect: Rect, others: readonly Rect[]): boolean {
+  return others.some(
+    (o) => rect.x < o.x + o.width && o.x < rect.x + rect.width && rect.y < o.y + o.height && o.y < rect.y + rect.height
+  );
+}
+
 // The smallest pan that brings a world rect on screen at the current zoom. A
 // rect too big for the viewport lines up with its top-left corner.
 export function panToReveal(view: View, rect: Rect, viewport: Size, margin = 16): View {
