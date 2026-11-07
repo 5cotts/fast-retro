@@ -85,6 +85,9 @@ jobs:
       - name: shellcheck release scripts
         run: cd scripts/release && shellcheck --version | head -2 && shellcheck *.sh lib.sh
 
+      - name: Guide clip size budget
+        run: shellcheck scripts/guide-clips.sh scripts/check-guide-clips.sh && scripts/check-guide-clips.sh
+
       - name: Rust toolchain
         run: rustup show active-toolchain && rustc --version && cargo --version
 

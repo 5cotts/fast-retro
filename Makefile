@@ -9,9 +9,11 @@ R := scripts/release
 ARGS = REF="$(REF)" PR="$(PR)" SHA="$(SHA)" BUILD="$(BUILD)" DB="$(DB)" SEED="$(SEED)" ALLOW_PUBLIC_SEED="$(ALLOW_PUBLIC_SEED)" DRY_RUN="$(DRY_RUN)" \
        CONFIRM="$(CONFIRM)" FORCE="$(FORCE)" SKIP_QA="$(SKIP_QA)" ALLOW_LOCAL_BUILD="$(ALLOW_LOCAL_BUILD)"
 
-.PHONY: help release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy prod-deploy rollback release-seed-prod qa-drill-deploy qa-drill-rollback
+.PHONY: help guide-clips guide-clips-check release-fetch release-check release-build-local release-status smoke db-backup-check release-lint qa-deploy prod-deploy rollback release-seed-prod qa-drill-deploy qa-drill-rollback
 
 help:
+	@echo "make guide-clips [CLIP=<name>]                             re-record the user guide's clips on a scratch instance"
+	@echo "make guide-clips-check [CLIP=<name>]                       run the clip flows without recording"
 	@echo "make release-fetch [REF=origin/main | PR=<n> | SHA=<sha>]  download + verify a CI build"
 	@echo "make release-status                                        what prod/QA run, builds, restore points"
 	@echo "make qa-deploy [BUILD=<id> | PR=<n> | REF=...] [SEED=prod]  smoke, point QA at a build, restart, verify"
@@ -24,6 +26,12 @@ help:
 	@echo "make release-check [REF=... | PR=... | SHA=...]           CI's gates locally, in a clean worktree"
 	@echo "make release-build-local REF=... | PR=... | SHA=...        BREAK-GLASS: local build (Scott's OK only)"
 	@echo "make release-lint                                          shellcheck the release scripts"
+
+guide-clips:
+	@CLIP="$(CLIP)" FASTRETRO_BIN="$(FASTRETRO_BIN)" GUIDE_CLIPS_RECORD=1 scripts/guide-clips.sh
+
+guide-clips-check:
+	@CLIP="$(CLIP)" FASTRETRO_BIN="$(FASTRETRO_BIN)" scripts/guide-clips.sh
 
 release-fetch:
 	@$(ARGS) $(R)/fetch.sh
