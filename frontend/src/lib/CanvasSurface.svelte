@@ -42,6 +42,7 @@
   import { canAddCardInColumn, canVoteInPhase } from './phase';
   import { isCardHidden } from './visibility';
   import type { CardActions } from './cardActions';
+  import type { Viewer } from './viewer';
   import type { CardData } from './types';
   import type { UseBoardConnectionState } from './useBoardConnection.svelte';
 
@@ -52,7 +53,7 @@
     board: UseBoardConnectionState;
     cardActions: CardActions;
     ended: boolean;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     // Already false once the board has ended.
     isLead: boolean;
@@ -67,7 +68,7 @@
     board,
     cardActions,
     ended,
-    userId,
+    viewer,
     userName,
     isLead,
     namesMap,
@@ -128,7 +129,7 @@
     const cards: Placed[] = [];
     const nextSlot = new Map<string, Point>();
     const seen = new Set<string>();
-    const rules = { hideCards: board.settings.hideCards, phase: board.phase, ended, userId };
+    const rules = { hideCards: board.settings.hideCards, phase: board.phase, ended, viewer };
     prompts.forEach((column, columnIndex) => {
       const list = board.cards[column.key] ?? [];
       const hidden = list.map((card) => isCardHidden(card, column, rules));
@@ -725,7 +726,7 @@
           rank={rankOf.get(p.card.id) ?? 0}
           hidden={p.hidden}
           {live}
-          {userId}
+          {viewer}
           {userName}
           {isLead}
           readOnly={ended}
@@ -782,7 +783,7 @@
       cards={actionCards}
       phase={board.phase}
       {ended}
-      {userId}
+      {viewer}
       {userName}
       {isLead}
       anonymous={board.settings.anonymous}

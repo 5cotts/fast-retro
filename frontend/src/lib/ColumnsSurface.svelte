@@ -8,6 +8,7 @@
   import { ACTIONS_COLUMN_KEY, boardGridClass, isWideBoard } from './columns';
   import { canAddCardInColumn, canSortByVotes, canVoteInPhase } from './phase';
   import type { CardActions } from './cardActions';
+  import type { Viewer } from './viewer';
   import type { CardData } from './types';
   import type { UseBoardConnectionState } from './useBoardConnection.svelte';
 
@@ -17,7 +18,7 @@
     board: UseBoardConnectionState;
     cardActions: CardActions;
     ended: boolean;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     // Already false once the board has ended.
     isLead: boolean;
@@ -35,7 +36,7 @@
     board,
     cardActions,
     ended,
-    userId,
+    viewer,
     userName,
     isLead,
     namesMap,
@@ -291,7 +292,7 @@
         {clusterActions}
         canAdd={canAddCardInColumn(col, board.phase) && !ended}
         phase={board.phase}
-        {userId}
+        {viewer}
         {userName}
         {isLead}
         readOnly={ended}
