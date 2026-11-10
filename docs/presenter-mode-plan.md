@@ -1,6 +1,6 @@
 # Plan: present the board without giving away your own input
 
-Status: plan. P4 decided (remind hosts in v1); P1–P3, P5 and P6 awaiting Scott · checked against `main` at `7a0d3e6` · 2026-11-10
+Status: plan, all decisions made (P1–P6). Ready to build, starting with PR 1 · checked against `main` at `7a0d3e6` · 2026-11-10
 
 ## Goal
 
@@ -108,14 +108,14 @@ The menu item goes in the mobile header menu too, for consistency, but nobody sc
 
 ## Decisions
 
-Recommendations below. Each is cheap to reverse.
+All six decided by Scott on 2026-11-10: P4 changed from the original recommendation, the rest as recommended. Each is cheap to reverse.
 
-| # | Question | Recommendation | Why |
+| # | Question | Decision | Why |
 | --- | --- | --- | --- |
 | **P1** | Who gets the button? | **Hosts**, including on ended boards | It's the host's problem. Ended boards count because hosts share last retro's board to review action items, and their votes are still highlighted there. The code doesn't depend on role, so offering it to everyone later means changing one condition. |
 | **P2** | Votes and reactions while presenting in the same tab | **Paused**, with a tooltip saying where to vote | See *Why votes and reactions pause*. Kollabe's keyboard voting is the alternative, but keyboard voting with invisible state has the same "did I vote?" problem. |
 | **P3** | Offer **Open a window to share**? | **Yes**, in its own PR | It's TeamRetro's model, and the only way to vote privately while presenting from one computer. It's a `window.open` plus the presence fold. |
-| **P4** | Remind hosts to present? | **Decided: yes, in v1.** See *The reminder*. | Scott, 2026-11-10. Forgetting to click is the most likely way presenting fails, and the reminder shows once per board, with a way to turn it off. |
+| **P4** | Remind hosts to present? | **Yes, in v1.** See *The reminder*. | Scott, 2026-11-10. Forgetting to click is the most likely way presenting fails, and the reminder shows once per board, with a way to turn it off. |
 | **P5** | What the UI calls it | **Present** / **Presenting**. The guide section is *Present while you share your screen*. | It's a verb on a button and says what you're about to do. "Presenter mode" reads as a board setting. |
 | **P6** | Hide host controls while presenting, as TeamRetro's window does? | **No** | They don't reveal anything about the host's input, and the host may drive from the presenting tab. A cleaner audience view is a separate feature. |
 
