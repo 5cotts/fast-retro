@@ -180,7 +180,7 @@ test.describe('user guide', () => {
         total++;
       }
     }
-    expect(total).toBe(10);
+    expect(total).toBe(11);
     expect(problems).toEqual([]);
   });
 
