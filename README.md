@@ -8,6 +8,7 @@ A multiplayer, real-time retrospective board — a self-hostable alternative to 
 - **Custom columns**: name as many as you like when creating a board (for a brainstorm, say), or use the classic retro columns
 - **Canvas boards**: place cards anywhere, so how close they sit is the grouping, with floating labels and a Top voted list for discussion. Each card keeps its prompt's color, and List view shows the same cards in columns
 - **Hidden cards**: optionally hide everyone else's cards during Brainstorm, then reveal them all when the board moves to Group
+- **Presenting**: share your screen without showing your own cards, votes or reactions, from the tab you're in or a second window
 - **Votes** to surface what matters most
 - **Emoji reactions** on cards
 - **Threaded comments** on cards

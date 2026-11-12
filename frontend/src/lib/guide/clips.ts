@@ -14,6 +14,8 @@ import hideReveal from './clips/hide-reveal.webp';
 import hideRevealPoster from './clips/hide-reveal.poster.webp';
 import newCustom from './clips/new-custom.webp';
 import newCustomPoster from './clips/new-custom.poster.webp';
+import present from './clips/present.webp';
+import presentPoster from './clips/present.poster.webp';
 import runPhases from './clips/run-phases.webp';
 import runPhasesPoster from './clips/run-phases.poster.webp';
 import saveImport from './clips/save-import.webp';
@@ -78,6 +80,13 @@ export const GUIDE_CLIPS = {
     width: 800,
     height: 720,
     alt: 'Clicking Start a new retro, picking Custom, naming two columns, and creating the board with those columns.'
+  },
+  present: {
+    src: present,
+    poster: presentPoster,
+    width: 1000,
+    height: 440,
+    alt: "A host's own card says you (hidden) and their vote is highlighted. Clicking Present, then Present in this tab, turns the header label to Presenting, the card to Anonymous, and the vote to a plain count."
   },
   'run-phases': {
     src: runPhases,

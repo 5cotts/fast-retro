@@ -25,6 +25,7 @@
     <li>Share your screen or the window. Its header shows a dark <strong>Presenting</strong> label, so the team can tell your own input isn't on show.</li>
     <li>Click <strong>Stop</strong> on that label when you're done, or just close the presenting window.</li>
   </ol>
+  <GuideClip name="present" />
   <p class="mt-3 mb-3">While you present:</p>
   <ul>
     <li><strong>Nothing is marked as yours.</strong> Your cards and comments show <em>Anonymous</em>, or your name on a board that shows names. Your votes and reactions look like anyone's. With <em>Hide cards</em> on, your own Brainstorm cards are placeholders too.</li>
