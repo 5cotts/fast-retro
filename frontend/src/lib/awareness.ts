@@ -6,6 +6,7 @@ export interface AwarenessUser {
   color?: string;
   isLead?: boolean;
   typing?: string | null;
+  presenting?: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export function samePresence(a: readonly PresenceUser[], b: readonly PresenceUse
       p.name === q.name &&
       p.color === q.color &&
       p.isLead === q.isLead &&
+      !!p.presenting === !!q.presenting &&
       (p.typing ?? null) === (q.typing ?? null)
     );
   });

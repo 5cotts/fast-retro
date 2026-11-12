@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Check, ChevronDown, ExternalLink, Presentation, X } from 'lucide-svelte';
+  import { AppWindow, Check, ChevronDown, ExternalLink, Presentation, X } from 'lucide-svelte';
   import { tick } from 'svelte';
 
   // Presenting changes only this screen, so it sits beside Share rather than
@@ -18,6 +18,7 @@
     presenting,
     onPresent,
     onStop,
+    onOpenWindow = () => {},
     mobile = false,
     remind = false,
     remindersOn = true,
@@ -27,6 +28,7 @@
     presenting: boolean;
     onPresent: () => void;
     onStop: () => void;
+    onOpenWindow?: () => void;
     mobile?: boolean;
     remind?: boolean;
     remindersOn?: boolean;
@@ -65,6 +67,11 @@
     // Keep keyboard focus on the control that replaced the menu.
     await tick();
     stopEl?.focus();
+  }
+
+  function openWindow() {
+    closeMenu();
+    onOpenWindow();
   }
 
   function onTriggerKeydown(e: KeyboardEvent) {
@@ -199,6 +206,21 @@
             <span class="block text-sm font-medium">Present in this tab</span>
             <span class="block text-xs text-slate-500 dark:text-slate-400">
               Hides which cards, votes and reactions are yours. Voting pauses here.
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          tabindex="-1"
+          class="w-full flex items-start gap-2.5 text-left rounded-md px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
+          onclick={openWindow}
+        >
+          <AppWindow size={16} aria-hidden="true" class="mt-0.5 shrink-0 text-sky-600 dark:text-sky-300" />
+          <span class="min-w-0">
+            <span class="block text-sm font-medium">Open a window to share</span>
+            <span class="block text-xs text-slate-500 dark:text-slate-400">
+              Share that window, and keep voting privately in this one.
             </span>
           </span>
         </button>

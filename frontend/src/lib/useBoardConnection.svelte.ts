@@ -11,7 +11,7 @@ import {
 } from './yboard';
 import { readTimer } from './timer';
 import { readNames, pickColor, setDisplayName } from './identity';
-import { samePresence, updateAwarenessUser } from './awareness';
+import { samePresence, updateAwarenessUser, type AwarenessUser } from './awareness';
 import { clampPhase, phasesFor, readPhase, type Phase } from './phase';
 import type { CardData, PresenceUser, TimerState } from './types';
 import { DEFAULT_COLUMNS, readColumns, sameColumns, type ColumnDef } from './columns';
@@ -24,6 +24,7 @@ export interface UseBoardConnectionInit {
   userId: string;
   userName: string;
   isLead: boolean;
+  presenting?: boolean;
   slug: string;
   // Host only: how to set up a brand-new board on its first sync.
   seed?: SeedSource;
@@ -174,21 +175,23 @@ export function useBoardConnection() {
       name: init.userName || 'Guest',
       color: pickColor(init.userId),
       isLead: init.isLead,
-      typing: null
+      typing: null,
+      presenting: !!init.presenting
     });
 
     const aw = provider.awareness;
     const refreshPresence = () => {
       const out: PresenceUser[] = [];
       aw.getStates().forEach((s, cid) => {
-        const u = (s as { user?: { name?: string; color?: string; isLead?: boolean; typing?: string | null } }).user;
+        const u = (s as { user?: AwarenessUser }).user;
         if (u && typeof u.name === 'string') {
           out.push({
             clientId: cid,
             name: u.name,
             color: u.color ?? '#888',
             isLead: !!u.isLead,
-            typing: u.typing ?? null
+            typing: u.typing ?? null,
+            presenting: !!u.presenting
           });
         }
       });

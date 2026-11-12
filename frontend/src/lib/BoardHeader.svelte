@@ -33,6 +33,7 @@
     presenting = false,
     onPresent,
     onStopPresenting,
+    onOpenPresentingWindow,
     presentReminder = false,
     remindersOn = true,
     onReminder,
@@ -73,6 +74,7 @@
     presenting?: boolean;
     onPresent: () => void;
     onStopPresenting: () => void;
+    onOpenPresentingWindow: () => void;
     presentReminder?: boolean;
     remindersOn?: boolean;
     onReminder: (action: 'present' | 'not_now' | 'off') => void;
@@ -229,6 +231,7 @@
             {presenting}
             onPresent={onPresent}
             onStop={onStopPresenting}
+            onOpenWindow={onOpenPresentingWindow}
             remind={presentReminder}
             {remindersOn}
             {onReminder}
