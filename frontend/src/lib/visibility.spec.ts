@@ -27,6 +27,15 @@ describe('isCardHidden', () => {
     expect(isCardHidden(mine, input, ctx())).toBe(false);
   });
 
+  it('hides your own cards too while presenting, but not action items', () => {
+    const presenting = ctx({ viewer: { kind: 'presenting' } });
+    expect(isCardHidden(mine, input, presenting)).toBe(true);
+    expect(isCardHidden(mine, actions, presenting)).toBe(false);
+    expect(isCardHidden(mine, input, { ...presenting, hideCards: false })).toBe(false);
+    expect(isCardHidden(mine, input, { ...presenting, ended: true })).toBe(false);
+    expect(isCardHidden(mine, input, { ...presenting, phase: 'group' })).toBe(false);
+  });
+
   it('never hides action items', () => {
     expect(isCardHidden(theirs, actions, ctx())).toBe(false);
   });

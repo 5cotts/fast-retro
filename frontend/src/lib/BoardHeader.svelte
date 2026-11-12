@@ -8,6 +8,7 @@
   import NameBadge from './NameBadge.svelte';
   import Wordmark from './Wordmark.svelte';
   import BoardLabel from './BoardLabel.svelte';
+  import PresentButton from './PresentButton.svelte';
   import { Menu, Monitor, Sun, Moon, Link2, Check, EyeOff } from 'lucide-svelte';
 
   let {
@@ -28,6 +29,10 @@
     userName,
     settings,
     settingKeys,
+    canPresent = false,
+    presenting = false,
+    onPresent,
+    onStopPresenting,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -58,6 +63,12 @@
     userName: string;
     settings: BoardSettings;
     settingKeys: BoardSettingKey[];
+    // Hosts can present on ended boards too, so this is separate from isLead,
+    // which is off once a board ends.
+    canPresent?: boolean;
+    presenting?: boolean;
+    onPresent: () => void;
+    onStopPresenting: () => void;
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -202,6 +213,10 @@
           {/if}
         </button>
 
+        {#if canPresent}
+          <PresentButton {presenting} onPresent={onPresent} onStop={onStopPresenting} />
+        {/if}
+
         {#if isLead}
           <LeadControls
             bind:timerInputMin
@@ -283,6 +298,9 @@
             Share link
           {/if}
         </button>
+        {#if canPresent}
+          <PresentButton {presenting} onPresent={onPresent} onStop={onStopPresenting} mobile />
+        {/if}
         <button class="btn text-sm px-3 py-2 min-h-[44px]" onclick={onCycleTheme}>
           {#if themePref === 'auto'}
             <Monitor size={14} aria-hidden="true" />

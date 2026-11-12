@@ -20,6 +20,8 @@ export interface VisibilityContext {
 // - Ended boards are never hidden, even if they ended during Brainstorm.
 // - Visibility depends only on the phase, so going back to Brainstorm hides
 //   cards again. The host is hidden from too.
+// - A presenting screen has no "own" cards, so it hides the presenter's too:
+//   the shared screen shows what everyone else sees.
 export function isHidingCards(ctx: Omit<VisibilityContext, 'viewer'>): boolean {
   return ctx.hideCards && ctx.phase === 'brainstorm' && !ctx.ended;
 }

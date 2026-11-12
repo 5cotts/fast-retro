@@ -33,6 +33,7 @@
   } from './boards';
   import { createBoard, endBoard } from './api';
   import { goto } from '$app/navigation';
+  import { page } from '$app/state';
   import {
     readTimer,
     setTimerDuration,
@@ -64,7 +65,7 @@
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
-  import { selfViewer } from './viewer';
+  import { isPresentingUrl, viewerFor, withPresenting } from './viewer';
   import { Download, ArrowLeft, ArrowRight, CircleHelp, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     phasesFor,
@@ -102,8 +103,20 @@
   let promptingName = $state<boolean>(true);
   let nameInput = $state<string>('');
   let userId = $state<string>('');
+  // Presenting draws this tab the way everyone else sees the board. It lives
+  // only in the URL (?present), and only hosts can present (P1), so a
+  // participant who's handed a ?present link just sees the normal board.
+  const presenting = $derived(isLead && isPresentingUrl(page.url));
   // Who the board is drawn for. Actions below still use userId.
-  const viewer = $derived(selfViewer(userId));
+  const viewer = $derived(viewerFor(userId, presenting));
+
+  function setPresenting(on: boolean) {
+    if (on === presenting) return;
+    track({ name: 'present', params: { action: on ? 'tab' : 'stop' } });
+    // replaceState so toggling adds no history entries. The route is keyed on
+    // the slug only, so a query change doesn't remount or reconnect the board.
+    goto(withPresenting(page.url, on), { replaceState: true, keepFocus: true, noScroll: true });
+  }
   let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
@@ -784,6 +797,10 @@
       userName={userName || 'Guest'}
       settings={conn.state.settings}
       settingKeys={settingsFor(conn.state.layout)}
+      canPresent={isLead}
+      {presenting}
+      onPresent={() => setPresenting(true)}
+      onStopPresenting={() => setPresenting(false)}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}
@@ -946,7 +963,10 @@
       >
         <div class="max-w-7xl mx-auto px-3 sm:px-4 py-1.5 text-xs flex items-center gap-2">
           <Blinds size={13} aria-hidden="true" />
-          <span>Cards are hidden until the Group phase. You only see your own.</span>
+          <span>
+            Cards are hidden until the Group phase.
+            {presenting ? 'Everyone sees only their own.' : 'You only see your own.'}
+          </span>
         </div>
       </div>
     {/if}

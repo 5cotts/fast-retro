@@ -4,7 +4,7 @@
   import type { CardData, CommentData } from './types';
   import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
-  import { includesMine, isMine, viewerId, type Viewer } from './viewer';
+  import { includesMine, isMine, isPresenting, viewerId, type Viewer } from './viewer';
   import { Pencil, Trash2, ChevronUp, Smile, MessageSquare, X, Check } from 'lucide-svelte';
 
   const reactionName = (e: string) => emojiName(e);
@@ -87,6 +87,10 @@
     }
   });
 
+  // A vote or reaction is a private choice, and on a shared screen the click
+  // itself gives it away, so both pause while presenting. Cards and comments
+  // are meant for the team, so they still work.
+  const presenting = $derived(isPresenting(viewer));
   const hasVoted = $derived(includesMine(viewer, card.votes));
   const voteCount = $derived(card.votes.length);
   const commentCount = $derived(card.comments.length);
@@ -265,13 +269,19 @@
         {#each reactionEntries as [emoji, users] (emoji)}
           {@const reacted = includesMine(viewer, users)}
           <button
-            class="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 min-h-[32px] transition-colors
+            class="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 min-h-[32px] transition-colors disabled:cursor-default
               {reacted
                 ? 'border-sky-400 bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200'
-                : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'}"
+                : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 enabled:hover:bg-slate-100 dark:enabled:hover:bg-slate-600'}"
             onclick={() => cardActions.toggleReaction(column, card.id, emoji)}
-            aria-label={reacted ? `Remove your ${reactionName(emoji)} reaction (${users.length} total)` : `Add ${reactionName(emoji)} reaction (${users.length} so far)`}
+            disabled={presenting}
+            aria-label={presenting
+              ? `${reactionName(emoji)} reaction (${users.length}). Reactions pause while you present.`
+              : reacted
+                ? `Remove your ${reactionName(emoji)} reaction (${users.length} total)`
+                : `Add ${reactionName(emoji)} reaction (${users.length} so far)`}
             aria-pressed={reacted}
+            title={presenting ? 'Reactions pause while you present.' : undefined}
           >
             <span aria-hidden="true">{emoji}</span>
             <span class="tabular-nums">{users.length}</span>
@@ -288,20 +298,26 @@
             ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-200'
             : 'border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:hover:bg-transparent'}"
         onclick={() => cardActions.toggleVote(column, card.id)}
-        disabled={(!canVote && !hasVoted) || readOnly}
-        aria-label={hasVoted
-          ? `Remove vote (${voteCount})`
-          : canVote
-            ? `Upvote (${voteCount})`
-            : `Voting closed (${voteCount} votes)`}
+        disabled={presenting || (!canVote && !hasVoted) || readOnly}
+        aria-label={presenting
+          ? `Voting paused while you present (${voteCount} votes)`
+          : hasVoted
+            ? `Remove vote (${voteCount})`
+            : canVote
+              ? `Upvote (${voteCount})`
+              : `Voting closed (${voteCount} votes)`}
         aria-pressed={hasVoted}
-        title={canVote || hasVoted ? undefined : 'Voting is only open in the Vote phase.'}
+        title={presenting
+          ? 'Voting pauses while you present. Vote from another device, or click Stop.'
+          : canVote || hasVoted
+            ? undefined
+            : 'Voting is only open in the Vote phase.'}
       >
         <ChevronUp size={14} aria-hidden="true" />
         <span class="tabular-nums">{voteCount}</span>
       </button>
 
-      {#if !readOnly}
+      {#if !readOnly && !presenting}
       <div class="relative">
         <button
           bind:this={pickerBtnEl}

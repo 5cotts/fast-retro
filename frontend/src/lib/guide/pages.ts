@@ -5,7 +5,7 @@ export type GuideAudience = 'Everyone' | 'Hosts' | 'Participants';
 
 export const GUIDE_PAGES = [
   { slug: 'join', title: 'Join a retro', summary: 'Open the link, pick a name, and follow the phases.', audience: 'Participants' },
-  { slug: 'run', title: 'Run your first retro', summary: 'Start a board, share it, and walk your team through the phases.', audience: 'Hosts' },
+  { slug: 'run', title: 'Run your first retro', summary: 'Start a board, share it, present it, and walk your team through the phases.', audience: 'Hosts' },
   { slug: 'group', title: 'Group and merge cards', summary: 'Pull related cards together on a column board, across columns too.', audience: 'Everyone' },
   { slug: 'canvas', title: 'Use a canvas board', summary: 'Place cards anywhere. How close they sit is the grouping.', audience: 'Everyone' },
   { slug: 'brainstorm', title: 'Run a private brainstorm', summary: 'One column per problem, ideas hidden until you reveal them.', audience: 'Hosts' },
