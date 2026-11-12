@@ -33,6 +33,11 @@
     presenting = false,
     onPresent,
     onStopPresenting,
+    onOpenPresentingWindow,
+    presentReminder = false,
+    remindersOn = true,
+    onReminder,
+    onSetReminders,
     onSetTimer,
     onStartTimer,
     onPauseTimer,
@@ -69,6 +74,11 @@
     presenting?: boolean;
     onPresent: () => void;
     onStopPresenting: () => void;
+    onOpenPresentingWindow: () => void;
+    presentReminder?: boolean;
+    remindersOn?: boolean;
+    onReminder: (action: 'present' | 'not_now' | 'off') => void;
+    onSetReminders: (on: boolean) => void;
     onSetTimer: () => void;
     onStartTimer: () => void;
     onPauseTimer: () => void;
@@ -127,7 +137,10 @@
   }
 </script>
 
-<header class="border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/60">
+<!-- relative z-20: backdrop-blur makes the header a stacking context, so
+     without a z-index the board below (anything with opacity, like the phase
+     numbers) paints over its menus and the reminder. -->
+<header class="relative z-20 border-b border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-slate-900/60">
   <div class="max-w-7xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap">
     <a href="/" class="flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-sky-400 rounded-md" aria-label="Fast Retro — home">
       <Wordmark />
@@ -214,7 +227,16 @@
         </button>
 
         {#if canPresent}
-          <PresentButton {presenting} onPresent={onPresent} onStop={onStopPresenting} />
+          <PresentButton
+            {presenting}
+            onPresent={onPresent}
+            onStop={onStopPresenting}
+            onOpenWindow={onOpenPresentingWindow}
+            remind={presentReminder}
+            {remindersOn}
+            {onReminder}
+            {onSetReminders}
+          />
         {/if}
 
         {#if isLead}

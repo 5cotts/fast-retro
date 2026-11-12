@@ -64,8 +64,15 @@
   import type { CardActions } from './cardActions';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
-  import { disambiguateNames, disambiguateNamesMap } from './identity';
+  import { disambiguateNames, disambiguateNamesMap, foldPresenting } from './identity';
   import { isPresentingUrl, viewerFor, withPresenting } from './viewer';
+  import { shouldRemind, someoneElseHere } from './presentReminder';
+  import {
+    dismissPresentReminder,
+    getPresentReminders,
+    isPresentReminderDismissed,
+    setPresentReminders
+  } from './storage';
   import { Download, ArrowLeft, ArrowRight, CircleHelp, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     phasesFor,
@@ -117,9 +124,89 @@
     // the slug only, so a query change doesn't remount or reconnect the board.
     goto(withPresenting(page.url, on), { replaceState: true, keepFocus: true, noScroll: true });
   }
+
+  // "Open a window to share": the same board, presenting, in a window the
+  // host shares while this tab stays private for voting. The named target
+  // reuses that window on a second click instead of opening another. It
+  // opens at this window's size: a default popup is narrow enough to get the
+  // phone header.
+  function openPresentingWindow() {
+    track({ name: 'present', params: { action: 'window' } });
+    dismissReminderHere();
+    const size = `width=${window.outerWidth},height=${window.outerHeight}`;
+    window.open(withPresenting(page.url, true).href, 'fast-retro-present', `popup,${size}`);
+  }
+
   let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
+
+  // The reminder to present, shown to the host the first time someone else
+  // joins (see presentReminder.ts for every rule). Both flags are read from
+  // localStorage on mount.
+  let remindersOn = $state<boolean>(true);
+  let reminderDismissed = $state<boolean>(false);
+  let narrow = $state<boolean>(false);
+  const presentReminder = $derived(
+    shouldRemind({
+      isLead,
+      ended,
+      presenting,
+      narrow,
+      othersHere: !promptingName && someoneElseHere(conn.state.presence, conn.state.currentClientId),
+      dismissedHere: reminderDismissed,
+      remindersOff: !remindersOn
+    })
+  );
+
+  function dismissReminderHere() {
+    if (reminderDismissed) return;
+    reminderDismissed = true;
+    dismissPresentReminder(slug);
+  }
+
+  function reminderAction(action: 'present' | 'not_now' | 'off') {
+    track({ name: 'present_reminder', params: { action } });
+    if (action === 'off') setRemindersOn(false);
+    else dismissReminderHere();
+  }
+
+  function setRemindersOn(on: boolean) {
+    remindersOn = on;
+    setPresentReminders(on);
+  }
+
+  // Presenting once on a board counts as having seen the reminder there.
+  $effect(() => {
+    if (presenting) dismissReminderHere();
+  });
+
+  // Others see a presenting tab as a screen icon on the host, and the host's
+  // presenting window folds into their own tab (foldPresenting).
+  $effect(() => {
+    const on = presenting;
+    const board = conn.state.board;
+    if (board) updateAwarenessUser(board.provider, { presenting: on });
+  });
+
+  let reminderTracked = false;
+  $effect(() => {
+    if (presentReminder && !reminderTracked) {
+      reminderTracked = true;
+      track({ name: 'present_reminder', params: { action: 'shown' } });
+    }
+  });
+
+  // The header switches to the mobile menu below md, which is where the
+  // reminder stops showing.
+  $effect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 767px)');
+    narrow = mq.matches;
+    const onChange = (e: MediaQueryListEvent) => (narrow = e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  });
   const isCanvas = $derived(conn.state.layout === 'canvas');
   // How this person views a canvas board. A free-form board is hard to use on
   // a phone, so phones start in the list.
@@ -180,7 +267,9 @@
       !conn.state.timerState.paused
   );
 
-  const presenceDisambiguated = $derived(disambiguateNames(conn.state.presence));
+  const presenceDisambiguated = $derived(
+    disambiguateNames(foldPresenting(conn.state.presence, conn.state.currentClientId))
+  );
   const namesMapDisambiguated = $derived(disambiguateNamesMap(conn.state.namesMap));
 
   // In anonymous mode, who's typing is just as identifying as the card's
@@ -203,6 +292,8 @@
   onMount(() => {
     userId = getOrCreateUserId();
     themePref = getTheme();
+    remindersOn = getPresentReminders();
+    reminderDismissed = isPresentReminderDismissed(slug);
 
     if (typeof window !== 'undefined' && window.matchMedia) {
       mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -435,7 +526,7 @@
   };
 
   function startConnection() {
-    conn.start({ userId, userName, isLead, slug, seed: isLead ? seedSource : undefined });
+    conn.start({ userId, userName, isLead, slug, presenting, seed: isLead ? seedSource : undefined });
   }
 
   function dismissOnboarding() {
@@ -801,6 +892,11 @@
       {presenting}
       onPresent={() => setPresenting(true)}
       onStopPresenting={() => setPresenting(false)}
+      onOpenPresentingWindow={openPresentingWindow}
+      {presentReminder}
+      {remindersOn}
+      onReminder={reminderAction}
+      onSetReminders={setRemindersOn}
       onSetTimer={leadSetTimer}
       onStartTimer={leadStart}
       onPauseTimer={leadPause}

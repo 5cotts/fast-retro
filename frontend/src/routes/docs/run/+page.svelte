@@ -16,19 +16,26 @@
   <h2>Present while you share your screen</h2>
   <p class="mb-3">Your screen marks what's yours: <em>you</em> under your cards, and your votes and reactions highlighted. On a shared screen, your team sees all of that. Present first, so your screen shows the board the way they see it.</p>
   <ol>
-    <li>Click <strong>Present</strong> in the header, next to <strong>Share</strong>, then <strong>Present in this tab</strong>.</li>
-    <li>Share your screen. The header shows a dark <strong>Presenting</strong> label, so the team can tell your own input isn't on show.</li>
-    <li>Click <strong>Stop</strong> on that label when you're done.</li>
+    <li>Click <strong>Present</strong> in the header, next to <strong>Share</strong>, and pick how you'll share:
+      <ul>
+        <li><strong>Present in this tab</strong> if you share your whole screen. Voting pauses in that tab.</li>
+        <li><strong>Open a window to share</strong> if you share a single window. The board opens in a new window that's presenting. Share that window, and keep voting privately in the one you started in.</li>
+      </ul>
+    </li>
+    <li>Share your screen or the window. Its header shows a dark <strong>Presenting</strong> label, so the team can tell your own input isn't on show.</li>
+    <li>Click <strong>Stop</strong> on that label when you're done, or just close the presenting window.</li>
   </ol>
   <p class="mt-3 mb-3">While you present:</p>
   <ul>
     <li><strong>Nothing is marked as yours.</strong> Your cards and comments show <em>Anonymous</em>, or your name on a board that shows names. Your votes and reactions look like anyone's. With <em>Hide cards</em> on, your own Brainstorm cards are placeholders too.</li>
-    <li><strong>Voting and reactions pause in that tab</strong>, because the click itself would give your choice away. Vote from another device, such as your phone, or click <strong>Stop</strong> first.</li>
+    <li><strong>Voting and reactions pause where you present</strong>, because the click itself would give your choice away. Vote in your other window, from another device such as your phone, or click <strong>Stop</strong> first.</li>
     <li><strong>Everything else works.</strong> You can still add cards and comments, and use the timer, phases and the rest of the host controls.</li>
     <li><strong>Only your screen changes.</strong> The board and everyone else's view stay the same. A reload keeps you presenting, and <strong>Share</strong> still copies the normal link.</li>
+    <li><strong>The team sees a screen icon</strong> next to your name in the list of who's here. With a presenting window open, you're still listed once.</li>
     <li><strong>What you type is on screen.</strong> Presenting can't hide typing, so add your own Brainstorm cards before you share, or from another device.</li>
   </ul>
   <p class="mt-3">You can present an ended board too, for example to review last retro's action items with the team.</p>
+  <p class="mt-3"><strong>If you forget,</strong> Fast Retro reminds you: the first time someone else joins your live board, a note under <strong>Present</strong> asks whether you're sharing your screen. Click <strong>Present</strong> on it to open the menu, or <strong>Not now</strong> to hide it on this board. <strong>Don't remind me</strong> turns it off in this browser, and the <strong>Remind me when people join</strong> checkbox in the Present menu turns it back on. Nobody else sees the note.</p>
 </section>
 
 <section>

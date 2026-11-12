@@ -31,6 +31,9 @@ export interface PresenceUser {
   color: string;
   isLead: boolean;
   typing?: string | null;
+  // In a tab that's presenting (viewer.ts). Shown as a screen icon, and a
+  // host's presenting window folds into their own tab (foldPresenting).
+  presenting?: boolean;
 }
 
 export interface TimerState {

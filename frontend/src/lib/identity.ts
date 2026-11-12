@@ -95,6 +95,43 @@ export function disambiguateNamesMap(
 }
 
 /**
+ * Whether two presence entries are the same person in different tabs or
+ * windows: same name and same color. Color is seeded from the browser's
+ * userId, so a host's own second window always matches, while two different
+ * people who picked the same name almost never do.
+ */
+export function isSamePerson(
+  a: Pick<PresenceUser, 'name' | 'color'>,
+  b: Pick<PresenceUser, 'name' | 'color'>
+): boolean {
+  return a.color === b.color && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+}
+
+/**
+ * Fold a host's presenting window into their own tab, so "Open a window to
+ * share" shows the team one Scott with a screen icon instead of `Scott` and
+ * `Scott (2)`. A presenting client merges into a non-presenting client that's
+ * the same person (isSamePerson); the merged entry is marked presenting and
+ * keeps whichever is typing. When this client is one of the pair, its own
+ * entry is the one kept, so the presence list still marks it "(you)". A
+ * presenting client with no match stays, with its icon. Run before
+ * disambiguateNames.
+ */
+export function foldPresenting(presence: PresenceUser[], selfClientId: number): PresenceUser[] {
+  if (!presence.some((p) => p.presenting)) return presence;
+  const byId = new Map(presence.map((p) => [p.clientId, p]));
+  for (const p of presence) {
+    if (!p.presenting || !byId.has(p.clientId)) continue;
+    const q = presence.find((o) => !o.presenting && byId.has(o.clientId) && isSamePerson(o, p));
+    if (!q) continue;
+    const [keep, drop] = p.clientId === selfClientId ? [byId.get(p.clientId)!, byId.get(q.clientId)!] : [byId.get(q.clientId)!, p];
+    byId.delete(drop.clientId);
+    byId.set(keep.clientId, { ...keep, presenting: true, typing: keep.typing ?? drop.typing ?? null });
+  }
+  return presence.filter((p) => byId.has(p.clientId)).map((p) => byId.get(p.clientId)!);
+}
+
+/**
  * Suffix duplicate display names with `(2)`, `(3)`, … so the presence list and
  * typing indicators never collapse two real people into one ambiguous label.
  * Order is deterministic per clientId so the suffix doesn't shuffle on rerender.

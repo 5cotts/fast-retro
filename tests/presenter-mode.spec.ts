@@ -74,8 +74,13 @@ async function goBack(page: Page, times = 1) {
   for (let i = 0; i < times; i++) await page.getByRole('button', { name: /^Go back to / }).click();
 }
 
+// The header's Present button, not the reminder's.
+function presentButton(page: Page) {
+  return page.getByRole('button', { name: 'Present', exact: true }).and(page.locator('[aria-haspopup="menu"]'));
+}
+
 async function present(page: Page) {
-  await page.getByRole('button', { name: 'Present', exact: true }).click();
+  await presentButton(page).click();
   await page.getByRole('menuitem', { name: /^Present in this tab/ }).click();
   await expect(page.getByTestId('presenting-pill')).toBeVisible();
   await expect(page).toHaveURL(/\?present$/);
@@ -120,7 +125,7 @@ test.describe('presenting', () => {
       await expect(mine.getByText('(you, hidden)')).toBeVisible();
 
       // Guests never get the button.
-      await expect(guest.page.getByRole('button', { name: 'Present', exact: true })).toHaveCount(0);
+      await expect(presentButton(guest.page)).toHaveCount(0);
 
       await present(host.page);
       const vote = mine.getByRole('button', { name: 'Voting paused while you present (1 votes)' });
@@ -242,6 +247,140 @@ test.describe('presenting', () => {
       await expect(vote).toHaveAttribute('aria-pressed', 'false');
     } finally {
       await ctx.close();
+    }
+  });
+
+  test('the reminder shows when someone joins, and Not now, Present and Don\'t remind me all work', async ({ browser }) => {
+    test.setTimeout(150_000);
+    const s = Math.random().toString(36).slice(2, 6);
+    const host = await newPage(browser);
+    const guest = await newPage(browser);
+    const reminder = host.page.getByTestId('present-reminder');
+    const remindersItem = host.page.getByRole('menuitemcheckbox', { name: 'Remind me when people join' });
+
+    async function boardWithGuest(label: string) {
+      await createBoard(host.page, `${label} ${s}`);
+      await guest.page.goto(host.page.url());
+      await join(guest.page, 'Guest');
+    }
+
+    try {
+      // Alone on the board: no reminder.
+      await createBoard(host.page, `Alone ${s}`);
+      await expect(presentButton(host.page)).toBeVisible();
+      await expect(reminder).toHaveCount(0);
+
+      // Someone joins: the host is reminded, and the guest never is.
+      await guest.page.goto(host.page.url());
+      await join(guest.page, 'Guest');
+      await expect(reminder).toBeVisible();
+      await expect(reminder).toContainText('Sharing your screen?');
+      await expect(guest.page.getByTestId('present-reminder')).toHaveCount(0);
+
+      // It stays out of the way: a header popover opened over it is on top
+      // and clickable.
+      await host.page.locator('[title="Timer controls"]').first().click();
+      const timer = host.page.getByRole('dialog', { name: 'Timer controls' });
+      await timer.getByLabel('Timer minutes').fill('5');
+      await timer.getByRole('button', { name: 'Set', exact: true }).click();
+      await host.page.keyboard.press('Escape');
+      await expect(timer).toHaveCount(0);
+      await expect(reminder).toBeVisible();
+
+      // Not now hides it for this board, across a reload.
+      await reminder.getByRole('button', { name: 'Not now' }).click();
+      await expect(reminder).toHaveCount(0);
+      await host.page.reload();
+      await join(host.page, 'Host');
+      await expect(presentButton(host.page)).toBeVisible();
+      await expect(reminder).toHaveCount(0);
+
+      // On a new board it's back. Its Present button opens the Present menu.
+      await boardWithGuest('Second');
+      await expect(reminder).toBeVisible();
+      await reminder.getByRole('button', { name: 'Present', exact: true }).click();
+      await expect(host.page.getByRole('menuitem', { name: /^Present in this tab/ })).toBeVisible();
+      await expect(reminder).toHaveCount(0);
+      await host.page.keyboard.press('Escape');
+      await expect(host.page.getByRole('menuitem', { name: /^Present in this tab/ })).toHaveCount(0);
+      await expect(reminder).toHaveCount(0);
+
+      // Don't remind me turns it off in this browser, for new boards too.
+      await boardWithGuest('Third');
+      await expect(reminder).toBeVisible();
+      await reminder.getByRole('button', { name: "Don't remind me" }).click();
+      await expect(reminder).toHaveCount(0);
+      await boardWithGuest('Fourth');
+      await expect(host.page.getByLabel('1 other online')).toBeVisible();
+      await expect(reminder).toHaveCount(0);
+
+      // The menu's checkbox turns it back on.
+      await presentButton(host.page).click();
+      await expect(remindersItem).toHaveAttribute('aria-checked', 'false');
+      await remindersItem.click();
+      await expect(remindersItem).toHaveAttribute('aria-checked', 'true');
+      await host.page.keyboard.press('Escape');
+      await expect(reminder).toBeVisible();
+
+      // Presenting dismisses it, and it stays dismissed after stopping.
+      await present(host.page);
+      await expect(reminder).toHaveCount(0);
+      await stop(host.page);
+      await expect(reminder).toHaveCount(0);
+    } finally {
+      await host.ctx.close();
+      await guest.ctx.close();
+    }
+  });
+
+  test('Open a window to share presents in a new window, keeps this tab private, and shows the team one host', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const s = Math.random().toString(36).slice(2, 6);
+    const text = `Window idea ${s}`;
+    const host = await newPage(browser);
+    const guest = await newPage(browser);
+    try {
+      await createBoard(host.page, `Window ${s}`);
+      await addCard(host.page, 'What went well', text);
+      await advance(host.page, 2);
+      await guest.page.goto(host.page.url());
+      await join(guest.page, 'Guest');
+      await expect(host.page.getByTestId('present-reminder')).toBeVisible();
+
+      await presentButton(host.page).click();
+      const [win] = await Promise.all([
+        host.page.waitForEvent('popup'),
+        host.page.getByRole('menuitem', { name: /^Open a window to share/ }).click()
+      ]);
+      await join(win, 'Host');
+      expect(new URL(win.url()).search).toBe('?present');
+      expect(new URL(host.page.url()).search).toBe('');
+      await expect(win.getByTestId('presenting-pill')).toBeVisible();
+      await expect(host.page.getByTestId('presenting-pill')).toHaveCount(0);
+      await expect(host.page.getByTestId('present-reminder')).toHaveCount(0);
+
+      // The host votes privately in their tab; the presenting window doesn't show it.
+      await card(host.page, 'What went well', text).getByRole('button', { name: /^Upvote/ }).click();
+      await expect(card(host.page, 'What went well', text).getByRole('button', { name: 'Remove vote (1)' })).toHaveAttribute('aria-pressed', 'true');
+      const shown = card(win, 'What went well', text).getByRole('button', { name: 'Voting paused while you present (1 votes)' });
+      await expect(shown).toHaveAttribute('aria-pressed', 'false');
+      await expect(card(win, 'What went well', text).getByText(/\byou\b/)).toHaveCount(0);
+
+      // The team sees one host, marked as presenting, not "Host" and "Host (2)".
+      await expect(guest.page.getByLabel('1 other online')).toBeVisible();
+      await expect(guest.page.getByTitle('Host (host, presenting)')).toBeVisible();
+      await expect(guest.page.getByText('Host (2)')).toHaveCount(0);
+      // So does the host, in both of their windows.
+      await expect(host.page.getByTitle('Host (you, host, presenting)')).toBeVisible();
+      await expect(host.page.getByLabel('1 other online')).toBeVisible();
+      await expect(win.getByTitle('Host (you, host, presenting)')).toBeVisible();
+
+      // Closing the window ends it: the icon goes.
+      await win.close({ runBeforeUnload: true });
+      await expect(guest.page.getByTitle('Host (host)')).toBeVisible({ timeout: 35_000 });
+    } finally {
+      await host.ctx.close();
+      await guest.ctx.close();
     }
   });
 });

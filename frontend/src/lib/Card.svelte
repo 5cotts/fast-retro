@@ -308,7 +308,7 @@
               : `Voting closed (${voteCount} votes)`}
         aria-pressed={hasVoted}
         title={presenting
-          ? 'Voting pauses while you present. Vote from another device, or click Stop.'
+          ? 'Voting pauses while you present. Vote in your other window, or click Stop.'
           : canVote || hasVoted
             ? undefined
             : 'Voting is only open in the Vote phase.'}
