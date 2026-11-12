@@ -73,11 +73,21 @@ test.describe('user guide', () => {
 
   test('links inside the pages all lead somewhere real', async ({ page }) => {
     const slugs = new Set(GUIDE_PAGES.map((p) => `/docs/${p.slug}`));
+    const anchors = new Set<string>();
     for (const p of GUIDE_PAGES) {
       await page.goto(`/docs/${p.slug}`);
       await expect(page.getByRole('heading', { level: 1, name: p.title })).toBeVisible();
-      const hrefs = await page.locator('article a').evaluateAll((els) => els.map((a) => a.getAttribute('href')));
-      for (const href of hrefs) expect(slugs, `${p.slug} links to ${href}`).toContain(href);
+      const hrefs = await page.locator('article a').evaluateAll((els) => els.map((a) => a.getAttribute('href') ?? ''));
+      for (const href of hrefs) {
+        const [path, anchor] = href.split('#');
+        expect(slugs, `${p.slug} links to ${href}`).toContain(path);
+        if (anchor) anchors.add(href);
+      }
+    }
+    // A link to a section needs that section to exist.
+    for (const href of anchors) {
+      await page.goto(href);
+      await expect(page.locator(`article [id="${href.split('#')[1]}"]`), `${href} has no such section`).toHaveCount(1);
     }
   });
 
