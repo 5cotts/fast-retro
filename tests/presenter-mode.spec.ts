@@ -332,4 +332,55 @@ test.describe('presenting', () => {
       await guest.ctx.close();
     }
   });
+
+  test('Open a window to share presents in a new window, keeps this tab private, and shows the team one host', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const s = Math.random().toString(36).slice(2, 6);
+    const text = `Window idea ${s}`;
+    const host = await newPage(browser);
+    const guest = await newPage(browser);
+    try {
+      await createBoard(host.page, `Window ${s}`);
+      await addCard(host.page, 'What went well', text);
+      await advance(host.page, 2);
+      await guest.page.goto(host.page.url());
+      await join(guest.page, 'Guest');
+      await expect(host.page.getByTestId('present-reminder')).toBeVisible();
+
+      await presentButton(host.page).click();
+      const [win] = await Promise.all([
+        host.page.waitForEvent('popup'),
+        host.page.getByRole('menuitem', { name: /^Open a window to share/ }).click()
+      ]);
+      await join(win, 'Host');
+      expect(new URL(win.url()).search).toBe('?present');
+      expect(new URL(host.page.url()).search).toBe('');
+      await expect(win.getByTestId('presenting-pill')).toBeVisible();
+      await expect(host.page.getByTestId('presenting-pill')).toHaveCount(0);
+      await expect(host.page.getByTestId('present-reminder')).toHaveCount(0);
+
+      // The host votes privately in their tab; the presenting window doesn't show it.
+      await card(host.page, 'What went well', text).getByRole('button', { name: /^Upvote/ }).click();
+      await expect(card(host.page, 'What went well', text).getByRole('button', { name: 'Remove vote (1)' })).toHaveAttribute('aria-pressed', 'true');
+      const shown = card(win, 'What went well', text).getByRole('button', { name: 'Voting paused while you present (1 votes)' });
+      await expect(shown).toHaveAttribute('aria-pressed', 'false');
+      await expect(card(win, 'What went well', text).getByText(/\byou\b/)).toHaveCount(0);
+
+      // The team sees one host, marked as presenting, not "Host" and "Host (2)".
+      await expect(guest.page.getByLabel('1 other online')).toBeVisible();
+      await expect(guest.page.getByTitle('Host (host, presenting)')).toBeVisible();
+      await expect(guest.page.getByText('Host (2)')).toHaveCount(0);
+      // So does the host, in both of their windows.
+      await expect(host.page.getByTitle('Host (you, host, presenting)')).toBeVisible();
+      await expect(host.page.getByLabel('1 other online')).toBeVisible();
+      await expect(win.getByTitle('Host (you, host, presenting)')).toBeVisible();
+
+      // Closing the window ends it: the icon goes.
+      await win.close({ runBeforeUnload: true });
+      await expect(guest.page.getByTitle('Host (host)')).toBeVisible({ timeout: 35_000 });
+    } finally {
+      await host.ctx.close();
+      await guest.ctx.close();
+    }
+  });
 });

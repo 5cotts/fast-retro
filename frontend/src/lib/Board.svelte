@@ -64,7 +64,7 @@
   import type { CardActions } from './cardActions';
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
-  import { disambiguateNames, disambiguateNamesMap } from './identity';
+  import { disambiguateNames, disambiguateNamesMap, foldPresenting } from './identity';
   import { isPresentingUrl, viewerFor, withPresenting } from './viewer';
   import { shouldRemind, someoneElseHere } from './presentReminder';
   import {
@@ -125,6 +125,18 @@
     goto(withPresenting(page.url, on), { replaceState: true, keepFocus: true, noScroll: true });
   }
 
+  // "Open a window to share": the same board, presenting, in a window the
+  // host shares while this tab stays private for voting. The named target
+  // reuses that window on a second click instead of opening another. It
+  // opens at this window's size: a default popup is narrow enough to get the
+  // phone header.
+  function openPresentingWindow() {
+    track({ name: 'present', params: { action: 'window' } });
+    dismissReminderHere();
+    const size = `width=${window.outerWidth},height=${window.outerHeight}`;
+    window.open(withPresenting(page.url, true).href, 'fast-retro-present', `popup,${size}`);
+  }
+
   let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
@@ -167,6 +179,14 @@
   // Presenting once on a board counts as having seen the reminder there.
   $effect(() => {
     if (presenting) dismissReminderHere();
+  });
+
+  // Others see a presenting tab as a screen icon on the host, and the host's
+  // presenting window folds into their own tab (foldPresenting).
+  $effect(() => {
+    const on = presenting;
+    const board = conn.state.board;
+    if (board) updateAwarenessUser(board.provider, { presenting: on });
   });
 
   let reminderTracked = false;
@@ -247,7 +267,9 @@
       !conn.state.timerState.paused
   );
 
-  const presenceDisambiguated = $derived(disambiguateNames(conn.state.presence));
+  const presenceDisambiguated = $derived(
+    disambiguateNames(foldPresenting(conn.state.presence, conn.state.currentClientId))
+  );
   const namesMapDisambiguated = $derived(disambiguateNamesMap(conn.state.namesMap));
 
   // In anonymous mode, who's typing is just as identifying as the card's
@@ -504,7 +526,7 @@
   };
 
   function startConnection() {
-    conn.start({ userId, userName, isLead, slug, seed: isLead ? seedSource : undefined });
+    conn.start({ userId, userName, isLead, slug, presenting, seed: isLead ? seedSource : undefined });
   }
 
   function dismissOnboarding() {
@@ -870,6 +892,7 @@
       {presenting}
       onPresent={() => setPresenting(true)}
       onStopPresenting={() => setPresenting(false)}
+      onOpenPresentingWindow={openPresentingWindow}
       {presentReminder}
       {remindersOn}
       onReminder={reminderAction}
