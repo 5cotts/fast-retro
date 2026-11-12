@@ -95,6 +95,19 @@ export function disambiguateNamesMap(
 }
 
 /**
+ * Whether two presence entries are the same person in different tabs or
+ * windows: same name and same color. Color is seeded from the browser's
+ * userId, so a host's own second window always matches, while two different
+ * people who picked the same name almost never do.
+ */
+export function isSamePerson(
+  a: Pick<PresenceUser, 'name' | 'color'>,
+  b: Pick<PresenceUser, 'name' | 'color'>
+): boolean {
+  return a.color === b.color && a.name.trim().toLowerCase() === b.name.trim().toLowerCase();
+}
+
+/**
  * Suffix duplicate display names with `(2)`, `(3)`, … so the presence list and
  * typing indicators never collapse two real people into one ambiguous label.
  * Order is deterministic per clientId so the suffix doesn't shuffle on rerender.

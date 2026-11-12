@@ -5,6 +5,11 @@
  *   - retro-user-id : the stable per-browser user id
  *   - retro-name    : the user's chosen display name
  *   - retro-theme   : 'auto' | 'light' | 'dark'
+ *   - retro-present-reminders : '0' when the host turned off the reminder to
+ *                               present; absent means on
+ *   - retro-present-dismissed : JSON list of board slugs where the reminder
+ *                               was dismissed or the host presented, newest
+ *                               first, capped at 50
  *
  * Legacy key:
  *   - retro-dark    : '0' | '1' (replaced by retro-theme in 2026-05). One-shot
@@ -17,6 +22,9 @@ const KEY_NAME = 'retro-name';
 const KEY_THEME = 'retro-theme';
 const KEY_ONBOARDED = 'retro-onboarded';
 const KEY_LEGACY_DARK = 'retro-dark';
+const KEY_PRESENT_REMINDERS = 'retro-present-reminders';
+const KEY_PRESENT_DISMISSED = 'retro-present-dismissed';
+const MAX_PRESENT_DISMISSED = 50;
 
 export type ThemePref = 'auto' | 'light' | 'dark';
 
@@ -67,4 +75,46 @@ export function getOnboarded(): boolean {
 
 export function setOnboarded(): void {
   localStorage.setItem(KEY_ONBOARDED, '1');
+}
+
+// The reminder to present is best-effort: if storage is unavailable it shows,
+// and dismissing it only lasts until the tab is closed.
+export function getPresentReminders(): boolean {
+  try {
+    return localStorage.getItem(KEY_PRESENT_REMINDERS) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+export function setPresentReminders(on: boolean): void {
+  try {
+    if (on) localStorage.removeItem(KEY_PRESENT_REMINDERS);
+    else localStorage.setItem(KEY_PRESENT_REMINDERS, '0');
+  } catch {
+    // ignore
+  }
+}
+
+function readPresentDismissed(): string[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(KEY_PRESENT_DISMISSED) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isPresentReminderDismissed(slug: string): boolean {
+  return readPresentDismissed().includes(slug);
+}
+
+export function dismissPresentReminder(slug: string): void {
+  if (!slug) return;
+  try {
+    const list = [slug, ...readPresentDismissed().filter((s) => s !== slug)].slice(0, MAX_PRESENT_DISMISSED);
+    localStorage.setItem(KEY_PRESENT_DISMISSED, JSON.stringify(list));
+  } catch {
+    // ignore
+  }
 }

@@ -29,6 +29,7 @@
     <li><strong>What you type is on screen.</strong> Presenting can't hide typing, so add your own Brainstorm cards before you share, or from another device.</li>
   </ul>
   <p class="mt-3">You can present an ended board too, for example to review last retro's action items with the team.</p>
+  <p class="mt-3"><strong>If you forget,</strong> Fast Retro reminds you: the first time someone else joins your live board, a note under <strong>Present</strong> asks whether you're sharing your screen. Click <strong>Present</strong> on it to open the menu, or <strong>Not now</strong> to hide it on this board. <strong>Don't remind me</strong> turns it off in this browser, and the <strong>Remind me when people join</strong> checkbox in the Present menu turns it back on. Nobody else sees the note.</p>
 </section>
 
 <section>
