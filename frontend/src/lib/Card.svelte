@@ -4,6 +4,7 @@
   import type { CardData, CommentData } from './types';
   import { EMOJI_CATEGORIES, emojiName, searchEmojis } from './emojis';
   import { resolveDisplayName } from './identity';
+  import { includesMine, isMine, viewerId, type Viewer } from './viewer';
   import { Pencil, Trash2, ChevronUp, Smile, MessageSquare, X, Check } from 'lucide-svelte';
 
   const reactionName = (e: string) => emojiName(e);
@@ -13,7 +14,7 @@
   let {
     card,
     column,
-    userId,
+    viewer,
     userName,
     isLead,
     canVote = true,
@@ -32,7 +33,7 @@
   } = $props<{
     card: CardData;
     column: string;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     isLead: boolean;
     canVote?: boolean;
@@ -55,10 +56,10 @@
   }>();
 
   const displayName = (id: string) =>
-    resolveDisplayName(id, { selfId: userId, selfName: userName, namesMap });
+    resolveDisplayName(id, { selfId: viewerId(viewer), selfName: userName, namesMap });
 
   const authorName = $derived(displayName(card.authorId));
-  const isSelfAuthor = $derived(card.authorId === userId);
+  const isSelfAuthor = $derived(isMine(viewer, card.authorId));
 
   let editing = $state(false);
   let editText = $state('');
@@ -86,10 +87,10 @@
     }
   });
 
-  const hasVoted = $derived(card.votes.includes(userId));
+  const hasVoted = $derived(includesMine(viewer, card.votes));
   const voteCount = $derived(card.votes.length);
   const commentCount = $derived(card.comments.length);
-  const canEdit = $derived(isLead || (!!card.authorId && card.authorId === userId));
+  const canEdit = $derived(isLead || isMine(viewer, card.authorId));
   const sortedComments = $derived(
     card.comments.slice().sort((a: CommentData, b: CommentData) => a.createdAt - b.createdAt)
   );
@@ -262,14 +263,15 @@
     {#if reactionEntries.length > 0}
       <div class="mt-2.5 flex flex-wrap gap-1">
         {#each reactionEntries as [emoji, users] (emoji)}
+          {@const reacted = includesMine(viewer, users)}
           <button
             class="inline-flex items-center gap-1 text-xs rounded-full border px-2 py-0.5 min-h-[32px] transition-colors
-              {users.includes(userId)
+              {reacted
                 ? 'border-sky-400 bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-200'
                 : 'border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'}"
             onclick={() => cardActions.toggleReaction(column, card.id, emoji)}
-            aria-label={users.includes(userId) ? `Remove your ${reactionName(emoji)} reaction (${users.length} total)` : `Add ${reactionName(emoji)} reaction (${users.length} so far)`}
-            aria-pressed={users.includes(userId)}
+            aria-label={reacted ? `Remove your ${reactionName(emoji)} reaction (${users.length} total)` : `Add ${reactionName(emoji)} reaction (${users.length} so far)`}
+            aria-pressed={reacted}
           >
             <span aria-hidden="true">{emoji}</span>
             <span class="tabular-nums">{users.length}</span>
@@ -437,7 +439,7 @@
           <div class="text-xs flex items-start gap-1 group/c">
             <div class="flex-1 min-w-0">
               {#if c.authorId}
-                {@const isSelfComment = c.authorId === userId}
+                {@const isSelfComment = isMine(viewer, c.authorId)}
                 {@const showCommentName = isSelfComment || !anonymous}
                 <span class="text-xs font-medium text-slate-600 dark:text-slate-300 mr-1.5">
                   {#if isSelfComment}

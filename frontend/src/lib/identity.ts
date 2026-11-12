@@ -36,7 +36,8 @@ export function readNames(names: Y.Map<string>): Record<string, string> {
 }
 
 export interface ResolveDisplayNameCtx {
-  selfId: string;
+  // null while presenting: nobody on screen is you.
+  selfId: string | null;
   selfName: string;
   namesMap: Record<string, string>;
 }

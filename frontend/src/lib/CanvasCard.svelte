@@ -5,6 +5,7 @@
   import { COLUMN_STYLE, type ColumnDef } from './columns';
   import type { LiveMoves } from './canvasLive';
   import type { CardActions } from './cardActions';
+  import type { Viewer } from './viewer';
   import type { CardData } from './types';
 
   // Places one card on the canvas. Its position is written to the element by
@@ -18,7 +19,7 @@
     rank: number;
     hidden: boolean;
     live: LiveMoves;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     isLead: boolean;
     readOnly: boolean;
@@ -39,7 +40,7 @@
     rank,
     hidden,
     live,
-    userId,
+    viewer,
     userName,
     isLead,
     readOnly,
@@ -83,7 +84,7 @@
     <Card
       {card}
       column={column.key}
-      {userId}
+      {viewer}
       {userName}
       {isLead}
       {readOnly}

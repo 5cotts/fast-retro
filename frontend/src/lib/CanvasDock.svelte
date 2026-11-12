@@ -4,6 +4,7 @@
   import type { CardActions } from './cardActions';
   import type { ClusterActions } from './clusters';
   import type { ColumnDef } from './columns';
+  import type { Viewer } from './viewer';
   import type { CardData } from './types';
 
   // Action items on a canvas board: the ordinary column, docked beside the
@@ -13,7 +14,7 @@
     cards: CardData[];
     phase: Phase;
     ended: boolean;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     isLead: boolean;
     anonymous: boolean;
@@ -31,7 +32,7 @@
     cards,
     phase,
     ended,
-    userId,
+    viewer,
     userName,
     isLead,
     anonymous,
@@ -73,7 +74,7 @@
     clusterActions={noClusters}
     canAdd={canAddCardInColumn(column, phase) && !ended}
     {phase}
-    {userId}
+    {viewer}
     {userName}
     {isLead}
     readOnly={ended}

@@ -64,6 +64,7 @@
   import type { CardData } from './types';
   import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, hasActionsColumn, renameColumn, sameColumns } from './columns';
   import { disambiguateNames, disambiguateNamesMap } from './identity';
+  import { selfViewer } from './viewer';
   import { Download, ArrowLeft, ArrowRight, CircleHelp, PartyPopper, X, FileUp, History, Blinds } from 'lucide-svelte';
   import {
     phasesFor,
@@ -101,6 +102,8 @@
   let promptingName = $state<boolean>(true);
   let nameInput = $state<string>('');
   let userId = $state<string>('');
+  // Who the board is drawn for. Actions below still use userId.
+  const viewer = $derived(selfViewer(userId));
   let showOnboarding = $state<boolean>(false);
 
   const conn = useBoardConnection();
@@ -1023,7 +1026,7 @@
         board={conn.state}
         {cardActions}
         {ended}
-        {userId}
+        {viewer}
         {userName}
         isLead={effectiveLead}
         namesMap={namesMapDisambiguated}
@@ -1037,7 +1040,7 @@
         board={conn.state}
         {cardActions}
         {ended}
-        {userId}
+        {viewer}
         {userName}
         isLead={effectiveLead}
         namesMap={namesMapDisambiguated}

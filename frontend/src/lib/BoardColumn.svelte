@@ -12,6 +12,7 @@
   import { isCardHidden } from './visibility';
   import { PHASE_LABEL, type Phase } from './phase';
   import type { CardActions } from './cardActions';
+  import type { Viewer } from './viewer';
   import type { CardData } from './types';
 
   // One board column: header, cards, drop targets and composer. Drag state
@@ -37,7 +38,7 @@
     clusterActions: ClusterActions;
     canAdd: boolean;
     phase: Phase;
-    userId: string;
+    viewer: Viewer;
     userName: string;
     isLead: boolean;
     readOnly: boolean;
@@ -81,7 +82,7 @@
     clusterActions,
     canAdd,
     phase,
-    userId,
+    viewer,
     userName,
     isLead,
     readOnly,
@@ -194,13 +195,13 @@
       {#if showsLineAbove(card.id, laneId) && dragCardId !== card.id}
         <div class="h-1 -mt-1 mb-1 bg-sky-400 rounded-full motion-safe:animate-pulse"></div>
       {/if}
-      {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, userId })}
+      {#if isCardHidden(card, column, { hideCards, phase, ended: readOnly, viewer })}
         <HiddenCard />
       {:else}
         <Card
           {card}
           column={column.key}
-          {userId}
+          {viewer}
           {userName}
           {isLead}
           {readOnly}

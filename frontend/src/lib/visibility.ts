@@ -1,12 +1,13 @@
 import { isActionsColumn, type ColumnDef } from './columns';
 import type { Phase } from './phase';
 import type { CardData } from './types';
+import { isMine, type Viewer } from './viewer';
 
 export interface VisibilityContext {
   hideCards: boolean;
   phase: Phase;
   ended: boolean;
-  userId: string;
+  viewer: Viewer;
 }
 
 // While a board hides cards, each person sees only their own cards during
@@ -19,10 +20,10 @@ export interface VisibilityContext {
 // - Ended boards are never hidden, even if they ended during Brainstorm.
 // - Visibility depends only on the phase, so going back to Brainstorm hides
 //   cards again. The host is hidden from too.
-export function isHidingCards(ctx: Omit<VisibilityContext, 'userId'>): boolean {
+export function isHidingCards(ctx: Omit<VisibilityContext, 'viewer'>): boolean {
   return ctx.hideCards && ctx.phase === 'brainstorm' && !ctx.ended;
 }
 
 export function isCardHidden(card: Pick<CardData, 'authorId'>, column: ColumnDef, ctx: VisibilityContext): boolean {
-  return isHidingCards(ctx) && !isActionsColumn(column) && card.authorId !== ctx.userId;
+  return isHidingCards(ctx) && !isActionsColumn(column) && !isMine(ctx.viewer, card.authorId);
 }

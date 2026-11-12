@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_COLUMNS } from './columns';
 import { PHASES } from './phase';
 import { isCardHidden, isHidingCards, type VisibilityContext } from './visibility';
+import { selfViewer } from './viewer';
 
 const input = DEFAULT_COLUMNS[0];
 const actions = DEFAULT_COLUMNS[2];
@@ -12,7 +13,7 @@ const ctx = (over: Partial<VisibilityContext> = {}): VisibilityContext => ({
   hideCards: true,
   phase: 'brainstorm',
   ended: false,
-  userId: 'me',
+  viewer: selfViewer('me'),
   ...over
 });
 
