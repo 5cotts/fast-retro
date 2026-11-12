@@ -31,5 +31,6 @@
     <li><strong>Forgot something?</strong> Add a column or change <em>Hide cards</em> after creating the board. See <a href="/docs/setup">Set up and change a board</a>.</li>
     <li><strong>Hiding isn't security.</strong> It stops people being influenced by each other, but the board's data still reaches every browser.</li>
     <li><strong>Action items are never hidden.</strong></li>
+    <li><strong>Sharing your screen?</strong> It shows your own ideas unless you <a href="/docs/run#present">present</a> first.</li>
   </ul>
 </section>

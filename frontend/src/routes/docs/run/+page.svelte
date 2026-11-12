@@ -12,6 +12,25 @@
   <p class="mt-3">Your host access is tied to this browser. If Google sign-in is offered on the homepage, sign in to keep it after clearing your browser or switching devices. Otherwise you can be locked out of your own retro.</p>
 </section>
 
+<section id="present">
+  <h2>Present while you share your screen</h2>
+  <p class="mb-3">Your screen marks what's yours: <em>you</em> under your cards, and your votes and reactions highlighted. On a shared screen, your team sees all of that. Present first, so your screen shows the board the way they see it.</p>
+  <ol>
+    <li>Click <strong>Present</strong> in the header, next to <strong>Share</strong>, then <strong>Present in this tab</strong>.</li>
+    <li>Share your screen. The header shows a dark <strong>Presenting</strong> label, so the team can tell your own input isn't on show.</li>
+    <li>Click <strong>Stop</strong> on that label when you're done.</li>
+  </ol>
+  <p class="mt-3 mb-3">While you present:</p>
+  <ul>
+    <li><strong>Nothing is marked as yours.</strong> Your cards and comments show <em>Anonymous</em>, or your name on a board that shows names. Your votes and reactions look like anyone's. With <em>Hide cards</em> on, your own Brainstorm cards are placeholders too.</li>
+    <li><strong>Voting and reactions pause in that tab</strong>, because the click itself would give your choice away. Vote from another device, such as your phone, or click <strong>Stop</strong> first.</li>
+    <li><strong>Everything else works.</strong> You can still add cards and comments, and use the timer, phases and the rest of the host controls.</li>
+    <li><strong>Only your screen changes.</strong> The board and everyone else's view stay the same. A reload keeps you presenting, and <strong>Share</strong> still copies the normal link.</li>
+    <li><strong>What you type is on screen.</strong> Presenting can't hide typing, so add your own Brainstorm cards before you share, or from another device.</li>
+  </ul>
+  <p class="mt-3">You can present an ended board too, for example to review last retro's action items with the team.</p>
+</section>
+
 <section>
   <h2>Walk through the phases</h2>
   <p class="mb-3">A suggested 45 minutes for 4–8 people:</p>

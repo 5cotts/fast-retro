@@ -14,6 +14,7 @@
         <tr><td>Edit or delete a card</td><td>Any</td><td>Its author</td></tr>
         <tr><td>Move a card</td><td>Any</td><td>Everyone</td></tr>
         <tr><td>Timer, next and previous phase, Edit board, options, End retro</td><td>Any</td><td>Host</td></tr>
+        <tr><td>Present, to share your screen without showing your own input</td><td>Any, and after the end</td><td>Host</td></tr>
         <tr><td>Export a live board</td><td>Any</td><td>Host</td></tr>
         <tr><td>Export an ended board</td><td>After the end</td><td>Anyone with the link</td></tr>
         <tr><td>Start next retro</td><td>After the end</td><td>Host</td></tr>
@@ -49,10 +50,12 @@
     <li>Board files from anonymous boards leave names out.</li>
     <li>Hidden cards still reach every browser. Hiding stops influence and isn't a security feature.</li>
     <li>Anyone with an ended board's link can open and export it.</li>
+    <li>Presenting changes only your screen. The board and everyone else's view stay the same.</li>
   </ul>
 </section>
 
 <section>
   <h2>Admin links</h2>
   <p>Whoever runs a Fast Retro server has a private lead link, <code>/lead/&lt;token&gt;</code>, with a dashboard of live boards, history and all archives. Most hosts never need it.</p>
+  <p class="mt-3">The token is in the address bar, and <a href="/docs/run#present">presenting</a> can't hide that. When you use the lead link on a call, share just the browser tab rather than your whole screen or window.</p>
 </section>
