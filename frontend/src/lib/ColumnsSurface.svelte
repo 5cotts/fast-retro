@@ -5,7 +5,7 @@
   import { createCluster, dissolveCluster, mergeCluster, moveCard, renameCluster, setCardCluster } from './yboard';
   import { track } from './analytics';
   import { alignedRows, canEditClusters, clustersVisible, layoutBoard, planDrop, reorderTarget, sameDropTarget, sectionOf, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
-  import { ACTIONS_COLUMN_KEY, BOARD_GRID_CLASS, isWideBoard } from './columns';
+  import { ACTIONS_COLUMN_KEY, BOARD_GRID_CLASS, COLUMN_STYLE, isWideBoard } from './columns';
   import { canAddCardInColumn, canSortByVotes, canVoteInPhase } from './phase';
   import type { CardActions } from './cardActions';
   import type { Viewer } from './viewer';
@@ -70,6 +70,13 @@
   let overflowing = $state(false);
   let atStart = $state(true);
   let atEnd = $state(true);
+  // The column most in view, for the phone's column chips.
+  let activeColumn = $state(0);
+  let chips = $state<HTMLElement | null>(null);
+
+  function columnSections(): HTMLElement[] {
+    return scroller ? [...scroller.querySelectorAll<HTMLElement>(':scope > section')] : [];
+  }
 
   function measureScroll() {
     if (!scroller) return;
@@ -77,6 +84,39 @@
     overflowing = scrollWidth > clientWidth + 1;
     atStart = scrollLeft <= 1;
     atEnd = scrollLeft + clientWidth >= scrollWidth - 1;
+    const view = scroller.getBoundingClientRect();
+    let best = 0;
+    let bestShown = -1;
+    columnSections().forEach((section, i) => {
+      const r = section.getBoundingClientRect();
+      const shown = Math.min(r.right, view.right) - Math.max(r.left, view.left);
+      if (shown > bestShown + 1) {
+        best = i;
+        bestShown = shown;
+      }
+    });
+    activeColumn = best;
+  }
+
+  $effect(() => {
+    const chip = chips?.children[activeColumn];
+    if (chip instanceof HTMLElement && chips) {
+      chips.scrollTo({ left: chip.offsetLeft - chips.clientWidth / 2 + chip.offsetWidth / 2, behavior: reducedMotion ? 'auto' : 'smooth' });
+    }
+  });
+
+  // Phone column chips: swipe the board to that column. If the page is
+  // scrolled down past the end of it (a short column), go back up to its top.
+  function showColumn(index: number) {
+    const section = columnSections()[index];
+    if (!scroller || !section) return;
+    const behavior = reducedMotion ? 'auto' : 'smooth';
+    const pad = parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0;
+    const offset = section.getBoundingClientRect().left - scroller.getBoundingClientRect().left - pad;
+    scroller.scrollTo({ left: scroller.scrollLeft + offset, behavior });
+    const top = section.getBoundingClientRect().top;
+    const below = (chips?.getBoundingClientRect().bottom ?? 0) + 8;
+    if (section.getBoundingClientRect().bottom < below + 96) window.scrollBy({ top: top - below, behavior });
   }
 
   $effect(() => {
@@ -320,11 +360,35 @@
 <main
   class="flex-1 w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 {isWideBoard(board.columns.length) ? 'max-w-none' : 'max-w-7xl'}"
 >
+  {#if board.columns.length > 1}
+    <nav
+      bind:this={chips}
+      aria-label="Columns"
+      class="md:hidden sticky top-0 z-10 -mx-3 sm:-mx-4 -mt-4 sm:-mt-6 mb-2 px-3 sm:px-4 py-2 flex gap-2 overflow-x-auto bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm [scrollbar-width:none]"
+      data-testid="column-chips"
+    >
+      {#each board.columns as col, i (col.key)}
+        <button
+          type="button"
+          class="shrink-0 inline-flex items-center gap-1.5 max-w-[14rem] min-h-[32px] rounded-full border px-3 text-xs transition-colors {i === activeColumn
+            ? 'border-slate-400 bg-white text-slate-900 font-semibold shadow-sm dark:border-slate-500 dark:bg-slate-800 dark:text-slate-100'
+            : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'}"
+          aria-current={i === activeColumn ? 'true' : undefined}
+          aria-label={`${col.title}, ${cardsIn(col.key).length} ${cardsIn(col.key).length === 1 ? 'card' : 'cards'}`}
+          onclick={() => showColumn(i)}
+        >
+          <span class="size-2 shrink-0 rounded-full {COLUMN_STYLE[col.color].dot}" aria-hidden="true"></span>
+          <span class="truncate">{col.title}</span>
+          <span class="tabular-nums text-slate-400 dark:text-slate-500">{cardsIn(col.key).length}</span>
+        </button>
+      {/each}
+    </nav>
+  {/if}
   <div class="relative">
     <div
       bind:this={scroller}
       class={BOARD_GRID_CLASS}
-      style="--board-cols: {board.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}{dragCardId ? '; scroll-snap-type: none' : ''}"
+      style="--board-cols: {board.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}{dragCardId ? '; scroll-snap-type: none' : ''}{board.columns.length === 1 ? '; grid-auto-columns: 100%' : ''}"
       data-testid="board-columns"
       onscroll={measureScroll}
       ondragovercapture={scrollWhileDragging}
@@ -394,11 +458,11 @@
     {#if overflowing}
       <div
         aria-hidden="true"
-        class="pointer-events-none absolute inset-y-0 left-0 z-[3] w-8 bg-linear-to-r from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atStart ? 'opacity-0' : 'opacity-100'}"
+        class="pointer-events-none absolute inset-y-0 left-0 z-[3] hidden md:block w-8 bg-linear-to-r from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atStart ? 'opacity-0' : 'opacity-100'}"
       ></div>
       <div
         aria-hidden="true"
-        class="pointer-events-none absolute inset-y-0 right-0 z-[3] w-8 bg-linear-to-l from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atEnd ? 'opacity-0' : 'opacity-100'}"
+        class="pointer-events-none absolute inset-y-0 right-0 z-[3] hidden md:block w-8 bg-linear-to-l from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atEnd ? 'opacity-0' : 'opacity-100'}"
         data-testid="board-more-right"
       ></div>
     {/if}

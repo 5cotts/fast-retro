@@ -9,7 +9,8 @@ import { boardFile, importBoard, measureLayout, resize, type Phase } from './lay
  * way to get there: 125% zoom of a 1440px window is 1152px.
  *
  * Side by side, columns are at least 17rem (272px) wide; when they don't fit,
- * the board scrolls sideways and the page doesn't.
+ * the board scrolls sideways and the page doesn't. On phones you swipe
+ * between columns, or jump with the column chips.
  *
  * The fixture has two groups, a card with a long URL and one long word.
  */
@@ -95,6 +96,34 @@ test.describe('board layout', () => {
     }
     expect(await board.evaluate((el) => el.scrollLeft)).toBeLessThan(scrolled);
     await card.dispatchEvent('dragend', { dataTransfer });
+  });
+
+  test('on a phone you swipe between columns or jump with the chips', async ({ page }) => {
+    test.setTimeout(60_000);
+    await importBoard(page, boardFile('layout-4col.fastretro.json', 'group'));
+    await resize(page, 390, 844);
+    const m = await measureLayout(page);
+    expect(m.spills).toEqual([]);
+    expect(m.pageOverflow).toBeLessThanOrEqual(0);
+    // Each column is most of the screen, with the next one peeking in.
+    for (const w of m.columnWidths) expect(w).toBe(Math.round(390 * 0.85));
+    expect(await boardScroll(page)).toBeGreaterThan(0);
+    await expect(page.getByTestId('group-block').first()).toBeVisible();
+
+    const chips = page.getByRole('navigation', { name: 'Columns' });
+    await expect(chips.getByRole('button')).toHaveCount(4);
+    await expect(chips.getByRole('button', { name: /^How might we lower/ })).toHaveAttribute('aria-current', 'true');
+    await chips.getByRole('button', { name: 'Wildcard, 2 cards' }).click();
+    await expect(page.getByRole('list', { name: 'Wildcard' })).toBeInViewport({ ratio: 0.9 });
+    await expect(chips.getByRole('button', { name: 'Wildcard, 2 cards' })).toHaveAttribute('aria-current', 'true');
+
+    // Swiping back updates the chips too.
+    await page.getByTestId('board-columns').evaluate((el) => (el.scrollLeft = 0));
+    await expect(chips.getByRole('button', { name: /^How might we lower/ })).toHaveAttribute('aria-current', 'true');
+
+    // From tablet width up there are no chips.
+    await resize(page, 768);
+    await expect(chips).toBeHidden();
   });
 });
 

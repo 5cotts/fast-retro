@@ -234,9 +234,14 @@ export function isWideBoard(columnCount: number): boolean {
 
 // Side by side, a column never gets narrower than 17rem. Below that (a
 // narrow window, or zoomed in) the board scrolls sideways instead of
-// squeezing columns. Needs --board-cols set to the column count.
+// squeezing columns. On phones, each column is most of the screen and you
+// swipe between them; the scroller runs edge to edge there, so it undoes
+// its parent's padding (px-3 sm:px-4). Needs --board-cols set to the
+// column count.
 export const BOARD_GRID_CLASS =
-  'board-scroller grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(17rem,1fr))] md:overflow-x-auto md:snap-x md:pb-2 md:*:snap-start';
+  'board-scroller grid grid-flow-col auto-cols-[min(85vw,22rem)] items-start gap-3 overflow-x-auto snap-x snap-mandatory -mx-3 px-3 scroll-px-3 pb-2 *:snap-start ' +
+  'sm:-mx-4 sm:px-4 sm:scroll-px-4 sm:gap-4 ' +
+  'md:mx-0 md:px-0 md:scroll-px-0 md:grid-flow-row md:auto-cols-auto md:items-stretch md:grid-cols-[repeat(var(--board-cols),minmax(17rem,1fr))] md:snap-proximity';
 
 // A canvas with no prompts still needs one, because a board without a column
 // falls back to the classic retro (see sanitizeColumns).
