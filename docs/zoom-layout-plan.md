@@ -1,6 +1,6 @@
 # Plan: board columns break when zoomed in
 
-Status: proposed, root cause confirmed · 2026-11-17 · checked against `main` at `1b62d35` (the build on QA and prod)
+Status: implemented as a stack, in review · 2026-11-17 · checked against `main` at `1b62d35` (the build on QA and prod). PR 1 is #81, PR 2 is #82 (on #81), PR 3 is #83 (on #82).
 
 ## The bug
 
@@ -97,9 +97,11 @@ Today, below 768px every column stacks vertically. It works (no QA failures), bu
 
 **M1 (Scott):** swipe columns as above, or keep the stacked layout and just add the column-chip strip to jump between columns? Swiping is more consistent with PR 2. Stacking is less work and lets you scroll through everything in one go.
 
+*2026-11-17: Scott asked for the whole stack before answering, so #83 builds the recommendation (swipe plus chips). If he prefers stacking, #83 changes to keep `grid-cols-1` below 768px and keep the chips.*
+
 ### Optional, separate: a smaller header at high zoom
 
-From 175% up, the host header takes three rows. We could show the ☰ menu below 1024px instead of 640px, or move the less-used host toggles (Anonymous, Auto-sort, Hide cards) into a "More" menu. This doesn't need to block the above. **M2 (Scott):** do it now, later, or never?
+From 175% up, the host header takes three rows. We could show the ☰ menu below 1024px instead of 640px, or move the less-used host toggles (Anonymous, Auto-sort, Hide cards) into a "More" menu. This doesn't need to block the above. **M2 (Scott):** do it now, later, or never? *Not built in the stack; still open.*
 
 ## Order and release
 
