@@ -284,8 +284,10 @@
   {/if}
 {/snippet}
 
+<!-- Aligned, the section is a row subgrid. grid-cols-1 gives it a minmax(0, 1fr)
+     column, so one long word can't make its content wider than the column. -->
 <section
-  class="border rounded-xl shadow-sm {aligned ? 'grid grid-rows-subgrid' : 'flex flex-col'} {style.accent}"
+  class="min-w-0 wrap-anywhere border rounded-xl shadow-sm {aligned ? 'grid grid-cols-1 grid-rows-subgrid' : 'flex flex-col'} {style.accent}"
   style={aligned ? `grid-column: ${columnIndex + 1}; grid-row: 1 / span ${rows.total}` : undefined}
   role="list"
   aria-label={column.title}

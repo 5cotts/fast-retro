@@ -219,7 +219,7 @@
     </div>
   {:else}
     {#if isLong && !expanded}
-      <div class="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100 leading-snug max-h-[10rem] overflow-hidden relative">
+      <div class="whitespace-pre-wrap wrap-anywhere text-slate-800 dark:text-slate-100 leading-snug max-h-[10rem] overflow-hidden relative">
         {card.text}
         <div class="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white dark:from-slate-800 to-transparent"></div>
       </div>
@@ -231,7 +231,7 @@
         Show more
       </button>
     {:else}
-      <div class="whitespace-pre-wrap break-words text-slate-800 dark:text-slate-100 leading-snug">{card.text}</div>
+      <div class="whitespace-pre-wrap wrap-anywhere text-slate-800 dark:text-slate-100 leading-snug">{card.text}</div>
       {#if isLong}
         <button
           class="mt-1 text-xs font-medium text-sky-700 dark:text-sky-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
@@ -467,7 +467,7 @@
                   {/if}
                 </span>
               {/if}
-              <span class="text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words">{c.text}</span>
+              <span class="text-slate-700 dark:text-slate-200 whitespace-pre-wrap wrap-anywhere">{c.text}</span>
             </div>
             {#if pendingCommentDelete === c.id}
               <button
