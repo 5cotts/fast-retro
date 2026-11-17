@@ -32,6 +32,7 @@
   <ul>
     <li><strong>Anonymous boards.</strong> New boards start anonymous, shown by an <em>Anonymous</em> badge in the header. Names are hidden on cards and comments, but your name is still recorded, so treat it as a display setting and not a guarantee.</li>
     <li><strong>Hidden cards.</strong> Your host can hide cards during Brainstorm. You see your own, others show as placeholders, and they all appear when the board moves to Group.</li>
+    <li><strong>More columns than fit.</strong> The board scrolls sideways. On a phone, swipe between columns, or tap a column's name in the strip above the board to jump to it.</li>
     <li><strong>Changing your name.</strong> Click your name in the header, or in the menu on a phone.</li>
     <li><strong>The timer.</strong> If your host starts one, it appears in the header for everyone.</li>
   </ul>
