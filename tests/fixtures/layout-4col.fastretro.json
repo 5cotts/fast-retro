@@ -1,0 +1,180 @@
+{
+  "format": "fast-retro",
+  "version": 3,
+  "exportedAt": 1793800000000,
+  "board": {
+    "label": "Layout: four columns",
+    "anonymous": true,
+    "phase": "group",
+    "autoSort": true,
+    "columns": [
+      {
+        "key": "c1",
+        "title": "How might we lower our cost to build and support integrations?",
+        "color": "emerald"
+      },
+      {
+        "key": "c2",
+        "title": "How might we build a more vertically integrated product?",
+        "color": "amber"
+      },
+      {
+        "key": "c3",
+        "title": "How might we close the remaining gaps?",
+        "color": "violet"
+      },
+      {
+        "key": "c4",
+        "title": "Wildcard",
+        "color": "rose"
+      }
+    ],
+    "clusters": [
+      {
+        "id": "g1",
+        "label": "Self-serve integrations"
+      },
+      {
+        "id": "g2",
+        "label": "Reporting"
+      }
+    ]
+  },
+  "cards": {
+    "c1": [
+      {
+        "id": "k1",
+        "text": "More self-serve integration setup",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1",
+          "u2",
+          "u3",
+          "u4",
+          "u5"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      },
+      {
+        "id": "k2",
+        "text": "Give customers a standard set of scenarios they can run to test a sync themselves, once we've checked their setup is right.",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      },
+      {
+        "id": "k3",
+        "text": "Self-service setup: https://example-preview-pr-8284.herokuapp.com/organizations/dashboard/integration-setup",
+        "authorId": "",
+        "votes": [
+          "u0"
+        ],
+        "reactions": {},
+        "comments": []
+      },
+      {
+        "id": "k4",
+        "text": "Shorter onboarding",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1",
+          "u2"
+        ],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c2": [
+      {
+        "id": "k5",
+        "text": "Self-service features for integration setup",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      },
+      {
+        "id": "k6",
+        "text": "Own the data pipeline end to end",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1",
+          "u2",
+          "u3"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g2"
+      },
+      {
+        "id": "k7",
+        "text": "Build vs buy review",
+        "authorId": "",
+        "votes": [
+          "u0"
+        ],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c3": [
+      {
+        "id": "k8",
+        "text": "Better exports and reporting",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g2"
+      },
+      {
+        "id": "k9",
+        "text": "SSO for every plan",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1",
+          "u2",
+          "u3",
+          "u4"
+        ],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "c4": [
+      {
+        "id": "k10",
+        "text": "Hack week",
+        "authorId": "",
+        "votes": [
+          "u0"
+        ],
+        "reactions": {},
+        "comments": []
+      },
+      {
+        "id": "k11",
+        "text": "supercalifragilisticexpialidocious_identifier_with_no_spaces_at_all_whatsoever",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ]
+  }
+}

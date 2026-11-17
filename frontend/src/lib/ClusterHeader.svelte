@@ -38,7 +38,7 @@
       maxLength={MAX_CLUSTER_LABEL_LEN}
       allowBlank
       tag="h3"
-      headingClass="text-xs font-semibold text-slate-700 dark:text-slate-200 min-w-0 break-words {lane.cluster.label ? '' : 'italic font-medium text-slate-500 dark:text-slate-400'}"
+      headingClass="text-xs font-semibold text-slate-700 dark:text-slate-200 min-w-0 wrap-anywhere {lane.cluster.label ? '' : 'italic font-medium text-slate-500 dark:text-slate-400'}"
       inputClass="input flex-1 min-w-0 px-1.5 py-0.5 text-xs font-semibold"
     />
   </div>

@@ -1,0 +1,135 @@
+{
+  "format": "fast-retro",
+  "version": 3,
+  "exportedAt": 1793800000000,
+  "board": {
+    "label": "Layout: six columns",
+    "anonymous": true,
+    "phase": "group",
+    "autoSort": true,
+    "columns": [
+      {
+        "key": "w0",
+        "title": "Went well",
+        "color": "emerald"
+      },
+      {
+        "key": "w1",
+        "title": "Went OK",
+        "color": "amber"
+      },
+      {
+        "key": "w2",
+        "title": "To improve",
+        "color": "violet"
+      },
+      {
+        "key": "w3",
+        "title": "Ideas",
+        "color": "rose"
+      },
+      {
+        "key": "w4",
+        "title": "Kudos",
+        "color": "teal"
+      },
+      {
+        "key": "actions",
+        "title": "Action items",
+        "color": "sky"
+      }
+    ],
+    "clusters": [
+      {
+        "id": "g1",
+        "label": "Self-serve integrations"
+      }
+    ]
+  },
+  "cards": {
+    "w0": [
+      {
+        "id": "k1",
+        "text": "Release went smoothly",
+        "authorId": "",
+        "votes": [
+          "u0",
+          "u1"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      },
+      {
+        "id": "k2",
+        "text": "Self-service setup: https://example-preview-pr-8284.herokuapp.com/organizations/dashboard/integration-setup",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "w1": [
+      {
+        "id": "k3",
+        "text": "Release was a bit slow",
+        "authorId": "",
+        "votes": [
+          "u0"
+        ],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      }
+    ],
+    "w2": [
+      {
+        "id": "k4",
+        "text": "Release checklist is long",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": [],
+        "clusterId": "g1"
+      },
+      {
+        "id": "k5",
+        "text": "Give customers a standard set of scenarios they can run to test a sync themselves, once we've checked their setup is right.",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "w3": [
+      {
+        "id": "k6",
+        "text": "Automate the checklist",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "w4": [
+      {
+        "id": "k7",
+        "text": "Thanks to the on-call folks",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ],
+    "actions": [
+      {
+        "id": "k8",
+        "text": "Trim the checklist",
+        "authorId": "",
+        "votes": [],
+        "reactions": {},
+        "comments": []
+      }
+    ]
+  }
+}
