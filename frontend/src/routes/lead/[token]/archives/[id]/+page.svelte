@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import Wordmark from '$lib/Wordmark.svelte';
   import type { CardData } from '$lib/types';
-  import { COLUMN_STYLE, DEFAULT_COLUMNS, boardGridClass, sanitizeColumns } from '$lib/columns';
+  import { BOARD_GRID_CLASS, COLUMN_STYLE, DEFAULT_COLUMNS, sanitizeColumns } from '$lib/columns';
   import { boardFileFromArchive, downloadBoardFile, sanitizeFileClusters } from '$lib/boardfile';
   import { clusterDisplayName, layoutBoard } from '$lib/clusters';
   import { FileJson } from 'lucide-svelte';
@@ -198,11 +198,11 @@
           </button>
         </div>
 
-        <div class={boardGridClass(columns.length)} style="--board-cols: {columns.length}">
+        <div class={BOARD_GRID_CLASS} style="--board-cols: {columns.length}">
           {#each columns as col (col.key)}
             {@const cards = archive.cards[col.key] ?? []}
             {@const style = COLUMN_STYLE[col.color]}
-            <section class="border rounded-xl shadow-sm flex flex-col {style.accent}" aria-label={col.title}>
+            <section class="min-w-0 wrap-anywhere border rounded-xl shadow-sm flex flex-col {style.accent}" aria-label={col.title}>
               <header
                 class="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-baseline justify-between rounded-t-xl {style.header}"
               >

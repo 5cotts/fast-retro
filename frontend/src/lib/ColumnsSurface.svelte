@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import BoardColumn from './BoardColumn.svelte';
   import ClusterRow from './ClusterRow.svelte';
   import { createCluster, dissolveCluster, mergeCluster, moveCard, renameCluster, setCardCluster } from './yboard';
   import { track } from './analytics';
   import { alignedRows, canEditClusters, clustersVisible, layoutBoard, planDrop, reorderTarget, sameDropTarget, sectionOf, type ClusterActions, type ClusterLane, type DropTarget } from './clusters';
-  import { ACTIONS_COLUMN_KEY, boardGridClass, isWideBoard } from './columns';
+  import { ACTIONS_COLUMN_KEY, BOARD_GRID_CLASS, isWideBoard } from './columns';
   import { canAddCardInColumn, canSortByVotes, canVoteInPhase } from './phase';
   import type { CardActions } from './cardActions';
   import type { Viewer } from './viewer';
@@ -63,6 +63,52 @@
     desktop.addEventListener('change', onChange);
     return () => desktop.removeEventListener('change', onChange);
   });
+
+  // The board scrolls sideways when its columns don't fit (BOARD_GRID_CLASS).
+  // Tracked to show the edge fades and pin group names to the left.
+  let scroller = $state<HTMLDivElement | null>(null);
+  let overflowing = $state(false);
+  let atStart = $state(true);
+  let atEnd = $state(true);
+
+  function measureScroll() {
+    if (!scroller) return;
+    const { scrollLeft, scrollWidth, clientWidth } = scroller;
+    overflowing = scrollWidth > clientWidth + 1;
+    atStart = scrollLeft <= 1;
+    atEnd = scrollLeft + clientWidth >= scrollWidth - 1;
+  }
+
+  $effect(() => {
+    const el = scroller;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    void board.columns.length;
+    const observer = new ResizeObserver(measureScroll);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+    return () => observer.disconnect();
+  });
+
+  // Dragging a card near the board's left or right edge scrolls it, so an
+  // off-screen column can still be a drop target. Scroll snapping is off
+  // while dragging, or it would pull each small step back.
+  function scrollWhileDragging(e: DragEvent) {
+    if (!dragCardId || !scroller || !overflowing) return;
+    const box = scroller.getBoundingClientRect();
+    const edge = 56;
+    const step = e.clientX < box.left + edge ? -1 : e.clientX > box.right - edge ? 1 : 0;
+    if (step) scroller.scrollLeft += step * 18;
+  }
+
+  // After a keyboard move to another column the card is a new element: keep
+  // focus on it and bring it into view if that column is off screen.
+  async function revealCard(cardId: string) {
+    await tick();
+    const el = scroller?.querySelector<HTMLElement>(`[data-card-id="${CSS.escape(cardId)}"]`);
+    if (!el) return;
+    if (document.activeElement !== el) el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: reducedMotion ? 'auto' : 'smooth' });
+  }
 
   const canVote = $derived(canVoteInPhase(board.phase));
 
@@ -236,6 +282,7 @@
       const target = neighborColumn(col, dir);
       if (!target) return;
       moveCard(board.board.doc, board.board.board, col, focusedCardId, target, null);
+      void revealCard(focusedCardId);
     }
   }
 
@@ -273,71 +320,87 @@
 <main
   class="flex-1 w-full mx-auto px-3 sm:px-4 py-4 sm:py-6 {isWideBoard(board.columns.length) ? 'max-w-none' : 'max-w-7xl'}"
 >
-  <div
-    class={boardGridClass(board.columns.length)}
-    style="--board-cols: {board.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}"
-    data-testid="board-columns"
-  >
-    {#each board.columns as col, columnIndex (col.key)}
-      <BoardColumn
-        column={col}
-        cards={layout.loose[col.key] ?? []}
-        lanes={layout.lanes}
-        cardCount={cardsIn(col.key).length}
-        {aligned}
-        {columnIndex}
-        {canCluster}
-        canMerge={canMergeClusters}
-        {mergeTitle}
-        {clusterActions}
-        canAdd={canAddCardInColumn(col, board.phase) && !ended}
-        phase={board.phase}
-        {viewer}
-        {userName}
-        {isLead}
-        readOnly={ended}
-        {canVote}
-        anonymous={board.settings.anonymous}
-        {namesMap}
-        {canReorder}
-        hideCards={board.settings.hideCards}
-        {dragCardId}
-        {dragCanGroup}
-        {dragIsGrouped}
-        {dropTarget}
-        {typingByCard}
-        {reducedMotion}
-        {coarsePointer}
-        {cardActions}
-        {onCardKeydown}
-        onFocusCard={(id) => (focusedCardId = id)}
-        {onDragStart}
-        {onDragEnd}
-        {onTargetDragOver}
-        onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
-        onColumnDrop={(e) => onColumnDrop(e, col.key)}
-        onRename={(t) => onRenameColumn(col.key, t)}
-      />
-    {/each}
-    {#if aligned}
-      {#each layout.lanes as lane, i (lane.cluster.id)}
-        <ClusterRow
-          {lane}
-          titleRow={alignedRows(layout.lanes.length).titleRow(i)}
-          columnSpan={inputColumnCount}
-          wide={isWideBoard(board.columns.length)}
-          canEdit={canCluster}
+  <div class="relative">
+    <div
+      bind:this={scroller}
+      class={BOARD_GRID_CLASS}
+      style="--board-cols: {board.columns.length}{aligned ? `; row-gap: 0; grid-template-rows: ${alignedRows(layout.lanes.length).template}` : ''}{dragCardId ? '; scroll-snap-type: none' : ''}"
+      data-testid="board-columns"
+      onscroll={measureScroll}
+      ondragovercapture={scrollWhileDragging}
+    >
+      {#each board.columns as col, columnIndex (col.key)}
+        <BoardColumn
+          column={col}
+          cards={layout.loose[col.key] ?? []}
+          lanes={layout.lanes}
+          cardCount={cardsIn(col.key).length}
+          {aligned}
+          {columnIndex}
+          {canCluster}
           canMerge={canMergeClusters}
-          mergeInto={mergeTitle(lane)}
+          {mergeTitle}
           {clusterActions}
-          highlighted={dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id}
-          onDragOver={(e) => {
-            if (!dragCanGroup) return;
-            onTargetDragOver(e, { kind: 'group', column: board.columns[0].key, clusterId: lane.cluster.id });
-          }}
-          onDrop={(e) => onColumnDrop(e, board.columns[0].key)}
+          canAdd={canAddCardInColumn(col, board.phase) && !ended}
+          phase={board.phase}
+          {viewer}
+          {userName}
+          {isLead}
+          readOnly={ended}
+          {canVote}
+          anonymous={board.settings.anonymous}
+          {namesMap}
+          {canReorder}
+          hideCards={board.settings.hideCards}
+          {dragCardId}
+          {dragCanGroup}
+          {dragIsGrouped}
+          {dropTarget}
+          {typingByCard}
+          {reducedMotion}
+          {coarsePointer}
+          {cardActions}
+          {onCardKeydown}
+          onFocusCard={(id) => (focusedCardId = id)}
+          {onDragStart}
+          {onDragEnd}
+          {onTargetDragOver}
+          onColumnDragOver={(e) => onColumnDragOver(e, col.key)}
+          onColumnDrop={(e) => onColumnDrop(e, col.key)}
+          onRename={(t) => onRenameColumn(col.key, t)}
         />
       {/each}
+      {#if aligned}
+        {#each layout.lanes as lane, i (lane.cluster.id)}
+          <ClusterRow
+            {lane}
+            titleRow={alignedRows(layout.lanes.length).titleRow(i)}
+            columnSpan={inputColumnCount}
+            scrolls={overflowing}
+            canEdit={canCluster}
+            canMerge={canMergeClusters}
+            mergeInto={mergeTitle(lane)}
+            {clusterActions}
+            highlighted={dropTarget?.kind === 'group' && dropTarget.clusterId === lane.cluster.id}
+            onDragOver={(e) => {
+              if (!dragCanGroup) return;
+              onTargetDragOver(e, { kind: 'group', column: board.columns[0].key, clusterId: lane.cluster.id });
+            }}
+            onDrop={(e) => onColumnDrop(e, board.columns[0].key)}
+          />
+        {/each}
+      {/if}
+    </div>
+    {#if overflowing}
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-y-0 left-0 z-[3] w-8 bg-linear-to-r from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atStart ? 'opacity-0' : 'opacity-100'}"
+      ></div>
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-y-0 right-0 z-[3] w-8 bg-linear-to-l from-slate-50 dark:from-slate-900 to-transparent transition-opacity {atEnd ? 'opacity-0' : 'opacity-100'}"
+        data-testid="board-more-right"
+      ></div>
     {/if}
   </div>
 </main>

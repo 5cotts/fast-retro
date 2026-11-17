@@ -112,3 +112,21 @@ h1, h2, h3 {
            dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200;
   }
 }
+
+/* The board's sideways scrollbar stays visible (macOS hides overlay
+   scrollbars by default), so it's clear there are more columns. */
+.board-scroller::-webkit-scrollbar {
+  height: 10px;
+}
+.board-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+.board-scroller::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 9999px;
+}
+html.dark .board-scroller::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105);
+}

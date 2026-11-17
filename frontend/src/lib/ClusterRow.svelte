@@ -9,7 +9,7 @@
     lane,
     titleRow,
     columnSpan,
-    wide,
+    scrolls,
     canEdit,
     canMerge,
     mergeInto,
@@ -20,9 +20,10 @@
   } = $props<{
     lane: ClusterLane;
     titleRow: number;
-    // How many columns to span. Implicit grid tracks rule out `1 / -1` on wide boards.
+    // How many columns to span: the input columns, not Action items.
     columnSpan: number;
-    wide: boolean;
+    // The board scrolls sideways, so the name sticks to its left edge.
+    scrolls: boolean;
     canEdit: boolean;
     canMerge: boolean;
     mergeInto: string;
@@ -50,9 +51,9 @@
   ondragover={onDragOver}
   ondrop={onDrop}
 >
-  <!-- On a wide board the row scrolls with the columns, so the name and its
-       controls stick to the left edge to stay readable. -->
-  <div class={wide ? 'sticky left-2 w-fit max-w-[min(32rem,calc(100vw-4rem))]' : ''}>
+  <!-- When the board scrolls sideways the row scrolls with the columns, so the
+       name and its controls stick to the left edge to stay readable. -->
+  <div class={scrolls ? 'sticky left-2 w-fit max-w-[min(32rem,calc(100vw-4rem))]' : ''}>
     <ClusterHeader
       {lane}
       {canEdit}
