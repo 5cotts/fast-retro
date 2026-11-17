@@ -226,18 +226,17 @@ export function sameColumns(a: ColumnDef[], b: ColumnDef[]): boolean {
   return a.length === b.length && a.every((c, i) => c.key === b[i].key && c.title === b[i].title && c.color === b[i].color);
 }
 
-// Up to four columns share the page width (three look exactly as they always
-// have). From five on, columns keep a readable width and the board scrolls
-// sideways instead of squeezing them.
+// Up to four columns sit in the page's usual max width (three look exactly
+// as they always have). From five on, the board uses the whole window.
 export function isWideBoard(columnCount: number): boolean {
   return columnCount >= 5;
 }
 
-export function boardGridClass(columnCount: number): string {
-  return isWideBoard(columnCount)
-    ? 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-none md:grid-flow-col md:auto-cols-[minmax(17rem,1fr)] md:overflow-x-auto md:snap-x md:pb-2 md:*:snap-start'
-    : 'grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(0,1fr))]';
-}
+// Side by side, a column never gets narrower than 17rem. Below that (a
+// narrow window, or zoomed in) the board scrolls sideways instead of
+// squeezing columns. Needs --board-cols set to the column count.
+export const BOARD_GRID_CLASS =
+  'board-scroller grid grid-cols-1 gap-3 sm:gap-4 md:grid-cols-[repeat(var(--board-cols),minmax(17rem,1fr))] md:overflow-x-auto md:snap-x md:pb-2 md:*:snap-start';
 
 // A canvas with no prompts still needs one, because a board without a column
 // falls back to the classic retro (see sanitizeColumns).
