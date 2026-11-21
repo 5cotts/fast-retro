@@ -96,3 +96,32 @@ export function freeSpotBeside(from: Rect, size: Size, obstacles: readonly Rect[
   }
   return first;
 }
+
+// One line of the Top voted panel: a loose card, or a whole group.
+export interface TopVotedItem<Color extends string = string> {
+  id: string;
+  kind: 'card' | 'group';
+  text: string;
+  // People who voted. For a card that's its votes; for a group it's the
+  // different people who voted on any card in it, so a five-card group can't
+  // outrank a two-card one just for having more cards.
+  votes: number;
+  // A card's prompt color. A group has none.
+  color: Color | null;
+  // Only for a group: how many cards it holds.
+  cards?: number;
+}
+
+// Most voted first. Equal counts keep the order given, with groups before
+// cards, so the list doesn't shuffle as ties come and go. Cards inside a group
+// aren't listed on their own: the group stands for them.
+export function topVotedItems<Color extends string>(
+  cards: readonly { id: string; text: string; votes: readonly string[]; color: Color }[],
+  groups: readonly { id: string; name: string; cards: number; voters: number }[]
+): TopVotedItem<Color>[] {
+  const rows: TopVotedItem<Color>[] = [
+    ...groups.filter((g) => g.voters > 0).map((g) => ({ id: g.id, kind: 'group' as const, text: g.name, votes: g.voters, color: null, cards: g.cards })),
+    ...cards.filter((c) => c.votes.length > 0).map((c) => ({ id: c.id, kind: 'card' as const, text: c.text, votes: c.votes.length, color: c.color }))
+  ];
+  return rows.sort((a, b) => b.votes - a.votes);
+}

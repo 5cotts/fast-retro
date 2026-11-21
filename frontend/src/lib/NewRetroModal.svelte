@@ -259,7 +259,7 @@
           {#if template === 'retro'}
             <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">What went well · What to improve · Action items</p>
           {:else if template === 'canvas'}
-            <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Place cards anywhere: how close they sit is the grouping. Each card keeps its prompt's color.</p>
+            <p class="mt-1.5 text-xs text-slate-500 dark:text-slate-400">Place cards anywhere. How close they sit is the grouping, or drop a card on another to make a group. Each card keeps its prompt's color.</p>
             <ColumnEditor bind:rows={columnRows} bind:actionItems idPrefix="new-retro-column" noun="prompt" />
           {:else}
             <ColumnEditor bind:rows={columnRows} bind:actionItems idPrefix="new-retro-column" />

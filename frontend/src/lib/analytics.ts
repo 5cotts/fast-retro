@@ -22,6 +22,7 @@ export type AnalyticsEvent =
   | { name: 'canvas_view'; params: { action: 'fit' | 'list' | 'top_voted' } }
   | { name: 'canvas_drop'; params: { on_card: boolean } }
   | { name: 'canvas_group_move'; params: { cards: number } }
+  | { name: 'canvas_move_prompt'; params: Record<string, never> }
   | { name: 'guide_view'; params: { page: GuideSlug | 'home' } }
   | { name: 'guide_open'; params: { from: 'board_link' | 'footer' | 'onboarding' | 'home' } }
   | { name: 'present'; params: { action: 'tab' | 'window' | 'stop' } }

@@ -24,10 +24,12 @@
     mergeInto: string;
     // A card being dragged would join this group if dropped now.
     highlighted: boolean;
+    // Just picked in Top voted.
+    picked: boolean;
     clusterActions: ClusterActions;
     children: Snippet;
   }
-  let { lane, x, y, rank, live, canEdit, canMerge, nameHidden, mergeInto, highlighted, clusterActions, children }: Props = $props();
+  let { lane, x, y, rank, live, canEdit, canMerge, nameHidden, mergeInto, highlighted, picked, clusterActions, children }: Props = $props();
 
   let el = $state<HTMLElement | null>(null);
   const id = $derived(lane.cluster.id);
@@ -48,12 +50,13 @@
   bind:this={el}
   class="canvas-group absolute top-0 left-0 rounded-xl border-2 border-dashed transition-colors {highlighted
     ? 'border-violet-500 bg-violet-200/70 dark:bg-violet-900/50 ring-4 ring-violet-300 dark:ring-violet-700'
-    : 'border-violet-300 dark:border-violet-700 bg-violet-100/60 dark:bg-violet-900/20'}"
+    : 'border-violet-300 dark:border-violet-700 bg-violet-100/60 dark:bg-violet-900/20'} {picked ? 'ring-4 ring-sky-400' : ''}"
   style:padding="{GROUP_PADDING}px"
   style:z-index={rank}
   data-canvas-group={id}
   data-testid="canvas-group"
   data-drop-target={highlighted ? '' : undefined}
+  data-highlighted={picked ? '' : undefined}
 >
   <div class="flex items-start gap-1 cursor-grab">
     <GripHorizontal size={14} class="mt-1.5 shrink-0 text-violet-400 dark:text-violet-500" aria-hidden="true" />

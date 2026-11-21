@@ -35,7 +35,7 @@ You need three browser sessions: a normal window for the host and two private/in
 
 Host clicks **Next phase**.
 
-Ben drags `Deploys were fine but slow` right next to `Friday deploy had no drama`. Ana drags `New hire shipped a deploy on day 3` between the deploys cards and `Onboarding docs are stale`. Someone drags one card on top of another, then away.
+Ben drags `Deploys were fine but slow` right next to `Friday deploy had no drama`. Ana drags `New hire shipped a deploy on day 3` between the deploys cards and `Onboarding docs are stale`. Cards that only sit near each other aren't grouped. Groups are tried in section 3a.
 
 Ana double-clicks empty space and adds a label, `Deploys`. Ben drags the label, then clicks it and changes the text.
 
@@ -43,17 +43,60 @@ Ana double-clicks empty space and adds a label, `Deploys`. Ben drags the label, 
 - [ ] All cards are revealed at once.
 - [ ] A card being dragged moves live for everyone. Nothing else moves.
 - [ ] The deploy cards sit together and keep their different colors.
-- [ ] Dropping a card on a card overlaps them. It doesn't merge them or open a text box.
 - [ ] Moving a label moves no cards.
 - [ ] Pan, zoom and **Fit** only change your own view.
+
+## 3a. Groups on a canvas
+
+Still in Group. Ben drags `Deploys were fine but slow` and holds it over `Friday deploy had no drama`, without letting go.
+
+**Check, in every window:**
+- [ ] On Ben's screen the target card lights up before the drop, and nothing has changed on Ana's or the host's screen yet except Ben's card moving.
+
+Ben lets go.
+
+- [ ] A box appears where `Friday deploy had no drama` was, holding both cards, headed `Untitled group`, `2 cards`. Everyone sees it.
+- [ ] Both cards kept their colors.
+
+Ana clicks the box's name and types `Deploys`. She drops `Onboarding docs are stale` on the box, then drags `New hire shipped a deploy on day 3` onto it as well.
+
+- [ ] The box shows `4 cards`, and the name is the same for everyone.
+- [ ] Hold a card over the box: the box lights up before the drop.
+
+Ben drags one card out of the box into empty space.
+
+- [ ] The card stays where he dropped it, the box says `3 cards`, and nothing else moved.
+
+Host drags the box by its top edge to somewhere else.
+
+- [ ] Everyone sees the whole box move during the drag, and where it lands. After a reload, it's still there.
+
+Use the **Group** button on a card (the keyboard and touch route): join the box, start a new group, and **Remove from group**.
+
+- [ ] A card removed this way lands beside the box, not on top of the next group or card.
+- [ ] **Shift**+arrows on a card inside a box nudge the whole box.
+
+Host clicks **Ungroup**, then groups the same cards again and clicks **Merge**.
+
+- [ ] Ungroup leaves every card exactly where it was drawn in the box.
+- [ ] Merge asks first, then leaves one card at the box's corner with every card's text, votes and comments.
+
+**How it feels (this is why it's on QA):**
+- [ ] Piling cards near each other on purpose doesn't make groups you didn't ask for. If it does, say how often.
+- [ ] A new box covers some of its neighbors. Is dragging it clear tolerable, or should things move out of its way?
+- [ ] On a phone, grouping through **Group** in List view works, and so does dragging a box with a finger.
+
+**Move to another prompt:** on any card, use **Move** (or **Group**, in this phase) and pick a prompt.
+
+- [ ] The card stays where it is, takes the new prompt's color, and stays in its group if it had one. This works in the Vote phase too.
 
 ## 4. Vote, then Discuss
 
 Host clicks **Next phase**. Everyone votes on a few cards. Host clicks **Next phase**.
 
 **Check:**
-- [ ] **Top voted** opens by itself and lists cards by votes.
-- [ ] Clicking a row pans to that card and highlights it, for you only, and the highlight fades.
+- [ ] **Top voted** opens by itself and lists cards by votes. A group is one row, ranked by how many different people voted on its cards, and its cards aren't listed separately.
+- [ ] Clicking a row pans to that card or group and highlights it, for you only, and the highlight fades.
 - [ ] No card moved when the phase changed.
 - [ ] There's no auto-sort toggle in the header or in **Edit board**.
 
@@ -74,7 +117,7 @@ Host clicks **Export → Save board file**, then **End retro → Archive & end**
 
 ## 6. List view and small things
 
-- Click **List**. Vote or comment on a card, and try to drag one. Back on **Canvas**, the card hasn't moved.
+- Click **List**. Vote or comment on a card, and try to drag one. Back on **Canvas**, the card hasn't moved. In the Group phase, List shows each group as a row, and a card's **Group** button joins, starts and leaves groups there. Back on **Canvas**, the box is where it was.
 - As host, click a prompt's heading and rename it. In **Edit board**, add a prompt and remove one with cards.
 - Leave a prompt's name blank when creating a canvas with no other prompts: it gets one called `Notes`.
 - Reload during each phase once. Your view starts at **Fit**, and everything else is where it was.

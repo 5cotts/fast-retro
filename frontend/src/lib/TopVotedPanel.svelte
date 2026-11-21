@@ -1,14 +1,18 @@
 <script lang="ts">
-  import { X } from 'lucide-svelte';
+  import { Layers, X } from 'lucide-svelte';
   import { COLUMN_STYLE, type ColumnColor } from './columns';
 
   // The ranked list a canvas uses in place of sorting: cards never move on their
-  // own, so this is how the team finds what to talk about next.
+  // own, so this is how the team finds what to talk about next. A group is one
+  // row, ranked by the different people who voted on its cards.
   interface TopVotedRow {
     id: string;
+    kind: 'card' | 'group';
     text: string;
     votes: number;
-    color: ColumnColor;
+    // A card's prompt color. A group has none.
+    color: ColumnColor | null;
+    cards?: number;
   }
 
   interface Props {
@@ -43,9 +47,19 @@
             aria-current={selectedId === row.id ? 'true' : undefined}
             onclick={() => onSelect(row.id)}
           >
-            <span class="w-5 shrink-0 text-right tabular-nums font-semibold text-slate-700 dark:text-slate-200" aria-label={`${row.votes} ${row.votes === 1 ? 'vote' : 'votes'}`}>{row.votes}</span>
-            <span class="mt-1.5 size-2 rounded-full shrink-0 {COLUMN_STYLE[row.color].dot}" aria-hidden="true"></span>
-            <span class="min-w-0 line-clamp-2 text-slate-700 dark:text-slate-200">{row.text}</span>
+            <span
+              class="w-5 shrink-0 text-right tabular-nums font-semibold text-slate-700 dark:text-slate-200"
+              aria-label={row.kind === 'group' ? `${row.votes} ${row.votes === 1 ? 'voter' : 'voters'}` : `${row.votes} ${row.votes === 1 ? 'vote' : 'votes'}`}>{row.votes}</span>
+            {#if row.kind === 'group'}
+              <Layers size={12} class="mt-1 shrink-0 text-violet-500" aria-hidden="true" />
+              <span class="min-w-0 text-slate-700 dark:text-slate-200">
+                <span class="line-clamp-2">{row.text}</span>
+                <span class="text-[11px] text-slate-500 dark:text-slate-400">Group · {row.cards} {row.cards === 1 ? 'card' : 'cards'}</span>
+              </span>
+            {:else}
+              <span class="mt-1.5 size-2 rounded-full shrink-0 {row.color ? COLUMN_STYLE[row.color].dot : ''}" aria-hidden="true"></span>
+              <span class="min-w-0 line-clamp-2 text-slate-700 dark:text-slate-200">{row.text}</span>
+            {/if}
           </button>
         </li>
       {/each}

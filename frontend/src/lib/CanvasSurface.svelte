@@ -26,7 +26,6 @@
     headingPosition,
     nextZ,
     panToReveal,
-    rankByVotes,
     sanitizePos,
     screenToWorld,
     zoomAt,
@@ -35,10 +34,10 @@
     type View
   } from './canvas';
   import { DRAG_FRAME_MS, DRAG_HEARTBEAT_MS, LiveMoves, parseDragFrame } from './canvasLive';
-  import { freeSpotBeside, groupBoxSize, planCanvasDrop, type DropOver } from './canvasGroups';
-  import { createCluster, dissolveCluster, mergeCluster, renameCluster, setCardCluster, setCardPos, setClusterPos } from './yboard';
+  import { freeSpotBeside, groupBoxSize, planCanvasDrop, topVotedItems, type DropOver } from './canvasGroups';
+  import { createCluster, dissolveCluster, mergeCluster, moveCard, renameCluster, setCardCluster, setCardPos, setClusterPos } from './yboard';
   import { track } from './analytics';
-  import { canEditClusters, clustersVisible, layoutBoard, type ClusterActions, type ClusterLane } from './clusters';
+  import { canEditClusters, clusterDisplayName, clustersVisible, layoutBoard, type ClusterActions, type ClusterLane } from './clusters';
   import { MAX_LABELS, createLabel, deleteLabel, editLabel, labelRect, moveLabel } from './labels';
   import { COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, isActionsColumn, type ColumnDef } from './columns';
   import { canAddCardInColumn, canVoteInPhase } from './phase';
@@ -228,6 +227,25 @@
     return groups.find((g) => g.members.some((m) => m.card.id === cardId));
   }
 
+  // The prompts a card could move to. Keeping its position and group, it only
+  // takes the new prompt's color and heading, so nothing on the canvas moves.
+  function movesFor(columnKey: string) {
+    return prompts.filter((c) => c.key !== columnKey).map((c) => ({ key: c.key, title: c.title }));
+  }
+
+  function moveToPrompt(fromColumn: string, cardId: string, toColumn: string) {
+    const state = board.board;
+    if (!state || ended || fromColumn === toColumn) return;
+    const hit = placedById(cardId);
+    state.doc.transact(() => {
+      // A card still in its starting slot would otherwise take the next slot in
+      // the new prompt. Write down where it is so it stays put.
+      if (hit && !hit.card.pos && !hit.groupId) setCardPos(state.board, fromColumn, cardId, { x: hit.x, y: hit.y, z: 0 });
+      moveCard(state.doc, state.board, fromColumn, cardId, toColumn, null);
+    });
+    track({ name: 'canvas_move_prompt', params: {} });
+  }
+
   const clusterActions: ClusterActions = {
     join(column, cardId, clusterId) {
       const state = board.board;
@@ -391,19 +409,23 @@
     topVotedOpen = opensTopVoted;
   });
 
+  // Loose cards and whole groups, ranked together by the people who voted. A
+  // hidden card never shows its text or votes here: nothing is hidden by the
+  // time voting starts, but a board can be sent back.
   const topVoted = $derived(
-    rankByVotes(placed.map((p) => ({ id: p.card.id, text: p.card.text, votes: p.card.votes, color: p.column.color }))).map((r) => ({
-      ...r,
-      votes: r.votes.length
-    }))
+    topVotedItems(
+      looseCards.filter((p) => !p.hidden).map((p) => ({ id: p.card.id, text: p.card.text, votes: p.card.votes, color: p.column.color })),
+      groups.map((g) => ({ id: g.lane.cluster.id, name: clusterDisplayName(g.lane.cluster), cards: g.lane.count, voters: g.lane.voters }))
+    )
   );
 
   function selectTopCard(id: string) {
+    const group = groups.find((g) => g.lane.cluster.id === id);
     const hit = placedById(id);
-    if (!hit) return;
+    if (!group && !hit) return;
     // A card in a box is drawn where the box puts it, not at its own position.
-    const at = hit.groupId ? worldRectOf(id) : null;
-    moveView(centerOn(view, at ?? { x: hit.x, y: hit.y, width: CARD_WIDTH, height: hit.height }, viewportSize()));
+    const rect = group ? groupRect(group) : hit?.groupId ? worldRectOf(id) : null;
+    moveView(centerOn(view, rect ?? { x: hit!.x, y: hit!.y, width: CARD_WIDTH, height: hit!.height }, viewportSize()));
     selectedTopCard = id;
     if (highlightHandle !== null) clearTimeout(highlightHandle);
     highlightHandle = setTimeout(() => (selectedTopCard = null), HIGHLIGHT_MS);
@@ -989,6 +1011,7 @@
           nameHidden={!groupNamesShown}
           mergeInto={mergeTitle(g.lane)}
           highlighted={dropHover === `group:${g.lane.cluster.id}`}
+          picked={selectedTopCard === g.lane.cluster.id}
           {clusterActions}
         >
           {#each g.members as p (p.card.id)}
@@ -1014,6 +1037,8 @@
               groups={groupOptions}
               {canGroup}
               {clusterActions}
+              moves={movesFor(p.column.key)}
+              onMove={(to) => moveToPrompt(p.column.key, p.card.id, to)}
             />
           {/each}
         </CanvasGroup>
@@ -1041,6 +1066,8 @@
           {canGroup}
           isGroupTarget={dropHover === `card:${p.card.id}`}
           {clusterActions}
+          moves={movesFor(p.column.key)}
+          onMove={(to) => moveToPrompt(p.column.key, p.card.id, to)}
         />
       {/each}
       {#if draftAt && activePrompt}
