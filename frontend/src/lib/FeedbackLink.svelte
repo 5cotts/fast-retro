@@ -2,35 +2,31 @@
   import { onMount } from 'svelte';
   import { fetchConfig, fetchVersion } from './api';
   import { track, type AnalyticsEvent } from './analytics';
-  import { feedbackHref, validBoardRef } from './feedback';
+  import { FEEDBACK_KINDS, feedbackHref, validBoardRef } from './feedback';
 
   type From = Extract<AnalyticsEvent, { name: 'feedback_open' }>['params']['from'];
 
   let {
     from,
     boardRef = null,
+    separated = false,
+    leading = false,
     class: className = ''
-  } = $props<{ from: From; boardRef?: string | null; class?: string }>();
+  } = $props<{ from: From; boardRef?: string | null; separated?: boolean; leading?: boolean; class?: string }>();
 
   let base = $state<string | null>(null);
   let version = $state<string | null>(null);
-  let copied = $state(false);
 
   const ref = $derived(validBoardRef(boardRef));
-  const href = $derived(
-    base ? feedbackHref(base, { version, userAgent: navigator.userAgent, boardRef: ref }) : null
+  const links = $derived(
+    base
+      ? FEEDBACK_KINDS.map(({ kind, label }) => ({
+          kind,
+          label,
+          href: feedbackHref(base as string, kind, { version, userAgent: navigator.userAgent, boardRef: ref })
+        }))
+      : []
   );
-
-  async function copyRef() {
-    if (!ref) return;
-    try {
-      await navigator.clipboard.writeText(ref);
-      copied = true;
-      setTimeout(() => (copied = false), 2000);
-    } catch {
-      // The reference is printed on the button, so it can still be typed in.
-    }
-  }
 
   // Renders nothing unless this deployment sets FEEDBACK_URL, so self-hosted
   // builds show no link.
@@ -42,25 +38,18 @@
   });
 </script>
 
-{#if href}
-  <!-- noreferrer matters: on a board the Referer header would carry the board link, which works like a password. -->
+<!-- noreferrer matters: on a board the Referer header would carry the board link, which works like a password. -->
+{#each links as { kind, label, href }, i (kind)}
+  {#if separated && (i > 0 || leading)}
+    <span aria-hidden="true" class="mx-1">·</span>
+  {/if}
   <a
     {href}
     target="_blank"
     rel="noopener noreferrer"
     class={className}
-    onclick={() => track({ name: 'feedback_open', params: { from } })}
+    onclick={() => track({ name: 'feedback_open', params: { from, kind } })}
   >
-    Send feedback
+    {label}
   </a>
-  {#if ref}
-    <button
-      type="button"
-      class={className}
-      title="Paste this reference into your report. It lets the maintainer find your board without the board link."
-      onclick={copyRef}
-    >
-      {copied ? 'Copied' : `Board ref ${ref}`}
-    </button>
-  {/if}
-{/if}
+{/each}

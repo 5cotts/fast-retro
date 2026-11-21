@@ -1,4 +1,4 @@
-// The "Send feedback" link opens a public GitHub issue form, so what the app
+// The "Report a bug" and "Request a feature" links open a public GitHub issue form, so what the app
 // adds to it is deliberately tiny: the build, a coarse browser name and, on a
 // board, its reference code (see validBoardRef). Never add the board URL, its
 // name, a participant name or card text here. A board link is a password, and
@@ -53,10 +53,20 @@ export function browserSummary(ua: string): string | null {
   return os ? `${browser} on ${os}` : browser;
 }
 
+export type FeedbackKind = 'bug' | 'feature';
+
+export const FEEDBACK_KINDS: ReadonlyArray<{ kind: FeedbackKind; label: string; template: string }> = [
+  { kind: 'bug', label: 'Report a bug', template: 'bug.yml' },
+  { kind: 'feature', label: 'Request a feature', template: 'feature.yml' }
+];
+
 // GitHub issue forms read prefilled values from query parameters named after
-// the form field ids (`version`, `browser`, `board_ref`). Parameters a page doesn't use,
-// such as on the template chooser, are ignored.
-export function feedbackHref(base: string, ctx: FeedbackContext = {}): string {
+// the form field ids, and `template` picks the form, so each kind links
+// straight to its own form with no chooser page in between. A parameter the
+// form has no field for is ignored, so each kind only gets what its form
+// shows: a bug report carries the build and browser as well as the board
+// reference, a feature request only the board reference.
+export function feedbackHref(base: string, kind: FeedbackKind, ctx: FeedbackContext = {}): string {
   let url: URL;
   try {
     url = new URL(base);
@@ -64,10 +74,15 @@ export function feedbackHref(base: string, ctx: FeedbackContext = {}): string {
     return base;
   }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return base;
-  const version = shortVersion(ctx.version);
-  const browser = ctx.userAgent ? browserSummary(ctx.userAgent) : null;
-  if (version) url.searchParams.set('version', version);
-  if (browser) url.searchParams.set('browser', browser);
+  const template = FEEDBACK_KINDS.find((k) => k.kind === kind)?.template;
+  if (!template) return base;
+  url.searchParams.set('template', template);
+  if (kind === 'bug') {
+    const version = shortVersion(ctx.version);
+    const browser = ctx.userAgent ? browserSummary(ctx.userAgent) : null;
+    if (version) url.searchParams.set('version', version);
+    if (browser) url.searchParams.set('browser', browser);
+  }
   const boardRef = validBoardRef(ctx.boardRef);
   if (boardRef) url.searchParams.set('board_ref', boardRef);
   return url.toString();

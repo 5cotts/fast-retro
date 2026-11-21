@@ -37,7 +37,7 @@ body:
     id: board_ref
     attributes:
       label: Board reference
-      description: On a board? Click "Board ref" at the bottom of it and paste it here. It's a code that lets the maintainer find your board. It is not the board link and is safe to share.
+      description: Filled in for you when you came from a board. It's a code that lets the maintainer find your board. It is not the board link and is safe to share. Leave it as it is.
       placeholder: 7f3a-9c1e-b204
   - type: input
     id: version

@@ -265,7 +265,7 @@
       <p class="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
         New here?
         <a href="/docs" class="text-sky-600 dark:text-sky-400 hover:underline" onclick={() => track({ name: 'guide_open', params: { from: 'home' } })}>Read the user guide</a>.
-        <FeedbackLink from="home" class="text-sky-600 dark:text-sky-400 hover:underline" />
+        <FeedbackLink from="home" separated class="text-sky-600 dark:text-sky-400 hover:underline" />
       </p>
     </div>
   </div>

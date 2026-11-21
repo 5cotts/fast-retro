@@ -1,15 +1,17 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * The "Send feedback" link (frontend/src/lib/FeedbackLink.svelte, FEEDBACK_URL).
- * test-local.sh sets FEEDBACK_URL=https://example.com/issues/new/choose.
+ * The "Report a bug" and "Request a feature" links (frontend/src/lib/FeedbackLink.svelte, FEEDBACK_URL).
+ * test-local.sh sets FEEDBACK_URL=https://example.com/issues/new.
  * Plan: docs/feedback-intake-investigation.md, option D.
  *
- * The link opens a public page from inside a board, so what matters most is
- * what leaves with it: no referrer, and nothing from the board in the URL.
+ * The links open a public page from inside a board, so what matters most is
+ * what leaves with them: no referrer, and nothing from the board in the URL.
+ * Each one goes straight to its issue form with the form's fields prefilled,
+ * so the reporter never copies anything across.
  */
 
-const FEEDBACK = 'https://example.com/issues/new/choose';
+const FEEDBACK = 'https://example.com/issues/new';
 
 // Nothing here may leave the machine: example.com is answered locally.
 async function stubFeedbackSite(page: Page) {
@@ -44,95 +46,113 @@ async function createBoard(page: Page, label: string) {
   await expect(gotIt).toBeHidden();
 }
 
-test.describe('send feedback link', () => {
-  test('is on the home page and points at FEEDBACK_URL, adding only the browser', async ({ page }) => {
+const BUG = 'Report a bug';
+const FEATURE = 'Request a feature';
+const REF = /^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/;
+
+test.describe('feedback links', () => {
+  test('are on the home page and open the bug and feature forms, adding only the browser', async ({ page }) => {
     await page.goto('/');
-    const link = page.getByRole('link', { name: 'Send feedback' });
-    await expect(link).toBeVisible();
-    const href = new URL((await link.getAttribute('href')) ?? '');
-    expect(href.origin + href.pathname).toBe(FEEDBACK);
-    expect([...href.searchParams.keys()].every((k) => k === 'version' || k === 'browser')).toBe(true); // no board_ref off a board
-    expect(href.searchParams.get('browser')).toMatch(/^(Chrome|Edge|Firefox|Safari) \d+/);
+    const bug = page.getByRole('link', { name: BUG });
+    const feature = page.getByRole('link', { name: FEATURE });
+    await expect(bug).toBeVisible();
+    await expect(feature).toBeVisible();
+
+    const bugHref = new URL((await bug.getAttribute('href')) ?? '');
+    expect(bugHref.origin + bugHref.pathname).toBe(FEEDBACK);
+    expect(bugHref.searchParams.get('template')).toBe('bug.yml');
+    expect(bugHref.searchParams.get('browser')).toMatch(/^(Chrome|Edge|Firefox|Safari) \d+/);
+    expect([...bugHref.searchParams.keys()].every((k) => ['template', 'version', 'browser'].includes(k))).toBe(true); // no board_ref off a board
+
+    const featureHref = new URL((await feature.getAttribute('href')) ?? '');
+    expect(featureHref.origin + featureHref.pathname).toBe(FEEDBACK);
+    expect([...featureHref.searchParams.keys()]).toEqual(['template']);
+    expect(featureHref.searchParams.get('template')).toBe('feature.yml');
   });
 
-  test('is in the user guide header', async ({ page }) => {
+  test('are in the user guide header', async ({ page }) => {
     await page.goto('/docs');
-    const link = page.getByRole('banner').getByRole('link', { name: 'Send feedback' });
-    await expect(link).toBeVisible();
-    await expect(page.getByRole('main').getByRole('link', { name: 'Send feedback' })).toHaveCount(0);
+    const header = page.getByRole('banner');
+    await expect(header.getByRole('link', { name: BUG })).toBeVisible();
+    await expect(header.getByRole('link', { name: FEATURE })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('link', { name: BUG })).toHaveCount(0);
   });
 
-  test('on a board it opens in a new tab with no referrer and nothing from the board in the URL', async ({ page }) => {
+  test('on a board they open in a new tab with no referrer and nothing from the board in the URL', async ({ page }) => {
     const seen = await stubFeedbackSite(page);
     const label = `Secret retro ${Date.now()}`;
     await createBoard(page, label);
     const boardUrl = page.url();
-
-    const link = page.getByRole('contentinfo').getByRole('link', { name: 'Send feedback' });
-    await expect(link).toBeVisible();
-    await expect(link).toHaveAttribute('target', '_blank');
-    expect(await link.getAttribute('rel')).toMatch(/noreferrer/);
-
-    const [popup] = await Promise.all([page.context().waitForEvent('page'), link.click()]);
-    await popup.waitForLoadState();
-    expect(seen).toHaveLength(1);
-    expect(seen[0].referer).toBeUndefined();
     const slug = new URL(boardUrl).pathname.split('/').pop() ?? '';
-    expect(seen[0].url).not.toContain(slug);
-    expect(decodeURIComponent(seen[0].url)).not.toContain(label);
-    expect(decodeURIComponent(seen[0].url)).not.toContain('Tester');
+
+    for (const name of [BUG, FEATURE]) {
+      const link = page.getByRole('contentinfo').getByRole('link', { name });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute('target', '_blank');
+      expect(await link.getAttribute('rel')).toMatch(/noreferrer/);
+      const [popup] = await Promise.all([page.context().waitForEvent('page'), link.click()]);
+      await popup.waitForLoadState();
+      await popup.close();
+    }
+    expect(seen).toHaveLength(2);
+    for (const hit of seen) {
+      expect(hit.referer).toBeUndefined();
+      expect(hit.url).not.toContain(slug);
+      expect(decodeURIComponent(hit.url)).not.toContain(label);
+      expect(decodeURIComponent(hit.url)).not.toContain('Tester');
+    }
   });
 
-  test('on a board it shows a board reference that is safe to share and copies it', async ({ page, context }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  test('on a board they carry the board reference, with no copying and no slug', async ({ page }) => {
     const seen = await stubFeedbackSite(page);
     await createBoard(page, `Ref retro ${Date.now()}`);
     const slug = new URL(page.url()).pathname.split('/').pop() ?? '';
+    const footer = page.getByRole('contentinfo');
 
-    // By title, not name: the label changes to "Copied" after a click.
-    const button = page.getByRole('contentinfo').getByTitle(/^Paste this reference/);
-    await expect(button).toBeVisible();
-    const text = (await button.textContent()) ?? '';
-    const ref = text.replace('Board ref', '').trim();
-    expect(ref).toMatch(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/);
+    await expect(footer.getByRole('button', { name: /Board ref/ })).toHaveCount(0);
+
+    const bugHref = new URL((await footer.getByRole('link', { name: BUG }).getAttribute('href')) ?? '');
+    const ref = bugHref.searchParams.get('board_ref') ?? '';
+    expect(ref).toMatch(REF);
     expect(ref.replace(/-/g, '')).not.toContain(slug);
+    expect(bugHref.searchParams.get('template')).toBe('bug.yml');
+    expect(bugHref.searchParams.get('browser')).toBeTruthy();
 
-    await button.click();
-    await expect(button).toHaveText('Copied');
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ref);
+    const featureHref = new URL((await footer.getByRole('link', { name: FEATURE }).getAttribute('href')) ?? '');
+    expect(featureHref.searchParams.get('board_ref')).toBe(ref);
+    expect(featureHref.searchParams.get('template')).toBe('feature.yml');
+    expect([...featureHref.searchParams.keys()].sort()).toEqual(['board_ref', 'template']);
 
-    const link = page.getByRole('contentinfo').getByRole('link', { name: 'Send feedback' });
-    const href = new URL((await link.getAttribute('href')) ?? '');
-    expect(href.searchParams.get('board_ref')).toBe(ref);
-    expect(decodeURIComponent(href.toString())).not.toContain(slug);
-
-    const [popup] = await Promise.all([page.context().waitForEvent('page'), link.click()]);
+    const [popup] = await Promise.all([
+      page.context().waitForEvent('page'),
+      footer.getByRole('link', { name: BUG }).click()
+    ]);
     await popup.waitForLoadState();
     expect(seen[0].url).toContain(`board_ref=${ref}`);
+    expect(seen[0].url).toContain('template=bug.yml');
     expect(seen[0].url).not.toContain(slug);
   });
 
-  test('gives the same reference for a board each time and a different one for another board', async ({ page }) => {
+  test('give the same reference for a board each time and a different one for another board', async ({ page }) => {
     await stubFeedbackSite(page);
     await createBoard(page, `First ${Date.now()}`);
-    const refOf = async () =>
-      ((await page.getByRole('contentinfo').getByTitle(/^Paste this reference/).textContent()) ?? '').trim();
+    const refOf = async () => {
+      const link = page.getByRole('contentinfo').getByRole('link', { name: FEATURE });
+      await expect(link).toBeVisible();
+      return new URL((await link.getAttribute('href')) ?? '').searchParams.get('board_ref');
+    };
     const first = await refOf();
+    expect(first).toMatch(REF);
     await page.reload();
-    await expect(page.getByRole('contentinfo').getByTitle(/^Paste this reference/)).toBeVisible();
     expect(await refOf()).toBe(first);
 
     await createBoard(page, `Second ${Date.now()}`);
-    expect(await refOf()).not.toBe(first);
+    const second = await refOf();
+    expect(second).toMatch(REF);
+    expect(second).not.toBe(first);
   });
 
-  test('has no board reference on the home page', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('link', { name: 'Send feedback' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Board ref / })).toHaveCount(0);
-  });
-
-  test('is hidden when the server has no FEEDBACK_URL', async ({ page }) => {
+  test('are hidden when the server has no FEEDBACK_URL', async ({ page }) => {
     await page.route('**/api/config', async (route) => {
       const res = await route.fetch();
       const body = await res.json();
@@ -140,13 +160,15 @@ test.describe('send feedback link', () => {
     });
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Start a new retro' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Send feedback' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: BUG })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: FEATURE })).toHaveCount(0);
     await page.goto('/docs');
     await expect(page.getByRole('link', { name: 'User guide' }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Send feedback' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: BUG })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: FEATURE })).toHaveCount(0);
   });
 
-  test('tracks the click with where it came from and nothing else', async ({ page }) => {
+  test('track the click with where it came from and which kind, nothing else', async ({ page }) => {
     await stubFeedbackSite(page);
     await page.addInitScript(() => {
       const w = window as unknown as { __ga: unknown[]; gtag: (t: string, n: string, p: unknown) => void };
@@ -156,12 +178,15 @@ test.describe('send feedback link', () => {
       };
     });
     await page.goto('/');
-    const [popup] = await Promise.all([
-      page.context().waitForEvent('page'),
-      page.getByRole('link', { name: 'Send feedback' }).click()
-    ]);
-    await popup.close();
+    for (const name of [BUG, FEATURE]) {
+      const [popup] = await Promise.all([
+        page.context().waitForEvent('page'),
+        page.getByRole('link', { name }).click()
+      ]);
+      await popup.close();
+    }
     const events = await page.evaluate(() => (window as unknown as { __ga: unknown[] }).__ga);
-    expect(events).toContainEqual(['feedback_open', { from: 'home' }]);
+    expect(events).toContainEqual(['feedback_open', { from: 'home', kind: 'bug' }]);
+    expect(events).toContainEqual(['feedback_open', { from: 'home', kind: 'feature' }]);
   });
 });

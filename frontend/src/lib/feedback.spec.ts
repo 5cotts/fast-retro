@@ -41,48 +41,47 @@ describe('shortVersion', () => {
 });
 
 describe('feedbackHref', () => {
-  const base = 'https://github.com/5cotts/fast-retro/issues/new?template=bug.yml';
+  const base = 'https://github.com/5cotts/fast-retro/issues/new';
+  const ctx = { version: 'c9c5238a1b2c3d4e', userAgent: CHROME_MAC, boardRef: '7f3a-9c1e-b204' };
+  const keys = (href: string) => [...new URL(href).searchParams.keys()].sort();
 
-  it('adds the version and browser as prefill parameters', () => {
-    const href = new URL(feedbackHref(base, { version: 'c9c5238a1b2c3d4e', userAgent: CHROME_MAC }));
+  it('opens the bug form with the build, browser and board reference filled in', () => {
+    const href = new URL(feedbackHref(base, 'bug', ctx));
     expect(href.origin + href.pathname).toBe('https://github.com/5cotts/fast-retro/issues/new');
     expect(href.searchParams.get('template')).toBe('bug.yml');
     expect(href.searchParams.get('version')).toBe('c9c5238');
     expect(href.searchParams.get('browser')).toBe('Chrome 130 on macOS');
-  });
-
-  it('adds nothing else', () => {
-    const href = new URL(feedbackHref(base, { version: 'c9c5238a1b2c3d4e', userAgent: CHROME_MAC }));
-    expect([...href.searchParams.keys()].sort()).toEqual(['browser', 'template', 'version']);
-  });
-
-  it('adds the board reference when there is one', () => {
-    const href = new URL(feedbackHref(base, { userAgent: CHROME_MAC, boardRef: '7f3a-9c1e-b204' }));
     expect(href.searchParams.get('board_ref')).toBe('7f3a-9c1e-b204');
-    expect([...href.searchParams.keys()].sort()).toEqual(['board_ref', 'browser', 'template']);
+    expect(keys(href.toString())).toEqual(['board_ref', 'browser', 'template', 'version']);
+  });
+
+  it('opens the feature form with only the board reference', () => {
+    const href = new URL(feedbackHref(base, 'feature', ctx));
+    expect(href.searchParams.get('template')).toBe('feature.yml');
+    expect(href.searchParams.get('board_ref')).toBe('7f3a-9c1e-b204');
+    expect(keys(href.toString())).toEqual(['board_ref', 'template']);
+  });
+
+  it('adds no board reference off a board', () => {
+    const { boardRef: _unused, ...offBoard } = ctx;
+    expect(keys(feedbackHref(base, 'bug', offBoard))).toEqual(['browser', 'template', 'version']);
+    expect(keys(feedbackHref(base, 'feature', offBoard))).toEqual(['template']);
   });
 
   it('never lets anything but a reference through as board_ref', () => {
     for (const bad of ['my-retro-slug', 'https://x.test/board/abc', '7f3a-9c1e-b20', '7F3A-9C1E-B204', '']) {
-      expect(feedbackHref(base, { boardRef: bad })).toBe(base);
+      for (const kind of ['bug', 'feature'] as const) {
+        expect(new URL(feedbackHref(base, kind, { boardRef: bad })).searchParams.has('board_ref')).toBe(false);
+      }
     }
   });
 
-  it('leaves the link alone when there is nothing to add', () => {
-    expect(feedbackHref(base)).toBe(base);
-    expect(feedbackHref(base, { version: 'dev', userAgent: 'curl/8.0' })).toBe(base);
+  it('adds only the form when there is nothing else to add', () => {
+    expect(feedbackHref(base, 'bug')).toBe(`${base}?template=bug.yml`);
+    expect(feedbackHref(base, 'bug', { version: 'dev', userAgent: 'curl/8.0' })).toBe(`${base}?template=bug.yml`);
   });
 
   it('returns a value it cannot parse unchanged', () => {
-    expect(feedbackHref('not a url', { version: 'c9c5238a1b2c3d4e' })).toBe('not a url');
-  });
-});
-
-describe('validBoardRef', () => {
-  it('accepts only the xxxx-xxxx-xxxx shape', () => {
-    expect(validBoardRef('7f3a-9c1e-b204')).toBe('7f3a-9c1e-b204');
-    expect(validBoardRef('7f3a9c1eb204')).toBeNull();
-    expect(validBoardRef(null)).toBeNull();
-    expect(validBoardRef(undefined)).toBeNull();
+    expect(feedbackHref('not a url', 'bug', { version: 'c9c5238a1b2c3d4e' })).toBe('not a url');
   });
 });

@@ -47,7 +47,7 @@ else
   echo "==> Starting isolated backend on :$PORT via cargo run (scratch db: $DB)"
 fi
 RETRO_LEAD_TOKEN="$LEAD_TOKEN" PORT="$PORT" FASTRETRO_DB="$DB" COOKIE_SECURE=false FASTRETRO_RATE_LIMIT=10000 \
-  FEEDBACK_URL="https://example.com/issues/new/choose" \
+  FEEDBACK_URL="https://example.com/issues/new" \
   "${CMD[@]}" > "$LOG" 2>&1 &
 SERVER_PID=$!
 

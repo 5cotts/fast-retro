@@ -156,7 +156,7 @@ struct AppState {
     google: Option<Arc<GoogleVerifier>>,
     /// Mark session cookies Secure (production HTTPS). Off for local http tests.
     cookie_secure: bool,
-    /// Where the "Send feedback" link points (FEEDBACK_URL). None hides the
+    /// Where the "Report a bug" and "Request a feature" links point (FEEDBACK_URL). None hides the
     /// link everywhere, which is the default for self-hosted builds.
     feedback_url: Option<String>,
     /// Shared per-IP budget for endpoints that create resources or double as
@@ -1430,9 +1430,9 @@ mod tests {
     #[tokio::test]
     async fn config_reports_the_feedback_url_when_set() {
         let mut state = test_state();
-        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new/choose"));
+        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new"));
         let v = config_json(state).await;
-        assert_eq!(v["feedbackUrl"], "https://github.com/o/r/issues/new/choose");
+        assert_eq!(v["feedbackUrl"], "https://github.com/o/r/issues/new");
     }
 
     async fn board_status_json(state: AppState, slug: &str) -> serde_json::Value {
@@ -1459,7 +1459,7 @@ mod tests {
     #[tokio::test]
     async fn board_status_ref_is_stable_per_board_and_does_not_leak_the_slug() {
         let mut state = test_state();
-        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new/choose"));
+        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new"));
         let a = board_status_json(state.clone(), "alpha-board").await;
         let a_again = board_status_json(state.clone(), "alpha-board").await;
         let b = board_status_json(state.clone(), "beta-board").await;
@@ -1499,7 +1499,7 @@ mod tests {
     #[test]
     fn feedback_url_accepts_https_and_loopback_http() {
         for ok in [
-            "https://github.com/o/r/issues/new/choose",
+            "https://github.com/o/r/issues/new",
             "https://example.com/issues/new?template=bug.yml",
             "  https://example.com  ",
             "http://localhost:5199/feedback",
