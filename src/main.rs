@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     net::SocketAddr,
+    path::Path,
     sync::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
@@ -29,6 +30,7 @@ use tracing::{info, warn};
 
 mod archive;
 mod auth;
+mod boardref;
 mod db;
 mod ratelimit;
 mod sync;
@@ -154,6 +156,9 @@ struct AppState {
     google: Option<Arc<GoogleVerifier>>,
     /// Mark session cookies Secure (production HTTPS). Off for local http tests.
     cookie_secure: bool,
+    /// Where the "Report a bug" and "Request a feature" links point (FEEDBACK_URL). None hides the
+    /// link everywhere, which is the default for self-hosted builds.
+    feedback_url: Option<String>,
     /// Shared per-IP budget for endpoints that create resources or double as
     /// a token-guessing oracle (WS upgrade, board create, lead-token-check,
     /// Google sign-in).
@@ -351,8 +356,63 @@ fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// `fast-retro find-board <ref>`: print the board(s) a feedback report's board
+/// reference stands for. Reads the database at FASTRETRO_DB and prints to the
+/// operator's terminal only. Returns the process exit code.
+fn find_board(args: &[String]) -> i32 {
+    let [reference] = args else {
+        eprintln!("usage: fast-retro find-board <ref>   (for example 7f3a-9c1e-b204; reads FASTRETRO_DB)");
+        return 2;
+    };
+    let Some(reference) = boardref::normalize_ref(reference) else {
+        eprintln!("fast-retro: that isn't a board reference (expected 12 hex digits like 7f3a-9c1e-b204)");
+        return 2;
+    };
+    let db_path = std::env::var("FASTRETRO_DB").unwrap_or_else(|_| "data/fastretro.db".to_string());
+    if !Path::new(&db_path).is_file() {
+        eprintln!("fast-retro: no database at {db_path} (set FASTRETRO_DB)");
+        return 1;
+    }
+    let db = match Db::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("fast-retro: failed to open {db_path}: {e}");
+            return 1;
+        }
+    };
+    let Some(key) = db.existing_board_ref_key() else {
+        eprintln!("fast-retro: this database has never issued a board reference");
+        return 1;
+    };
+    let mut found = 0;
+    for slug in db.all_slugs() {
+        if boardref::board_ref(&key, &slug) != reference {
+            continue;
+        }
+        found += 1;
+        let row = db.get_board(&slug);
+        let status = match row.as_ref().map(|b| b.ended_at.is_some()) {
+            Some(true) => "ended",
+            Some(false) => "live",
+            None => "no board record",
+        };
+        let label = row.as_ref().map(|b| b.label.as_str()).filter(|l| !l.is_empty()).unwrap_or("(no name)");
+        println!("/board/{slug}  {label}  [{status}]");
+    }
+    if found == 0 {
+        eprintln!("fast-retro: no board in {db_path} matches {reference}");
+        return 1;
+    }
+    0
+}
+
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("find-board") {
+        std::process::exit(find_board(&args[1..]));
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -424,12 +484,15 @@ async fn main() {
         .filter(|n| *n > 0)
         .unwrap_or(RATE_LIMIT_MAX_REQUESTS);
 
+    let feedback_url = feedback_url_from_env(std::env::var("FEEDBACK_URL").ok().as_deref());
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
         db,
         google,
         cookie_secure,
+        feedback_url,
         rate_limiter: RateLimiter::new(rate_limit, RATE_LIMIT_WINDOW),
     };
 
@@ -816,7 +879,50 @@ async fn config(State(state): State<AppState>) -> Response {
         Some(v) => (true, v.client_id().to_string()),
         None => (false, String::new()),
     };
-    Json(serde_json::json!({ "googleEnabled": enabled, "googleClientId": client_id })).into_response()
+    Json(serde_json::json!({
+        "googleEnabled": enabled,
+        "googleClientId": client_id,
+        "feedbackUrl": state.feedback_url,
+    }))
+    .into_response()
+}
+
+/// The FEEDBACK_URL setting, if it's usable. Unset or empty means no feedback
+/// link anywhere. Anything that isn't a plain `https://` URL (or `http://` to
+/// a loopback host, for local testing) is ignored with a warning rather than
+/// rendered into a link, so a typo can't become a `javascript:` href.
+fn feedback_url_from_env(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if valid_feedback_url(raw) {
+        info!("feedback link enabled");
+        Some(raw.to_string())
+    } else {
+        warn!("ignoring FEEDBACK_URL: it must be an https:// URL (http:// only for localhost)");
+        None
+    }
+}
+
+fn valid_feedback_url(url: &str) -> bool {
+    if url.len() > 2048 || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    let (https, rest) = match (url.strip_prefix("https://"), url.strip_prefix("http://")) {
+        (Some(rest), _) => (true, rest),
+        (None, Some(rest)) => (false, rest),
+        _ => return false,
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let host = authority.rsplit_once(':').map_or(authority, |(h, _)| h);
+    if host.is_empty() {
+        return false;
+    }
+    https || matches!(host, "localhost" | "127.0.0.1")
 }
 
 #[derive(Deserialize)]
@@ -981,12 +1087,20 @@ async fn board_status(
             state.db.upsert_participant(&slug, &user.id);
         }
     }
+    // The board reference only exists to put in a feedback report, so it's
+    // only issued when the feedback link is on.
+    let board_ref = state
+        .feedback_url
+        .as_ref()
+        .and_then(|_| state.db.board_ref_key())
+        .map(|key| boardref::board_ref(&key, &slug));
     Json(serde_json::json!({
         "slug": slug,
         "exists": exists,
         "ended": ended,
         "label": label,
         "amHost": am_host,
+        "ref": board_ref,
     }))
     .into_response()
 }
@@ -1294,7 +1408,124 @@ mod tests {
             db: Db::open(":memory:").expect("open in-memory db"),
             google: None,
             cookie_secure: true,
+            feedback_url: None,
             rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
+        }
+    }
+
+    async fn config_json(state: AppState) -> serde_json::Value {
+        let req = with_peer(Request::builder().uri("/api/config").body(Body::empty()).unwrap());
+        let res = build_router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn config_has_no_feedback_url_by_default() {
+        let v = config_json(test_state()).await;
+        assert!(v["feedbackUrl"].is_null());
+    }
+
+    #[tokio::test]
+    async fn config_reports_the_feedback_url_when_set() {
+        let mut state = test_state();
+        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new"));
+        let v = config_json(state).await;
+        assert_eq!(v["feedbackUrl"], "https://github.com/o/r/issues/new");
+    }
+
+    async fn board_status_json(state: AppState, slug: &str) -> serde_json::Value {
+        let req = with_peer(
+            Request::builder()
+                .uri(format!("/api/boards/{slug}"))
+                .body(Body::empty())
+                .unwrap(),
+        );
+        let res = build_router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn board_status_has_no_ref_when_feedback_is_off() {
+        let state = test_state();
+        let v = board_status_json(state.clone(), "some-board").await;
+        assert!(v["ref"].is_null());
+        assert!(state.db.existing_board_ref_key().is_none(), "no key should be created");
+    }
+
+    #[tokio::test]
+    async fn board_status_ref_is_stable_per_board_and_does_not_leak_the_slug() {
+        let mut state = test_state();
+        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new"));
+        let a = board_status_json(state.clone(), "alpha-board").await;
+        let a_again = board_status_json(state.clone(), "alpha-board").await;
+        let b = board_status_json(state.clone(), "beta-board").await;
+        let r = a["ref"].as_str().expect("a ref");
+        assert_eq!(boardref::normalize_ref(r).as_deref(), Some(r));
+        assert_eq!(a["ref"], a_again["ref"]);
+        assert_ne!(a["ref"], b["ref"]);
+        assert!(!a.to_string().replace("\"slug\":\"alpha-board\"", "").contains("alpha-board"));
+    }
+
+    #[test]
+    fn a_stored_key_finds_the_board_from_its_ref() {
+        let db = Db::open(":memory:").unwrap();
+        assert!(db.existing_board_ref_key().is_none());
+        let key = db.board_ref_key().unwrap();
+        assert_eq!(db.board_ref_key().as_deref(), Some(key.as_str()), "the key is created once");
+        assert_eq!(db.existing_board_ref_key().as_deref(), Some(key.as_str()));
+        db.create_board("one-board", "One", None).unwrap();
+        db.append_update("doc-only-board", b"x");
+        db.compact("doc-only-board", b"snapshot");
+        let wanted = boardref::board_ref(&key, "doc-only-board");
+        let hits: Vec<String> = db
+            .all_slugs()
+            .into_iter()
+            .filter(|s| boardref::board_ref(&key, s) == wanted)
+            .collect();
+        assert_eq!(hits, vec!["doc-only-board".to_string()]);
+    }
+
+    #[test]
+    fn feedback_url_is_off_when_unset_or_blank() {
+        assert_eq!(feedback_url_from_env(None), None);
+        assert_eq!(feedback_url_from_env(Some("")), None);
+        assert_eq!(feedback_url_from_env(Some("   ")), None);
+    }
+
+    #[test]
+    fn feedback_url_accepts_https_and_loopback_http() {
+        for ok in [
+            "https://github.com/o/r/issues/new",
+            "https://example.com/issues/new?template=bug.yml",
+            "  https://example.com  ",
+            "http://localhost:5199/feedback",
+            "http://127.0.0.1/feedback",
+        ] {
+            assert_eq!(feedback_url_from_env(Some(ok)).as_deref(), Some(ok.trim()), "{ok}");
+        }
+    }
+
+    #[test]
+    fn feedback_url_rejects_anything_else() {
+        for bad in [
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "//example.com/x",
+            "example.com/x",
+            "ftp://example.com/x",
+            "http://example.com/x",
+            "https://",
+            "https:///path",
+            "https://user:pw@example.com/x",
+            "https://example.com/a b",
+            "https://example.com/\nx",
+            "https://example.com/\u{7}x",
+        ] {
+            assert_eq!(feedback_url_from_env(Some(bad)), None, "{bad}");
         }
     }
 

@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Fast Retro isn't working
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue will be public.** Anyone on the internet can read it.
+
+        Please don't paste a board link, board name, participant names or card text. A board link works like a password: anyone who has it can join the board and read it. Describe what happened in your own words instead.
+
+        **Screenshots and videos are public too.** A picture of a board shows its cards and names. Crop to the problem, or reproduce it on a new board with made-up text first.
+
+        Security problems: don't file them here. Use [private reporting](https://github.com/5cotts/fast-retro/security/advisories/new).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead. You can drag a screenshot or short video in here (see the note above about what's visible in it).
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - Columns board
+        - Canvas board
+        - Home page / starting a retro
+        - Export or import
+        - Presenting
+        - User guide
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: board_ref
+    attributes:
+      label: Board reference
+      description: Filled in for you when you came from a board. It's a code that lets the maintainer find your board. It is not the board link and is safe to share. Leave it as it is.
+      placeholder: 7f3a-9c1e-b204
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Filled in for you when you came from the app. Leave it as it is.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Filled in for you when you came from the app. Add your device if it matters (phone, tablet).
+  - type: checkboxes
+    id: no-board-content
+    attributes:
+      label: Before you send
+      options:
+        - label: I haven't included a board link or any card text.
+          required: true

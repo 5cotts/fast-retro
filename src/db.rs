@@ -117,6 +117,13 @@ CREATE TABLE IF NOT EXISTS archives (
 );
 CREATE INDEX IF NOT EXISTS idx_archives_ended_at ON archives(ended_at);
 
+-- Small server-side settings. Holds `board_ref_key`, the secret behind board
+-- reference IDs (see boardref.rs). Created on first use, never sent anywhere.
+CREATE TABLE IF NOT EXISTS app_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Declared now for later phases; not yet written to.
 CREATE TABLE IF NOT EXISTS boards (
     slug           TEXT PRIMARY KEY,
@@ -462,6 +469,53 @@ impl Db {
             params![slug, label, now, created_by, hash_secret(&host_key)],
         )?;
         Ok(if changed > 0 { Some(host_key) } else { None })
+    }
+
+    /// The secret that board reference IDs are keyed with. Created on first
+    /// use and then fixed for the life of the database, so a reference quoted
+    /// in a report stays valid across restarts and token rotations.
+    pub fn board_ref_key(&self) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT OR IGNORE INTO app_meta (key, value) VALUES ('board_ref_key', ?1)",
+            params![random_token()],
+        )
+        .ok()?;
+        conn.query_row(
+            "SELECT value FROM app_meta WHERE key = 'board_ref_key'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap_or(None)
+    }
+
+    /// The reference key if one was ever created. Never creates one, so a
+    /// lookup against a database that has issued no references finds nothing.
+    pub fn existing_board_ref_key(&self) -> Option<String> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM app_meta WHERE key = 'board_ref_key'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap_or(None)
+    }
+
+    /// Every board slug the database knows about, whether or not it has a
+    /// `boards` row (boards opened from a lead URL only have a document).
+    pub fn all_slugs(&self) -> Vec<String> {
+        let conn = self.conn.lock().unwrap();
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT slug FROM boards UNION SELECT slug FROM board_docs UNION SELECT slug FROM archives",
+        ) else {
+            return Vec::new();
+        };
+        let Ok(rows) = stmt.query_map([], |row| row.get::<_, String>(0)) else {
+            return Vec::new();
+        };
+        rows.flatten().collect()
     }
 
     pub fn get_board(&self, slug: &str) -> Option<BoardRow> {

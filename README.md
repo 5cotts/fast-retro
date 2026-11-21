@@ -115,6 +115,7 @@ running/deployed) before running the suite.
 | `FASTRETRO_DB`     | `data/fastretro.db`                    | Path to the SQLite database file. Created automatically on first run.       |
 | `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
 | `GA_MEASUREMENT_ID` | unset (analytics disabled)            | Google Analytics 4 measurement ID. Optional — leave unset to disable GA4 tracking entirely. |
+| `FEEDBACK_URL`     | unset (no feedback links)              | Your repo's new-issue page, for example `https://github.com/<owner>/<repo>/issues/new`, behind the "Report a bug" and "Request a feature" links. Must be `https://` (`http://` only for localhost). The app adds only `template`, `version`, `browser` and (on a board) `board_ref` query parameters, never anything that opens a board. See [Feedback links](#feedback-links). |
 | `COOKIE_SECURE`    | `true`                                 | Whether session cookies are marked `Secure`. Set to `0`/`false` for local HTTP testing. |
 | `FASTRETRO_RATE_LIMIT` | `60`                               | Per-IP requests per minute for WebSocket joins, board creation, sign-in and the lead-token check. `test-local.sh` raises it because the whole e2e suite shares one IP. |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
@@ -123,6 +124,34 @@ running/deployed) before running the suite.
 If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment. A token set through the environment is never printed; the banner only says it is set and how long it is.
 
 A `.env.example` listing all of these is checked in — copy it to `.env` and adjust for local use (`.env` itself is gitignored).
+
+### Feedback links
+
+Set `FEEDBACK_URL` and "Report a bug" and "Request a feature" links appear on the home page, in the board footer and in the user guide. Unset, nothing is shown. They open in a new tab with no referrer, so the board link isn't passed along.
+
+This deployment points `FEEDBACK_URL` at the repo's `https://github.com/<owner>/<repo>/issues/new`. Each link adds `template` (`bug.yml` or `feature.yml`), which opens that form in `.github/ISSUE_TEMPLATE/` directly, and the form's fields arrive filled in, so the reporter has nothing to copy or paste:
+
+| Link | Query parameters added |
+| --- | --- |
+| Report a bug | `template=bug.yml`, `version` (the short commit of the running build), `browser` (for example "Chrome 130 on macOS") and, on a board, `board_ref` (below) |
+| Request a feature | `template=feature.yml` and, on a board, `board_ref` |
+
+GitHub matches each parameter to the form field with the same `id`, so the ids `version`, `browser` and `board_ref` in the forms and the names in `frontend/src/lib/feedback.ts` must stay in step. Nothing else is added, and that must stay true: a board link works like a password. Issues are public, so the forms say not to paste board links or card text. Reporters need a GitHub account; if they aren't signed in, GitHub asks them to sign in and then returns them to the same prefilled form.
+
+#### Board references
+
+A board's URL lets anyone join and read it, so it can't go in a public report, yet it's what you'd want when debugging. Each feedback link from a board carries a **board reference** instead, like `7f3a-9c1e-b204`: the first 48 bits of an HMAC-SHA256 of the board's slug, keyed with a random secret stored in the database (`app_meta.board_ref_key`, created the first time a board is opened with the feedback link on). It can't be turned back into a slug or recomputed without the key, so it's safe to post. It names a board; it grants no access to one.
+
+To find the board behind a reference, run this where the database is:
+
+```sh
+FASTRETRO_DB=data/fastretro.db ./fast-retro find-board 7f3a-9c1e-b204
+# /board/<slug>  <retro name>  [live]
+```
+
+It reads the database and prints to your terminal only. It finds nothing for a database that never issued a reference. Don't delete `app_meta`: references already quoted in issues would stop matching. If the database is restored from a backup taken before the first reference was issued, no key exists and new references won't match old issues.
+
+To use your own tracker, point `FEEDBACK_URL` at any page that accepts the same query parameters; the `template` parameter is harmless elsewhere. Security reports go through `SECURITY.md`, not the forms.
 
 ### Google Sign-In
 

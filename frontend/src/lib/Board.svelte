@@ -55,6 +55,7 @@
   } from './boardfile';
   import { track } from './analytics';
   import { boardGuidePath } from './guide/pages';
+  import FeedbackLink from './FeedbackLink.svelte';
   import { getOrCreateUserId, setDisplayName } from './identity';
   import { getName, setName, getTheme, setTheme, getOnboarded, setOnboarded, type ThemePref } from './storage';
   import { updateAwarenessUser } from './awareness';
@@ -88,13 +89,15 @@
     slug,
     leadToken = '',
     hostKey = '',
-    readOnly = false
+    readOnly = false,
+    boardRef = null
   } = $props<{
     isLead?: boolean;
     slug: string;
     leadToken?: string;
     hostKey?: string;
     readOnly?: boolean;
+    boardRef?: string | null;
   }>();
 
   // A board the host has ended is read-only for everyone. Seeded from the
@@ -1177,6 +1180,13 @@
         >
           User guide
         </a>
+        <FeedbackLink
+          from="board"
+          {boardRef}
+          separated
+          leading
+          class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded"
+        />
       </footer>
     {/if}
   </div>
