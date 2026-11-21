@@ -41,6 +41,10 @@
     // A card being dragged would group with this one if dropped now.
     isGroupTarget?: boolean;
     clusterActions?: ClusterActions;
+    // The other prompts, for the card's Move menu. A canvas card can't be
+    // dragged to another prompt, so the menu is how it changes.
+    moves?: { key: string; title: string }[];
+    onMove?: (toColumn: string) => void;
   }
 
   let {
@@ -65,7 +69,9 @@
     groups = [],
     canGroup = false,
     isGroupTarget = false,
-    clusterActions
+    clusterActions,
+    moves = [],
+    onMove = () => {}
   }: Props = $props();
 
   let el = $state<HTMLElement | null>(null);
@@ -127,13 +133,16 @@
       {cardActions}
     >
       {#snippet actions()}
-        {#if canGroup && clusterActions}
+        {#if (canGroup && clusterActions) || (!readOnly && moves.length > 0)}
           <CardGroupMenu
             {groups}
             currentId={groupId}
-            onJoin={(g: string) => clusterActions.join(column.key, card.id, g)}
-            onCreate={(label: string) => clusterActions.create(column.key, card.id, label)}
-            onLeave={() => clusterActions.leave(column.key, card.id)}
+            canGroup={canGroup && clusterActions !== undefined}
+            moves={readOnly ? [] : moves}
+            onJoin={(g: string) => clusterActions?.join(column.key, card.id, g)}
+            onCreate={(label: string) => clusterActions?.create(column.key, card.id, label)}
+            onLeave={() => clusterActions?.leave(column.key, card.id)}
+            {onMove}
           />
         {/if}
       {/snippet}

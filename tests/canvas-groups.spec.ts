@@ -12,6 +12,7 @@ const VIEWPORT = { width: 1400, height: 900 };
 interface SeedCard {
   text: string;
   clusterId?: string;
+  votes?: string[];
   pos?: { x: number; y: number; z: number };
 }
 
@@ -402,6 +403,145 @@ test.describe('fast-retro canvas groups', () => {
       await expect(groups(page).getByTestId('canvas-card')).toHaveCount(2);
       await expect(page.getByText(`Secret one ${s}`)).toHaveCount(0);
       await expect(page.getByText('Hidden theme')).toHaveCount(0);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('Move to another prompt keeps the card where it is and in its group, and works outside Group', async ({ browser }) => {
+    const { ctx, page } = await newPage(browser);
+    try {
+      const s = suffix();
+      await importBoard(
+        page,
+        canvasFile(
+          `Move prompt ${s}`,
+          {
+            ok: [
+              { text: `In box ${s}`, clusterId: 'g', pos: spread(0) },
+              { text: `In box too ${s}`, clusterId: 'g', pos: spread(1) },
+              { text: `Loose ${s}`, pos: spread(4) },
+              { text: `Unmoved ${s}` }
+            ]
+          },
+          { phase: 'vote', clusters: [{ id: 'g', label: 'Kept', pos: { x: 100, y: 100, z: 1 } }] }
+        ),
+        'Host'
+      );
+      // Outside Group the menu is just the moves.
+      const loose = cardEl(page, `Loose ${s}`);
+      await expect(loose.getByRole('button', { name: 'Group this card' })).toHaveCount(0);
+      const before = await worldPos(loose);
+      await loose.getByRole('button', { name: 'Move this card' }).click();
+      await expect(page.getByRole('menuitem', { name: 'Move to Went OK' })).toHaveCount(0);
+      await page.getByRole('menuitem', { name: 'Move to Went well' }).click();
+      await expect(loose).toHaveAttribute('data-column', 'well');
+      expect(await worldPos(loose)).toEqual(before);
+      expect(await loose.getAttribute('class')).toContain('emerald');
+
+      // A card still in its starting slot stays put too.
+      const unmoved = cardEl(page, `Unmoved ${s}`);
+      const slot = await unmoved.boundingBox();
+      await unmoved.getByRole('button', { name: 'Move this card' }).click();
+      await page.getByRole('menuitem', { name: 'Move to Went well' }).click();
+      await expect(unmoved).toHaveAttribute('data-column', 'well');
+      const after = await unmoved.boundingBox();
+      expect(Math.round(after!.x)).toBe(Math.round(slot!.x));
+      expect(Math.round(after!.y)).toBe(Math.round(slot!.y));
+
+      // A card in a box changes prompt without leaving the box.
+      const boxed = groups(page).getByTestId('canvas-card').filter({ hasText: `In box ${s}` });
+      await boxed.getByRole('button', { name: 'Move this card' }).click();
+      await page.getByRole('menuitem', { name: 'Move to Went well' }).click();
+      await expect(boxed).toHaveAttribute('data-column', 'well');
+      await expect(groups(page).getByTestId('canvas-card')).toHaveCount(2);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('Top voted ranks a group by the people who voted on it, and picking it pans to the box', async ({ browser }) => {
+    const { ctx, page } = await newPage(browser);
+    try {
+      const s = suffix();
+      await importBoard(
+        page,
+        canvasFile(
+          `Top ${s}`,
+          {
+            ok: [
+              { text: `Alpha ${s}`, clusterId: 'g', pos: spread(0), votes: ['u1', 'u2'] },
+              { text: `Beta ${s}`, clusterId: 'g', pos: spread(1), votes: ['u2', 'u3'] },
+              { text: `Solo ${s}`, pos: { x: 3000, y: 2000, z: 1 }, votes: ['u1'] }
+            ]
+          },
+          { phase: 'discuss', clusters: [{ id: 'g', label: `Theme ${s}`, pos: { x: 100, y: 100, z: 1 } }] }
+        ),
+        'Host'
+      );
+      const panel = page.getByTestId('top-voted');
+      const rows = panel.getByRole('listitem');
+      await expect(rows).toHaveCount(2);
+      // Three different people voted on the group; the loose card has one.
+      await expect(rows.first()).toContainText(`Theme ${s}`);
+      await expect(rows.first()).toContainText('Group · 2 cards');
+      await expect(rows.first().getByLabel('3 voters')).toBeVisible();
+      await expect(rows.nth(1)).toContainText(`Solo ${s}`);
+      await expect(panel).not.toContainText(`Alpha ${s}`);
+
+      await rows.nth(1).click();
+      await expect(cardEl(page, `Solo ${s}`)).toHaveAttribute('data-highlighted', '');
+      await rows.first().click();
+      await expect(groups(page).first()).toHaveAttribute('data-highlighted', '');
+      const port = await page.getByTestId('board-canvas').boundingBox();
+      const box = await groups(page).first().boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(port!.x);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(port!.x + port!.width);
+    } finally {
+      await ctx.close();
+    }
+  });
+
+  test('List view shows group rows and groups through the card menu, and the canvas follows', async ({ browser }) => {
+    test.setTimeout(90_000);
+    const { ctx, page } = await newPage(browser);
+    try {
+      const s = suffix();
+      await importBoard(
+        page,
+        canvasFile(
+          `List ${s}`,
+          {
+            ok: [
+              { text: `Boxed ${s}`, clusterId: 'g', pos: spread(0) },
+              { text: `Boxed too ${s}`, clusterId: 'g', pos: spread(1) },
+              { text: `Solo ${s}`, pos: spread(4) }
+            ]
+          },
+          { clusters: [{ id: 'g', label: `Listed ${s}`, pos: { x: 100, y: 100, z: 1 } }] }
+        ),
+        'Host'
+      );
+      await page.getByRole('button', { name: 'List', exact: true }).click();
+      await expect(page.getByText(/Use a card's Group button/)).toBeVisible();
+      const row = page.getByRole('list', { name: new RegExp(`^Group: Listed ${s}`) }).first();
+      await expect(row).toBeVisible();
+      await expect(page.getByRole('button', { name: `Ungroup Listed ${s}` })).toBeVisible();
+
+      // Join from the menu, in the list.
+      const solo = page.getByRole('group', { name: `Card: Solo ${s}` });
+      await solo.getByRole('button', { name: 'Group this card' }).click();
+      await page.getByRole('menuitem', { name: `Listed ${s}` }).click();
+      await expect(page.getByRole('list', { name: new RegExp(`^Group: Listed ${s}, 3 cards`) }).first()).toBeVisible();
+
+      // Cards can't be dragged around here.
+      await expect(solo).not.toHaveAttribute('draggable', 'true');
+
+      // The canvas shows the same group, still where it was.
+      await page.getByRole('button', { name: 'Canvas', exact: true }).click();
+      await expect(groups(page)).toHaveCount(1);
+      await expect(groups(page).getByTestId('canvas-card')).toHaveCount(3);
+      expect(await worldPos(groups(page).first())).toEqual({ x: 100, y: 100 });
     } finally {
       await ctx.close();
     }

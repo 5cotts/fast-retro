@@ -9,6 +9,7 @@ import {
   groupBoxSize,
   groupColumns,
   planCanvasDrop,
+  topVotedItems,
   type DragSource
 } from './canvasGroups';
 
@@ -112,5 +113,26 @@ describe('freeSpotBeside', () => {
   it('falls back to the first choice on a board with no gap', () => {
     const everything = { x: -50_000, y: -50_000, width: 100_000, height: 100_000 };
     expect(freeSpotBeside(from, size, [everything])).toEqual({ x: 324, y: 0 });
+  });
+});
+
+describe('topVotedItems', () => {
+  const card = (id: string, votes: string[]) => ({ id, text: `card ${id}`, votes, color: 'amber' });
+  const group = (id: string, voters: number, cards = 2) => ({ id, name: `group ${id}`, cards, voters });
+
+  it('ranks groups and cards together by the people who voted', () => {
+    const rows = topVotedItems([card('a', ['u1']), card('b', ['u1', 'u2', 'u3'])], [group('g', 2)]);
+    expect(rows.map((r) => r.id)).toEqual(['b', 'g', 'a']);
+    expect(rows[1]).toMatchObject({ kind: 'group', votes: 2, cards: 2, text: 'group g', color: null });
+    expect(rows[0]).toMatchObject({ kind: 'card', votes: 3, color: 'amber' });
+  });
+
+  it('leaves out anything nobody voted for', () => {
+    expect(topVotedItems([card('a', [])], [group('g', 0)])).toEqual([]);
+  });
+
+  it('puts a group before a card on a tie, and keeps the order otherwise', () => {
+    const rows = topVotedItems([card('a', ['u1']), card('b', ['u2'])], [group('g', 1), group('h', 1)]);
+    expect(rows.map((r) => r.id)).toEqual(['g', 'h', 'a', 'b']);
   });
 });

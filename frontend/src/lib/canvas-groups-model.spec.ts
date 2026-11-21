@@ -11,7 +11,7 @@ import {
   serializeBoardFile,
   type BoardFile
 } from './boardfile';
-import { readAllCards, createCluster, renameCluster, setCardCluster, setClusterPos, setUpAfterSync } from './yboard';
+import { addCard, createCluster, moveCard, readAllCards, renameCluster, setCardCluster, setCardPos, setClusterPos, setUpAfterSync } from './yboard';
 import { DEFAULT_COLUMNS } from './columns';
 import type { CardData } from './types';
 
@@ -201,5 +201,22 @@ describe('a group on a canvas: import', () => {
     expect(first.get('clusterId')).toBe(group.id);
     setCardCluster(state.board, 'wentWell', first.get('id') as string, id);
     expect(readAllCards(state.board).wentWell[0].clusterId).toBe(id);
+  });
+});
+
+describe('moving a card to another prompt on a canvas', () => {
+  it('keeps its position and its group', () => {
+    const state = freshDoc();
+    for (const key of ['ok', 'well']) state.board.set(key, new Y.Array<Y.Map<unknown>>());
+    addCard(state.board, 'ok', 'Mover', 'u1');
+    const id = readAllCards(state.board).ok[0].id;
+    const group = createCluster(state.clusters, 'G', 1, { x: 1, y: 2, z: 1 });
+    setCardCluster(state.board, 'ok', id, group);
+    setCardPos(state.board, 'ok', id, { x: 300, y: 400, z: 7 });
+    moveCard(state.doc, state.board, 'ok', id, 'well', null);
+    const cards = readAllCards(state.board);
+    expect(cards.ok).toHaveLength(0);
+    expect(cards.well).toHaveLength(1);
+    expect(cards.well[0]).toMatchObject({ id, text: 'Mover', clusterId: group, pos: { x: 300, y: 400, z: 7 } });
   });
 });

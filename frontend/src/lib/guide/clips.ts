@@ -2,6 +2,8 @@ import canvasAdd from './clips/canvas-add.webp';
 import canvasAddPoster from './clips/canvas-add.poster.webp';
 import canvasCluster from './clips/canvas-cluster.webp';
 import canvasClusterPoster from './clips/canvas-cluster.poster.webp';
+import canvasGroup from './clips/canvas-group.webp';
+import canvasGroupPoster from './clips/canvas-group.poster.webp';
 import canvasNavigate from './clips/canvas-navigate.webp';
 import canvasNavigatePoster from './clips/canvas-navigate.poster.webp';
 import editBoard from './clips/edit-board.webp';
@@ -38,6 +40,13 @@ export const GUIDE_CLIPS = {
     width: 800,
     height: 524,
     alt: 'Dragging a card to sit just below a related card, then double-clicking beside them and typing a label.'
+  },
+  'canvas-group': {
+    src: canvasGroup,
+    poster: canvasGroupPoster,
+    width: 800,
+    height: 484,
+    alt: 'Dropping a card on another card in the Group phase makes a box around both. Clicking the group\'s name and typing "Deploys" names it, and a third card dropped on the box joins it.'
   },
   'canvas-navigate': {
     src: canvasNavigate,

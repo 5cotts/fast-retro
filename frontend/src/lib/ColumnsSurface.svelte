@@ -27,9 +27,14 @@
     reducedMotion: boolean;
     coarsePointer: boolean;
     onRenameColumn: (key: string, title: string) => void;
-    // False for a canvas board's List view: same cards, nothing to rearrange,
-    // because moving a card here would rebuild it and lose its canvas position.
+    // False for a canvas board's List view: same cards, nothing to reorder.
+    // Cards there have places of their own on the canvas, and the order they sit
+    // in is where unplaced ones start.
     arrangeable?: boolean;
+    // Whether groups show and can be changed, with the Group menu and each
+    // group's name, Ungroup and Merge. A canvas board's List view has them too,
+    // and it's the way to group on a phone. Dragging to group stays off there.
+    groupable?: boolean;
   }
 
   let {
@@ -44,7 +49,8 @@
     reducedMotion,
     coarsePointer,
     onRenameColumn,
-    arrangeable = true
+    arrangeable = true,
+    groupable = arrangeable
   }: Props = $props();
 
   let dragCardId = $state<string | null>(null);
@@ -165,13 +171,13 @@
 
   const layout = $derived(
     layoutBoard(board.columns, board.cards, board.clusters, {
-      showClusters: arrangeable && clustersVisible(board.phase, ended),
+      showClusters: groupable && clustersVisible(board.phase, ended),
       sortByVotes: sortActive
     })
   );
   const aligned = $derived(canAlignRows && layout.lanes.length > 0);
   const inputColumnCount = $derived(board.columns.filter((c) => c.key !== ACTIONS_COLUMN_KEY).length);
-  const canCluster = $derived(arrangeable && canEditClusters(board.phase, ended));
+  const canCluster = $derived(groupable && canEditClusters(board.phase, ended));
   const canMergeClusters = $derived(canCluster && isLead);
   const dragCanGroup = $derived(canCluster && dragFromCol !== null && dragFromCol !== ACTIONS_COLUMN_KEY);
 

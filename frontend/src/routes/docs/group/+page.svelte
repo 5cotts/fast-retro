@@ -2,7 +2,7 @@
   import GuideClip from '$lib/guide/GuideClip.svelte';
 </script>
 
-<p>This page is about column boards. On a canvas, cards group by sitting close together: see <a href="/docs/canvas">Use a canvas board</a>.</p>
+<p>This page is about column boards. On a canvas, cards group by sitting close together or by going into a box: see <a href="/docs/canvas">Use a canvas board</a>.</p>
 
 <section>
   <h2>Group cards</h2>

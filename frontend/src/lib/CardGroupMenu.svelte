@@ -1,24 +1,34 @@
 <script lang="ts">
-  import { Layers } from 'lucide-svelte';
+  import { ArrowRightLeft, Layers } from 'lucide-svelte';
   import { tick } from 'svelte';
   import { clusterDisplayName, MAX_CLUSTER_LABEL_LEN, type ClusterDef } from './clusters';
 
   // Grouping without a drag, for touch and keyboard users: join a group, start
   // a new one, or leave. A new group needs a name, because a one-card group with
   // no name displays as a normal card and the choice would seem to do nothing.
+  // On a canvas it can also move the card to another prompt, which a canvas card
+  // can't do by dragging, and which is allowed outside the Group phase too.
   let {
-    groups,
-    currentId,
-    onJoin,
-    onCreate,
-    onLeave
+    groups = [],
+    currentId = null,
+    canGroup = true,
+    moves = [],
+    onJoin = () => {},
+    onCreate = () => {},
+    onLeave = () => {},
+    onMove = () => {}
   } = $props<{
-    groups: ClusterDef[];
+    groups?: ClusterDef[];
     // The group this card shows in, if any.
-    currentId: string | null;
-    onJoin: (clusterId: string) => void;
-    onCreate: (label: string) => void;
-    onLeave: () => void;
+    currentId?: string | null;
+    // False leaves only the moves.
+    canGroup?: boolean;
+    // The prompts this card could move to.
+    moves?: { key: string; title: string }[];
+    onJoin?: (clusterId: string) => void;
+    onCreate?: (label: string) => void;
+    onLeave?: () => void;
+    onMove?: (column: string) => void;
   }>();
 
   let open = $state(false);
@@ -114,79 +124,102 @@
     class="inline-flex items-center gap-1 rounded-full border border-slate-200 dark:border-slate-600 px-2.5 py-1 min-h-[40px] hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors {currentId ? 'border-violet-300 dark:border-violet-600 text-violet-700 dark:text-violet-200' : ''}"
     aria-haspopup="menu"
     aria-expanded={open}
-    aria-label="Group this card"
-    title="Group this card with others"
+    aria-label={canGroup ? 'Group this card' : 'Move this card'}
+    title={canGroup ? (moves.length ? 'Group this card with others, or move it to another prompt' : 'Group this card with others') : 'Move this card to another prompt'}
     onclick={() => (open ? closeMenu() : openMenu())}
   >
-    <Layers size={14} aria-hidden="true" />
-    <span>Group</span>
+    {#if canGroup}
+      <Layers size={14} aria-hidden="true" />
+      <span>Group</span>
+    {:else}
+      <ArrowRightLeft size={14} aria-hidden="true" />
+      <span>Move</span>
+    {/if}
   </button>
   {#if open}
     <div
       bind:this={menuEl}
       role="menu"
-      aria-label="Group this card"
+      aria-label={canGroup ? 'Group this card' : 'Move this card'}
       tabindex="-1"
       onkeydown={onMenuKeydown}
       class="absolute z-30 w-56 max-h-64 overflow-y-auto p-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg {alignRight ? 'right-0' : 'left-0'} {alignUp ? 'bottom-full mb-1' : 'top-full mt-1'}"
     >
-      {#each others as g (g.id)}
-        <button
-          type="button"
-          role="menuitem"
-          tabindex="-1"
-          class="w-full text-left text-sm rounded-md px-2.5 py-2 break-words hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
-          onclick={() => choose(() => onJoin(g.id))}
-        >
-          {clusterDisplayName(g)}
-        </button>
-      {/each}
-      {#if naming}
-        <form
-          class="flex gap-1 p-1"
-          onsubmit={(e) => {
-            e.preventDefault();
-            submitName();
-          }}
-        >
-          <input
-            bind:this={nameEl}
-            bind:value={newName}
-            type="text"
-            maxlength={MAX_CLUSTER_LABEL_LEN}
-            aria-label="New group name"
-            placeholder="Group name"
-            class="input flex-1 min-w-0 px-2 py-1 text-sm"
-          />
+      {#if canGroup}
+        {#each others as g (g.id)}
           <button
-            type="submit"
-            disabled={!newName.trim()}
-            class="text-xs px-2.5 py-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md font-medium disabled:opacity-40"
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            class="w-full text-left text-sm rounded-md px-2.5 py-2 break-words hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
+            onclick={() => choose(() => onJoin(g.id))}
           >
-            Create
+            {clusterDisplayName(g)}
           </button>
-        </form>
-      {:else}
-        <button
-          type="button"
-          role="menuitem"
-          tabindex="-1"
-          class="w-full text-left text-sm rounded-md px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
-          onclick={startNaming}
-        >
-          New group…
-        </button>
+        {/each}
+        {#if naming}
+          <form
+            class="flex gap-1 p-1"
+            onsubmit={(e) => {
+              e.preventDefault();
+              submitName();
+            }}
+          >
+            <input
+              bind:this={nameEl}
+              bind:value={newName}
+              type="text"
+              maxlength={MAX_CLUSTER_LABEL_LEN}
+              aria-label="New group name"
+              placeholder="Group name"
+              class="input flex-1 min-w-0 px-2 py-1 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={!newName.trim()}
+              class="text-xs px-2.5 py-1 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-md font-medium disabled:opacity-40"
+            >
+              Create
+            </button>
+          </form>
+        {:else}
+          <button
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            class="w-full text-left text-sm rounded-md px-2.5 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
+            onclick={startNaming}
+          >
+            New group…
+          </button>
+        {/if}
+        {#if currentId}
+          <button
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            class="w-full text-left text-sm rounded-md px-2.5 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
+            onclick={() => choose(onLeave)}
+          >
+            Remove from group
+          </button>
+        {/if}
       {/if}
-      {#if currentId}
-        <button
-          type="button"
-          role="menuitem"
-          tabindex="-1"
-          class="w-full text-left text-sm rounded-md px-2.5 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
-          onclick={() => choose(onLeave)}
-        >
-          Remove from group
-        </button>
+      {#if moves.length > 0}
+        {#if canGroup}
+          <div class="my-1 border-t border-slate-200 dark:border-slate-700" role="separator"></div>
+        {/if}
+        {#each moves as m (m.key)}
+          <button
+            type="button"
+            role="menuitem"
+            tabindex="-1"
+            class="w-full text-left text-sm rounded-md px-2.5 py-2 break-words hover:bg-slate-100 dark:hover:bg-slate-700 focus:bg-slate-100 dark:focus:bg-slate-700 outline-none"
+            onclick={() => choose(() => onMove(m.key))}
+          >
+            Move to {m.title}
+          </button>
+        {/each}
       {/if}
     </div>
   {/if}
