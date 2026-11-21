@@ -110,7 +110,7 @@ export async function endBoard(
     autoSort: boolean;
     hideCards?: boolean;
     columns?: { key: string; title: string; color: string }[];
-    clusters?: { id: string; label: string }[];
+    clusters?: { id: string; label: string; pos?: { x: number; y: number; z: number } }[];
     layout?: 'canvas';
     labels?: { text: string; x: number; y: number }[];
     endedMessage: string;

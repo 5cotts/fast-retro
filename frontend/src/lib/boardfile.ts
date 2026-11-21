@@ -4,6 +4,7 @@ import { PHASES, clampPhase, phasesFor, type Phase } from './phase';
 import { cleanClusterLabel, type ClusterDef } from './clusters';
 import { sanitizeFileLabels, type LabelRecord } from './labels';
 import { sanitizePos, type BoardLayout } from './canvas';
+import type { CardPos } from './types';
 
 // Round-trippable board export. `cards` deliberately matches the archive
 // snapshot shape (`BoardCardsSnapshot` in src/archive.rs) so archives and live
@@ -26,6 +27,10 @@ export const BOARD_FILE_EXTENSION = '.fastretro.json';
 export interface BoardFileCluster {
   id: string;
   label: string;
+  // Canvas boards only: where the group's box sits. Optional and ignorable, so
+  // no version bump (a canvas file is already v4). A group without one sits
+  // where its first card is.
+  pos?: CardPos;
 }
 
 export interface BoardFile {
@@ -101,11 +106,13 @@ function fileVersion(custom: boolean, clusters: BoardFileCluster[], layout: Boar
 
 // The groups worth keeping: known and with at least one card, in creation order.
 // Also used for archives, so empty groups never get stored. Action items are never
-// grouped, whatever the doc says.
+// grouped, whatever the doc says. A group's position is kept only for a canvas
+// board; on columns it means nothing.
 export function clustersInUse(
   clusters: readonly (ClusterDef | BoardFileCluster)[],
   cards: Record<string, CardData[]>,
-  columns: ColumnDef[]
+  columns: ColumnDef[],
+  layout: BoardLayout = 'columns'
 ): BoardFileCluster[] {
   const used = new Set<string>();
   for (const col of columns) {
@@ -116,7 +123,10 @@ export function clustersInUse(
     .map((c, i) => ({ c, at: 'createdAt' in c ? c.createdAt : 0, i }))
     .sort((a, b) => a.at - b.at || a.i - b.i)
     .filter(({ c }) => used.has(c.id))
-    .map(({ c }) => ({ id: c.id, label: c.label }));
+    .map(({ c }) => {
+      const pos = layout === 'canvas' ? sanitizePos(c.pos) : null;
+      return { id: c.id, label: c.label, ...(pos ? { pos } : {}) };
+    });
 }
 
 // Copies only the given columns, in order, so stray arrays in the doc never
@@ -151,8 +161,8 @@ function copyCards(
 export function exportBoardFile(src: BoardFileSource, now = Date.now()): BoardFile {
   const columns = src.columns ?? DEFAULT_COLUMNS;
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
-  const clusters = clustersInUse(src.clusters ?? [], src.cards, columns);
   const layout = src.layout ?? 'columns';
+  const clusters = clustersInUse(src.clusters ?? [], src.cards, columns, layout);
   const cards = copyCards(src.cards, columns, clusters, layout);
   const labels = layout === 'canvas' ? sanitizeFileLabels(src.labels) : [];
   const file: BoardFile = {
@@ -266,10 +276,11 @@ export function sanitizeFileClusters(raw: unknown): BoardFileCluster[] {
   const out: BoardFileCluster[] = [];
   for (const c of raw.slice(0, MAX_FILE_CLUSTERS)) {
     if (typeof c !== 'object' || c === null) continue;
-    const { id, label } = c as { id?: unknown; label?: unknown };
+    const { id, label, pos: rawPos } = c as { id?: unknown; label?: unknown; pos?: unknown };
     if (typeof id !== 'string' || !id || id.length > 64 || seen.has(id)) continue;
     seen.add(id);
-    out.push({ id, label: typeof label === 'string' ? cleanClusterLabel(label) : '' });
+    const pos = sanitizePos(rawPos);
+    out.push({ id, label: typeof label === 'string' ? cleanClusterLabel(label) : '', ...(pos ? { pos } : {}) });
   }
   return out;
 }
@@ -506,7 +517,7 @@ export function parseBoardFile(text: string): ParseResult {
   if (orphanCards) warnings.push(`Skipped ${plural(orphanCards, 'card')} in columns this file doesn't define.`);
   if (unknownClusterCards) warnings.push(`${plural(unknownClusterCards, 'card')} referred to a group this file doesn't define, and will be ungrouped.`);
   const custom = !sameColumns(columns, DEFAULT_COLUMNS);
-  const clusters = clustersInUse(declaredClusters, cards, columns);
+  const clusters = clustersInUse(declaredClusters, cards, columns, layout);
   const labels = layout === 'canvas' ? sanitizeFileLabels(rawBoard.labels) : [];
 
   const file: BoardFile = {

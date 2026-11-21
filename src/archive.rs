@@ -73,6 +73,9 @@ pub struct ClusterSnapshot {
     pub id: String,
     #[serde(default)]
     pub label: String,
+    // Canvas boards only. Absent means the group was never placed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos: Option<CardPosSnapshot>,
 }
 
 /// Text placed on a canvas board. It owns nothing and stores no author.
@@ -202,15 +205,13 @@ impl ArchiveRequest {
         if self.layout.as_deref().is_some_and(|l| l != CANVAS_LAYOUT) {
             return Err("unknown layout".into());
         }
-        let bad_pos = self
-            .cards
-            .0
-            .values()
-            .flatten()
-            .filter_map(|card| card.pos)
-            .any(|p| p.x.abs() > WORLD_LIMIT || p.y.abs() > WORLD_LIMIT || !(0.0..=MAX_Z).contains(&p.z));
+        let card_positions = self.cards.0.values().flatten().filter_map(|card| card.pos);
+        let group_positions = self.clusters.iter().flatten().filter_map(|c| c.pos);
+        let bad_pos = card_positions.chain(group_positions).any(|p| {
+            p.x.abs() > WORLD_LIMIT || p.y.abs() > WORLD_LIMIT || !(0.0..=MAX_Z).contains(&p.z)
+        });
         if bad_pos {
-            return Err("card position out of bounds".into());
+            return Err("card or group position out of bounds".into());
         }
         if let Some(labels) = &self.labels {
             if labels.len() > MAX_LABELS {
@@ -690,6 +691,48 @@ mod tests {
         let at_limit: ArchiveRequest =
             serde_json::from_value(card(serde_json::json!({ "x": 20_000, "y": -20_000, "z": 0 }))).unwrap();
         assert!(save(&db, "x", at_limit, None).is_ok());
+    }
+
+    #[test]
+    fn group_positions_round_trip_and_are_optional() {
+        let db = test_db();
+        let req: ArchiveRequest = serde_json::from_value(serde_json::json!({
+            "cards": { "wentWell": [
+                { "id": "1", "text": "a", "clusterId": "g1" },
+                { "id": "2", "text": "b", "clusterId": "g2" }
+            ] },
+            "layout": "canvas",
+            "clusters": [
+                { "id": "g1", "label": "Placed", "pos": { "x": -80.5, "y": 12, "z": 4 } },
+                { "id": "g2", "label": "Never placed" }
+            ]
+        }))
+        .unwrap();
+        let saved = save(&db, "x", req, None).unwrap();
+        let loaded = load(&db, &saved.id).unwrap().expect("archive");
+        let out = serde_json::to_value(&loaded).unwrap();
+        assert_eq!(out["clusters"][0]["pos"]["x"], -80.5);
+        assert_eq!(out["clusters"][0]["pos"]["z"], 4.0);
+        assert!(out["clusters"][1].get("pos").is_none());
+    }
+
+    #[test]
+    fn rejects_out_of_bounds_group_positions() {
+        let group = |pos: serde_json::Value| serde_json::json!({ "cards": {}, "layout": "canvas", "clusters": [{ "id": "g", "pos": pos }] });
+        for bad in [
+            group(serde_json::json!({ "x": 20_001, "y": 0, "z": 1 })),
+            group(serde_json::json!({ "x": 0, "y": -20_001, "z": 1 })),
+            group(serde_json::json!({ "x": 0, "y": 0, "z": -1 })),
+            group(serde_json::json!({ "x": 0, "y": 0, "z": 1_000_000_001_i64 })),
+        ] {
+            let req: ArchiveRequest = serde_json::from_value(bad).unwrap();
+            assert!(save(&test_db(), "x", req, None).is_err());
+        }
+        let at_limit: ArchiveRequest = serde_json::from_value(group(
+            serde_json::json!({ "x": 20_000, "y": -20_000, "z": 0 }),
+        ))
+        .unwrap();
+        assert!(save(&test_db(), "x", at_limit, None).is_ok());
     }
 
     #[test]
