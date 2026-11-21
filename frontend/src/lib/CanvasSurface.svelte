@@ -2,6 +2,7 @@
   import { onDestroy, onMount, untrack } from 'svelte';
   import { ListOrdered, Maximize, Minus, Plus } from 'lucide-svelte';
   import CanvasCard from './CanvasCard.svelte';
+  import CanvasGroup from './CanvasGroup.svelte';
   import CanvasComposer from './CanvasComposer.svelte';
   import CanvasDock from './CanvasDock.svelte';
   import CanvasDraftCard from './CanvasDraftCard.svelte';
@@ -34,9 +35,10 @@
     type View
   } from './canvas';
   import { DRAG_FRAME_MS, DRAG_HEARTBEAT_MS, LiveMoves, parseDragFrame } from './canvasLive';
-  import { setCardPos } from './yboard';
+  import { freeSpotBeside, groupBoxSize, planCanvasDrop, type DropOver } from './canvasGroups';
+  import { createCluster, dissolveCluster, mergeCluster, renameCluster, setCardCluster, setCardPos, setClusterPos } from './yboard';
   import { track } from './analytics';
-  import { clustersVisible } from './clusters';
+  import { canEditClusters, clustersVisible, layoutBoard, type ClusterActions, type ClusterLane } from './clusters';
   import { MAX_LABELS, createLabel, deleteLabel, editLabel, labelRect, moveLabel } from './labels';
   import { COLUMN_STYLE, MAX_COLUMN_TITLE_LEN, isActionsColumn, type ColumnDef } from './columns';
   import { canAddCardInColumn, canVoteInPhase } from './phase';
@@ -86,6 +88,8 @@
     z: number;
     height: number;
     hidden: boolean;
+    // The group this card is drawn inside, if any. Then x and y are ignored.
+    groupId: string | null;
   }
 
   // Start a card drag only after this much movement, so a click stays a click.
@@ -125,6 +129,19 @@
   // The selection falls back if the host removes that prompt.
   const activePrompt = $derived(prompts.find((p) => p.key === selectedPrompt) ?? prompts[0]);
 
+  // The same groups a column board has, drawn as boxes. They're always laid
+  // out, even in Brainstorm, where only the name is hidden: hiding the box would
+  // send grouped cards back to where they sat before they were grouped.
+  const canGroup = $derived(canEditClusters(board.phase, ended));
+  const groupNamesShown = $derived(clustersVisible(board.phase, ended));
+  const groupLayout = $derived(layoutBoard(prompts, board.cards, board.clusters, { showClusters: true, sortByVotes: false }));
+  const laneOf = $derived.by(() => {
+    const m = new Map<string, string>();
+    for (const lane of groupLayout.lanes) for (const list of Object.values(lane.cards)) for (const c of list) m.set(c.id, lane.cluster.id);
+    return m;
+  });
+  const clusterPos = $derived(new Map(board.clusters.filter((c) => c.pos).map((c) => [c.id, c.pos!])));
+
   const grid = $derived.by(() => {
     const cards: Placed[] = [];
     const nextSlot = new Map<string, Point>();
@@ -140,13 +157,221 @@
       list.forEach((card, i) => {
         if (seen.has(card.id)) return;
         seen.add(card.id);
-        const at = card.pos ?? slots[i];
-        cards.push({ card, column, x: at.x, y: at.y, z: card.pos?.z ?? 0, height: heights[i], hidden: hidden[i] });
+        const groupId = laneOf.get(card.id) ?? null;
+        // The last card left in an unnamed group stays where the group was.
+        const lone = !groupId && card.clusterId ? clusterPos.get(card.clusterId) : undefined;
+        const at = lone ?? card.pos ?? slots[i];
+        cards.push({ card, column, x: at.x, y: at.y, z: card.pos?.z ?? 0, height: heights[i], hidden: hidden[i], groupId });
       });
     });
     return { cards, nextSlot };
   });
   const placed = $derived(grid.cards);
+  const looseCards = $derived(placed.filter((p) => !p.groupId));
+  // A group that was never placed (made on a column board or in List view) sits
+  // where its first card is.
+  const groups = $derived(
+    groupLayout.lanes.map((lane) => {
+      const members = placed.filter((p) => p.groupId === lane.cluster.id);
+      const at = lane.cluster.pos ?? { x: members[0]?.x ?? 0, y: members[0]?.y ?? 0, z: 0 };
+      return { lane, members, x: at.x, y: at.y, z: at.z, placed: lane.cluster.pos !== undefined };
+    })
+  );
+  type Group = (typeof groups)[number];
+  const groupOptions = $derived(groupLayout.lanes.map((l) => l.cluster));
+  // What a card being dragged would land on, as `card:<id>` or `group:<id>`.
+  let dropHover = $state<string | null>(null);
+
+  function mergeTitle(lane: ClusterLane): string {
+    return prompts.find((c) => (lane.cards[c.key]?.length ?? 0) > 0)?.title ?? '';
+  }
+
+  // Where a card is on the canvas right now, whether it's loose or in a group.
+  function worldRectOf(cardId: string): Rect | null {
+    const el = viewportEl?.querySelector<HTMLElement>(`[data-canvas-card="${CSS.escape(cardId)}"]`);
+    if (!el) return null;
+    const box = el.getBoundingClientRect();
+    const at = screenToWorld(view, pointIn({ clientX: box.left, clientY: box.top }));
+    return { ...at, width: box.width / view.zoom, height: box.height / view.zoom };
+  }
+
+  // A box's size is measured when it's on screen, and estimated otherwise.
+  function groupRect(g: Group): Rect {
+    const el = viewportEl?.querySelector<HTMLElement>(`[data-canvas-group="${CSS.escape(g.lane.cluster.id)}"]`);
+    const size = el ? { width: el.offsetWidth, height: el.offsetHeight } : groupBoxSize(g.members.map((m) => m.height));
+    return { x: g.x, y: g.y, ...size };
+  }
+
+  // Everything a card could land on top of.
+  function obstacles(except?: Group): Rect[] {
+    return [
+      ...looseCards.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height })),
+      ...groups.filter((g) => g !== except).map(groupRect)
+    ];
+  }
+
+  // Boxes and cards share one stacking order, so the next z is above both.
+  function topZ(): number {
+    return nextZ([...placed.map((p) => p.card.pos), ...groups.map((g) => ({ x: 0, y: 0, z: g.z }))]);
+  }
+
+  // A group's place is derived from its first card until it's stored. Membership
+  // changes would move that card, and the box with it, so write the place down
+  // first. Call inside the same transaction as the change.
+  function pinGroup(clusterId: string) {
+    const state = board.board;
+    const group = groups.find((g) => g.lane.cluster.id === clusterId);
+    if (state && group && !group.placed) setClusterPos(state.clusters, clusterId, { x: group.x, y: group.y, z: group.z });
+  }
+
+  function groupOf(cardId: string): Group | undefined {
+    return groups.find((g) => g.members.some((m) => m.card.id === cardId));
+  }
+
+  const clusterActions: ClusterActions = {
+    join(column, cardId, clusterId) {
+      const state = board.board;
+      if (!state) return;
+      state.doc.transact(() => {
+        pinGroup(clusterId);
+        setCardCluster(state.board, column, cardId, clusterId);
+      });
+      track({ name: 'card_group', params: { action: 'join', source: 'menu', surface: 'canvas' } });
+    },
+    create(column, cardId, label) {
+      const state = board.board;
+      const card = placedById(cardId);
+      const at = worldRectOf(cardId);
+      if (!state || !card) return;
+      const from = groupOf(cardId);
+      // From inside a box, the new one opens beside it, not on top of it.
+      const spot = from && at ? freeSpotBeside(groupRect(from), groupBoxSize([card.height]), obstacles()) : at;
+      state.doc.transact(() => {
+        if (from) pinGroup(from.lane.cluster.id);
+        const pos = spot ? { x: spot.x, y: spot.y, z: topZ() } : undefined;
+        setCardCluster(state.board, column, cardId, createCluster(state.clusters, label, Date.now(), pos));
+      });
+      track({ name: 'card_group', params: { action: 'create', source: 'menu', surface: 'canvas' } });
+    },
+    leave(column, cardId) {
+      const state = board.board;
+      const card = placedById(cardId);
+      const group = groupOf(cardId);
+      if (!state || !card || !group) return;
+      // Beside the group, in a gap, so it visibly left and covers nothing.
+      const spot = freeSpotBeside(groupRect(group), { width: CARD_WIDTH, height: card.height }, obstacles());
+      state.doc.transact(() => {
+        pinGroup(group.lane.cluster.id);
+        setCardPos(state.board, column, cardId, { ...spot, z: topZ() });
+        setCardCluster(state.board, column, cardId, null);
+      });
+      track({ name: 'card_group', params: { action: 'leave', source: 'menu', surface: 'canvas' } });
+    },
+    rename(clusterId, label) {
+      if (board.board) renameCluster(board.board.clusters, clusterId, label);
+    },
+    dissolve(clusterId) {
+      const state = board.board;
+      const group = groups.find((g) => g.lane.cluster.id === clusterId);
+      if (!state || !group) return;
+      // Every card stays exactly where it was drawn inside the box.
+      const rects = group.members.map((m) => ({ m, at: worldRectOf(m.card.id) }));
+      state.doc.transact(() => {
+        let z = topZ();
+        for (const { m, at } of rects) if (at) setCardPos(state.board, m.column.key, m.card.id, { x: at.x, y: at.y, z: z++ });
+        dissolveCluster(state.doc, state.board, clusterId);
+      });
+      track({ name: 'card_group', params: { action: 'ungroup', source: 'menu', surface: 'canvas' } });
+    },
+    merge(clusterId) {
+      const state = board.board;
+      const group = groups.find((g) => g.lane.cluster.id === clusterId);
+      if (!state || !group || group.members.length === 0) return;
+      // The merged card is the first member, and takes the box's corner.
+      const survivor = group.members[0];
+      state.doc.transact(() => {
+        setCardPos(state.board, survivor.column.key, survivor.card.id, { x: group.x, y: group.y, z: topZ() });
+        mergeCluster(state.doc, state.board, clusterId, prompts.map((c) => c.key));
+      });
+      track({ name: 'card_group', params: { action: 'merge', source: 'menu', surface: 'canvas' } });
+    }
+  };
+
+  // What's under the pointer, ignoring the card being dragged and any card whose
+  // text is hidden.
+  function dropOverAt(client: Point, dragId: string): DropOver {
+    for (const el of document.elementsFromPoint(client.x, client.y)) {
+      const cardEl = el.closest<HTMLElement>('[data-canvas-card]');
+      if (cardEl) {
+        const id = cardEl.dataset.canvasCard ?? '';
+        if (id === dragId) continue;
+        const p = placedById(id);
+        if (!p || p.hidden) continue;
+        return p.groupId ? { kind: 'group', id: p.groupId } : { kind: 'card', id, clusterId: p.card.clusterId ?? null };
+      }
+      const groupEl = el.closest<HTMLElement>('[data-canvas-group]');
+      if (groupEl?.dataset.canvasGroup) return { kind: 'group', id: groupEl.dataset.canvasGroup };
+    }
+    return null;
+  }
+
+  // The highlight for a drag in progress: what a drop here would join.
+  function hoverKey(over: DropOver, dragId: string): string | null {
+    if (!over) return null;
+    if (over.kind === 'group') return over.id === placedById(dragId)?.groupId ? null : `group:${over.id}`;
+    return `card:${over.id}`;
+  }
+
+  function dropCard(hit: Placed, at: Point, client: Point) {
+    const state = board.board;
+    if (!state) return;
+    const over = canGroup ? dropOverAt(client, hit.card.id) : null;
+    const plan = planCanvasDrop(
+      { id: hit.card.id, groupId: hit.groupId, clusterId: hit.card.clusterId ?? null },
+      over,
+      at,
+      canGroup
+    );
+    const { column } = hit;
+    switch (plan.kind) {
+      case 'none':
+        return;
+      case 'place': {
+        const others = looseCards.filter((p) => p.card.id !== hit.card.id).map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height }));
+        state.doc.transact(() => {
+          if (hit.groupId) pinGroup(hit.groupId);
+          if (hit.card.clusterId) setCardCluster(state.board, column.key, hit.card.id, null);
+          setCardPos(state.board, column.key, hit.card.id, { ...plan.at, z: topZ() });
+        });
+        track({ name: 'canvas_drop', params: { on_card: overlapsAny({ ...plan.at, width: CARD_WIDTH, height: hit.height }, others) } });
+        if (plan.leaves) track({ name: 'card_group', params: { action: 'leave', source: 'drag', surface: 'canvas' } });
+        return;
+      }
+      case 'join':
+        state.doc.transact(() => {
+          if (hit.groupId) pinGroup(hit.groupId);
+          pinGroup(plan.clusterId);
+          setCardCluster(state.board, column.key, hit.card.id, plan.clusterId);
+        });
+        track({ name: 'card_group', params: { action: 'join', source: 'drag', surface: 'canvas' } });
+        return;
+      case 'group-with': {
+        const target = placedById(plan.targetId);
+        if (!target) return;
+        state.doc.transact(() => {
+          if (hit.groupId) pinGroup(hit.groupId);
+          // The box opens where the target card was, on top.
+          const pos = { x: target.x, y: target.y, z: topZ() };
+          const clusterId = plan.clusterId ?? createCluster(state.clusters, '', Date.now(), pos);
+          if (plan.clusterId) setClusterPos(state.clusters, clusterId, pos);
+          else setCardCluster(state.board, target.column.key, target.card.id, clusterId);
+          setCardCluster(state.board, column.key, hit.card.id, clusterId);
+        });
+        track({ name: 'card_group', params: { action: 'create', source: 'drag', surface: 'canvas' } });
+        return;
+      }
+    }
+  }
 
   // Hidden in Brainstorm, so a label can't hint at hidden cards.
   const labels = $derived(clustersVisible(board.phase, ended) ? board.labels : []);
@@ -176,7 +401,9 @@
   function selectTopCard(id: string) {
     const hit = placedById(id);
     if (!hit) return;
-    moveView(centerOn(view, { x: hit.x, y: hit.y, width: CARD_WIDTH, height: hit.height }, viewportSize()));
+    // A card in a box is drawn where the box puts it, not at its own position.
+    const at = hit.groupId ? worldRectOf(id) : null;
+    moveView(centerOn(view, at ?? { x: hit.x, y: hit.y, width: CARD_WIDTH, height: hit.height }, viewportSize()));
     selectedTopCard = id;
     if (highlightHandle !== null) clearTimeout(highlightHandle);
     highlightHandle = setTimeout(() => (selectedTopCard = null), HIGHLIGHT_MS);
@@ -184,8 +411,12 @@
   }
   let labelDraftAt = $state<Point | null>(null);
 
+  // Loose cards and boxes are stacked together, lowest z first.
   const rankOf = $derived.by(() => {
-    const order = placed.map((p) => ({ id: p.card.id, z: p.z })).sort(compareStack);
+    const order = [
+      ...looseCards.map((p) => ({ id: p.card.id, z: p.z })),
+      ...groups.map((g) => ({ id: g.lane.cluster.id, z: g.z }))
+    ].sort(compareStack);
     return new Map(order.map((c, i) => [c.id, i + 1]));
   });
 
@@ -200,7 +431,8 @@
         width: CARD_WIDTH,
         height: HEADING_HEIGHT + MIN_FIT_SLOTS * CARD_SLOT_HEIGHT
       })),
-      ...placed.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height })),
+      ...looseCards.map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height })),
+      ...groups.map(groupRect),
       ...labels.map(labelRect)
     ];
     view = fitToBounds(boundsOf(rects), viewportSize());
@@ -259,7 +491,7 @@
 
   function onDoubleClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (target.closest(INTERACTIVE) || target.closest('[data-canvas-card], [data-canvas-label]')) return;
+    if (target.closest(INTERACTIVE) || target.closest('[data-canvas-card], [data-canvas-group], [data-canvas-label]')) return;
     const world = screenToWorld(view, pointIn(e));
     if (canAddLabel) {
       const spot = sanitizePos({ x: world.x, y: world.y - LABEL_GRAB_Y });
@@ -369,7 +601,10 @@
         pointerId: number;
         id: string;
         // Writes the final position to the doc, once, on drop.
-        commit: (at: Point) => void;
+        commit: (at: Point, client: Point) => void;
+        // A card in Group: show what a drop here would join.
+        groupable: boolean;
+        client: Point;
         // A press that never became a drag.
         onClick?: () => void;
         start: Point;
@@ -390,13 +625,14 @@
   function abortItemDrag() {
     if (gesture?.kind !== 'item') return;
     if (gesture.moved) {
+      dropHover = null;
       live.clearOwn();
       stopFrames();
       sendDrag(null);
     }
   }
 
-  function startItem(e: PointerEvent, here: Point, id: string, docPos: Point, commit: (at: Point) => void, onClick?: () => void) {
+  function startItem(e: PointerEvent, here: Point, id: string, docPos: Point, commit: (at: Point, client: Point) => void, onClick?: () => void, groupable = false) {
     const pointerWorld = screenToWorld(view, here);
     const from = live.shownAt(id) ?? docPos;
     gesture = {
@@ -404,6 +640,8 @@
       pointerId: e.pointerId,
       id,
       commit,
+      groupable,
+      client: { x: e.clientX, y: e.clientY },
       onClick,
       start: here,
       grab: { x: pointerWorld.x - from.x, y: pointerWorld.y - from.y },
@@ -431,13 +669,20 @@
     pointers.set(e.pointerId, here);
     const cardEl = target.closest<HTMLElement>('[data-canvas-card]');
     const hit = cardEl ? placedById(cardEl.dataset.canvasCard ?? '') : undefined;
-    if (hit && !hit.hidden && !ended) {
-      startItem(e, here, hit.card.id, { x: hit.x, y: hit.y }, (at) => {
-        const state = board.board;
-        if (!state) return;
-        setCardPos(state.board, hit.column.key, hit.card.id, { ...at, z: nextZ(placed.map((p) => p.card.pos)) });
-        const others = placed.filter((p) => p.card.id !== hit.card.id).map((p) => ({ x: p.x, y: p.y, width: CARD_WIDTH, height: p.height }));
-        track({ name: 'canvas_drop', params: { on_card: overlapsAny({ ...at, width: CARD_WIDTH, height: hit.height }, others) } });
+    // A card in a group only comes out of it during Group. Otherwise the press
+    // falls through and moves the whole group.
+    if (hit && !hit.hidden && !ended && (!hit.groupId || canGroup)) {
+      const from = hit.groupId ? (worldRectOf(hit.card.id) ?? hit) : hit;
+      startItem(e, here, hit.card.id, { x: from.x, y: from.y }, (at, client) => dropCard(hit, at, client), undefined, canGroup);
+      return;
+    }
+    const groupId = target.closest<HTMLElement>('[data-canvas-group]')?.dataset.canvasGroup;
+    const group = groups.find((g) => g.lane.cluster.id === groupId);
+    if (group && !ended) {
+      startItem(e, here, group.lane.cluster.id, { x: group.x, y: group.y }, (at) => {
+        if (!board.board) return;
+        setClusterPos(board.board.clusters, group.lane.cluster.id, { ...at, z: topZ() });
+        track({ name: 'canvas_group_move', params: { cards: group.members.length } });
       });
       return;
     }
@@ -494,6 +739,11 @@
       const clean = sanitizePos({ x: world.x - gesture.grab.x, y: world.y - gesture.grab.y });
       if (!clean) return;
       gesture.at = { x: clean.x, y: clean.y };
+      gesture.client = { x: e.clientX, y: e.clientY };
+      if (gesture.groupable) {
+        const key = hoverKey(dropOverAt(gesture.client, gesture.id), gesture.id);
+        if (key !== dropHover) dropHover = key;
+      }
       live.setOwn(gesture.id, gesture.at);
       queueFrame({ id: gesture.id, x: clean.x, y: clean.y });
     }
@@ -503,7 +753,8 @@
   // awareness clear, so peers have the new position when the live one ends.
   function dropItem(g: Extract<Gesture, { kind: 'item' }>) {
     stopFrames();
-    g.commit(g.at);
+    dropHover = null;
+    g.commit(g.at, g.client);
     live.setDocPos(g.id, g.at);
     live.clearOwn();
     sendDrag(null);
@@ -615,10 +866,19 @@
       moveLabel(board.board.labels, label.id, { x: label.x + step.x, y: label.y + step.y });
       return;
     }
+    // Inside a box the arrows move the box: its cards have no place of their own.
+    const groupId = target.closest<HTMLElement>('[data-canvas-group]')?.dataset.canvasGroup;
+    const group = groups.find((g) => g.lane.cluster.id === groupId);
+    if (group) {
+      e.preventDefault();
+      const clean = sanitizePos({ x: group.x + step.x, y: group.y + step.y, z: topZ() });
+      if (clean) setClusterPos(board.board.clusters, group.lane.cluster.id, clean);
+      return;
+    }
     const hit = placedById(target.closest<HTMLElement>('[data-canvas-card]')?.dataset.canvasCard ?? '');
     if (!hit || hit.hidden) return;
     e.preventDefault();
-    const clean = sanitizePos({ x: hit.x + step.x, y: hit.y + step.y, z: nextZ(placed.map((p) => p.card.pos)) });
+    const clean = sanitizePos({ x: hit.x + step.x, y: hit.y + step.y, z: topZ() });
     if (clean) setCardPos(board.board.board, hit.column.key, hit.card.id, clean);
   }
 
@@ -717,7 +977,48 @@
           <CanvasLabelInput ariaLabel="New label" onCommit={commitLabelDraft} onCancel={() => (labelDraftAt = null)} />
         </div>
       {/if}
-      {#each placed as p (p.card.id)}
+      {#each groups as g (g.lane.cluster.id)}
+        <CanvasGroup
+          lane={g.lane}
+          x={g.x}
+          y={g.y}
+          rank={rankOf.get(g.lane.cluster.id) ?? 0}
+          {live}
+          canEdit={canGroup}
+          canMerge={canGroup && isLead}
+          nameHidden={!groupNamesShown}
+          mergeInto={mergeTitle(g.lane)}
+          highlighted={dropHover === `group:${g.lane.cluster.id}`}
+          {clusterActions}
+        >
+          {#each g.members as p (p.card.id)}
+            <CanvasCard
+              card={p.card}
+              column={p.column}
+              x={0}
+              y={0}
+              rank={0}
+              hidden={p.hidden}
+              {live}
+              {viewer}
+              {userName}
+              {isLead}
+              readOnly={ended}
+              {canVote}
+              anonymous={board.settings.anonymous}
+              {namesMap}
+              {cardActions}
+              typers={typingByCard.get(p.card.id) ?? []}
+              highlighted={selectedTopCard === p.card.id}
+              groupId={g.lane.cluster.id}
+              groups={groupOptions}
+              {canGroup}
+              {clusterActions}
+            />
+          {/each}
+        </CanvasGroup>
+      {/each}
+      {#each looseCards as p (p.card.id)}
         <CanvasCard
           card={p.card}
           column={p.column}
@@ -736,6 +1037,10 @@
           {cardActions}
           typers={typingByCard.get(p.card.id) ?? []}
           highlighted={selectedTopCard === p.card.id}
+          groups={groupOptions}
+          {canGroup}
+          isGroupTarget={dropHover === `card:${p.card.id}`}
+          {clusterActions}
         />
       {/each}
       {#if draftAt && activePrompt}
@@ -812,13 +1117,21 @@
 </main>
 
 <style>
-  :global(.canvas-card[data-active]) {
-    z-index: 1000000 !important;
-  }
+  :global(.canvas-card[data-active]),
   :global(.canvas-card[data-highlighted]) {
     z-index: 1000000 !important;
   }
-  /* Whoever is moving it, a card or label in motion is on top. */
+  /* A card in a box lifts its whole box, so its picker and comments open above
+     the next card. */
+  :global(.canvas-group:has(.canvas-card[data-active])),
+  :global(.canvas-group:has(.canvas-card[data-highlighted])) {
+    z-index: 1000000 !important;
+  }
+  /* Whoever is moving it, a card, box or label in motion is on top. */
+  :global(.canvas-group[data-live]),
+  :global(.canvas-group:has(.canvas-card[data-live])) {
+    z-index: 1000001 !important;
+  }
   :global(.canvas-card[data-live]),
   :global(.canvas-label[data-live]) {
     z-index: 1000001 !important;
