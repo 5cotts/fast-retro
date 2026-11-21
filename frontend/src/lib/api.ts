@@ -26,6 +26,7 @@ export interface BoardStatus {
   ended: boolean;
   label: string;
   amHost: boolean;
+  ref: string | null;
 }
 
 export interface MyBoard {

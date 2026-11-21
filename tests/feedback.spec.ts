@@ -33,8 +33,11 @@ async function createBoard(page: Page, label: string) {
   await dialog.getByRole('button', { name: 'Create retro' }).click();
   await page.waitForURL(/\/board\//);
   const nameInput = page.getByLabel('Your display name');
-  await nameInput.fill('Tester');
-  await page.getByRole('button', { name: 'Join the retro' }).click();
+  const prompted = await nameInput.waitFor({ timeout: 5000 }).then(() => true, () => false);
+  if (prompted) {
+    await nameInput.fill('Tester');
+    await page.getByRole('button', { name: 'Join the retro' }).click();
+  }
   await expect(page.getByTestId('board-columns')).toBeVisible();
   const gotIt = page.getByRole('button', { name: 'Got it' });
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click();
@@ -48,7 +51,7 @@ test.describe('send feedback link', () => {
     await expect(link).toBeVisible();
     const href = new URL((await link.getAttribute('href')) ?? '');
     expect(href.origin + href.pathname).toBe(FEEDBACK);
-    expect([...href.searchParams.keys()].every((k) => k === 'version' || k === 'browser')).toBe(true);
+    expect([...href.searchParams.keys()].every((k) => k === 'version' || k === 'browser')).toBe(true); // no board_ref off a board
     expect(href.searchParams.get('browser')).toMatch(/^(Chrome|Edge|Firefox|Safari) \d+/);
   });
 
@@ -78,6 +81,55 @@ test.describe('send feedback link', () => {
     expect(seen[0].url).not.toContain(slug);
     expect(decodeURIComponent(seen[0].url)).not.toContain(label);
     expect(decodeURIComponent(seen[0].url)).not.toContain('Tester');
+  });
+
+  test('on a board it shows a board reference that is safe to share and copies it', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    const seen = await stubFeedbackSite(page);
+    await createBoard(page, `Ref retro ${Date.now()}`);
+    const slug = new URL(page.url()).pathname.split('/').pop() ?? '';
+
+    // By title, not name: the label changes to "Copied" after a click.
+    const button = page.getByRole('contentinfo').getByTitle(/^Paste this reference/);
+    await expect(button).toBeVisible();
+    const text = (await button.textContent()) ?? '';
+    const ref = text.replace('Board ref', '').trim();
+    expect(ref).toMatch(/^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/);
+    expect(ref.replace(/-/g, '')).not.toContain(slug);
+
+    await button.click();
+    await expect(button).toHaveText('Copied');
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(ref);
+
+    const link = page.getByRole('contentinfo').getByRole('link', { name: 'Send feedback' });
+    const href = new URL((await link.getAttribute('href')) ?? '');
+    expect(href.searchParams.get('board_ref')).toBe(ref);
+    expect(decodeURIComponent(href.toString())).not.toContain(slug);
+
+    const [popup] = await Promise.all([page.context().waitForEvent('page'), link.click()]);
+    await popup.waitForLoadState();
+    expect(seen[0].url).toContain(`board_ref=${ref}`);
+    expect(seen[0].url).not.toContain(slug);
+  });
+
+  test('gives the same reference for a board each time and a different one for another board', async ({ page }) => {
+    await stubFeedbackSite(page);
+    await createBoard(page, `First ${Date.now()}`);
+    const refOf = async () =>
+      ((await page.getByRole('contentinfo').getByTitle(/^Paste this reference/).textContent()) ?? '').trim();
+    const first = await refOf();
+    await page.reload();
+    await expect(page.getByRole('contentinfo').getByTitle(/^Paste this reference/)).toBeVisible();
+    expect(await refOf()).toBe(first);
+
+    await createBoard(page, `Second ${Date.now()}`);
+    expect(await refOf()).not.toBe(first);
+  });
+
+  test('has no board reference on the home page', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('link', { name: 'Send feedback' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Board ref / })).toHaveCount(0);
   });
 
   test('is hidden when the server has no FEEDBACK_URL', async ({ page }) => {

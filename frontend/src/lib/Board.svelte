@@ -89,13 +89,15 @@
     slug,
     leadToken = '',
     hostKey = '',
-    readOnly = false
+    readOnly = false,
+    boardRef = null
   } = $props<{
     isLead?: boolean;
     slug: string;
     leadToken?: string;
     hostKey?: string;
     readOnly?: boolean;
+    boardRef?: string | null;
   }>();
 
   // A board the host has ended is read-only for everyone. Seeded from the
@@ -1180,6 +1182,7 @@
         </a>
         <FeedbackLink
           from="board"
+          {boardRef}
           class="hover:text-slate-600 dark:hover:text-slate-300 hover:underline focus:outline-none focus:ring-2 focus:ring-sky-400 rounded before:content-['·'] before:mx-1 before:no-underline"
         />
       </footer>

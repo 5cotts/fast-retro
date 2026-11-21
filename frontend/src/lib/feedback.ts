@@ -1,12 +1,22 @@
 // The "Send feedback" link opens a public GitHub issue form, so what the app
-// adds to it is deliberately tiny: the build and a coarse browser name, both
-// already visible to anyone who loads the site. Never add the board URL, its
+// adds to it is deliberately tiny: the build, a coarse browser name and, on a
+// board, its reference code (see validBoardRef). Never add the board URL, its
 // name, a participant name or card text here. A board link is a password, and
 // the page the link is clicked on is a board.
 
 export interface FeedbackContext {
   version?: string | null;
   userAgent?: string;
+  boardRef?: string | null;
+}
+
+// A board reference (`7f3a-9c1e-b204`) is a keyed code the server derives from
+// the board's slug. It names the board for whoever runs the server but can't
+// be turned back into the slug, so unlike the board link it's safe to put in a
+// public report. Anything that isn't that exact shape is dropped, so nothing
+// else can ride along in its place.
+export function validBoardRef(ref: string | null | undefined): string | null {
+  return /^[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}$/.test(ref ?? '') ? (ref as string) : null;
 }
 
 export function shortVersion(sha: string | null | undefined): string | null {
@@ -44,7 +54,7 @@ export function browserSummary(ua: string): string | null {
 }
 
 // GitHub issue forms read prefilled values from query parameters named after
-// the form field ids (`version`, `browser`). Parameters a page doesn't use,
+// the form field ids (`version`, `browser`, `board_ref`). Parameters a page doesn't use,
 // such as on the template chooser, are ignored.
 export function feedbackHref(base: string, ctx: FeedbackContext = {}): string {
   let url: URL;
@@ -58,5 +68,7 @@ export function feedbackHref(base: string, ctx: FeedbackContext = {}): string {
   const browser = ctx.userAgent ? browserSummary(ctx.userAgent) : null;
   if (version) url.searchParams.set('version', version);
   if (browser) url.searchParams.set('browser', browser);
+  const boardRef = validBoardRef(ctx.boardRef);
+  if (boardRef) url.searchParams.set('board_ref', boardRef);
   return url.toString();
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { browserSummary, feedbackHref, shortVersion } from './feedback';
+import { browserSummary, feedbackHref, shortVersion, validBoardRef } from './feedback';
 
 const CHROME_MAC =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
@@ -56,6 +56,18 @@ describe('feedbackHref', () => {
     expect([...href.searchParams.keys()].sort()).toEqual(['browser', 'template', 'version']);
   });
 
+  it('adds the board reference when there is one', () => {
+    const href = new URL(feedbackHref(base, { userAgent: CHROME_MAC, boardRef: '7f3a-9c1e-b204' }));
+    expect(href.searchParams.get('board_ref')).toBe('7f3a-9c1e-b204');
+    expect([...href.searchParams.keys()].sort()).toEqual(['board_ref', 'browser', 'template']);
+  });
+
+  it('never lets anything but a reference through as board_ref', () => {
+    for (const bad of ['my-retro-slug', 'https://x.test/board/abc', '7f3a-9c1e-b20', '7F3A-9C1E-B204', '']) {
+      expect(feedbackHref(base, { boardRef: bad })).toBe(base);
+    }
+  });
+
   it('leaves the link alone when there is nothing to add', () => {
     expect(feedbackHref(base)).toBe(base);
     expect(feedbackHref(base, { version: 'dev', userAgent: 'curl/8.0' })).toBe(base);
@@ -63,5 +75,14 @@ describe('feedbackHref', () => {
 
   it('returns a value it cannot parse unchanged', () => {
     expect(feedbackHref('not a url', { version: 'c9c5238a1b2c3d4e' })).toBe('not a url');
+  });
+});
+
+describe('validBoardRef', () => {
+  it('accepts only the xxxx-xxxx-xxxx shape', () => {
+    expect(validBoardRef('7f3a-9c1e-b204')).toBe('7f3a-9c1e-b204');
+    expect(validBoardRef('7f3a9c1eb204')).toBeNull();
+    expect(validBoardRef(null)).toBeNull();
+    expect(validBoardRef(undefined)).toBeNull();
   });
 });

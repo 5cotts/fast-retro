@@ -11,6 +11,7 @@
   let isLead = $state(false);
   let ended = $state(false);
   let hostKey = $state('');
+  let boardRef = $state<string | null>(null);
 
   // SvelteKit reuses this page's component instance across /board/[slug]
   // navigations that only change the param (e.g. "Start next retro" going
@@ -32,6 +33,7 @@
       if (status) {
         isLead = status.amHost;
         ended = status.ended;
+        boardRef = status.ref;
       }
       loaded = true;
     });
@@ -40,6 +42,6 @@
 
 {#if isValidSlug(slug) && loaded}
   {#key slug}
-    <Board {isLead} {slug} {hostKey} readOnly={ended} />
+    <Board {isLead} {slug} {hostKey} readOnly={ended} {boardRef} />
   {/key}
 {/if}

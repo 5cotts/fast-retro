@@ -8,6 +8,8 @@ body:
         **This issue will be public.** Anyone on the internet can read it.
 
         Please don't paste a board link, board name, participant names or card text. A board link works like a password: anyone who has it can join the board and read it.
+
+        **Screenshots and videos are public too.** A picture of a board shows its cards and names. Crop to the part that matters, or mock it up with made-up text.
   - type: textarea
     id: problem
     attributes:
