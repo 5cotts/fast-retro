@@ -1,7 +1,8 @@
 import * as Y from 'yjs';
 import { isActionsColumn, type ColumnDef } from './columns';
 import type { Phase } from './phase';
-import type { CardData } from './types';
+import type { CardData, CardPos } from './types';
+import { sanitizePos } from './canvas';
 
 // Groups of cards across columns. The UI says "group"; the code says "cluster",
 // because "group" already means the phase, an ARIA role and a Tailwind class.
@@ -18,11 +19,21 @@ export interface ClusterDef {
   id: string;
   label: string;
   createdAt: number;
+  // Where the group's box sits on a canvas board. Absent means the group has
+  // never been placed (it was made on a column board or in List view), so the
+  // canvas puts it where its first card is. Columns boards ignore it.
+  pos?: CardPos;
 }
 
 export interface ClusterRecord {
   label: string;
   createdAt: number;
+  // Canvas boards only, and optional: older builds and column boards never
+  // write them, and ignore them when they're there. The record is replaced as
+  // a whole, so a rename and a move made at the same moment keep one of the two.
+  x?: number;
+  y?: number;
+  z?: number;
 }
 
 export type ClusterMap = Y.Map<ClusterRecord>;
@@ -41,10 +52,12 @@ export function readClusters(clusters: ClusterMap): ClusterDef[] {
   clusters.forEach((value, id) => {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) return;
     const { label, createdAt } = value as Partial<Record<keyof ClusterRecord, unknown>>;
+    const pos = sanitizePos(value);
     out.push({
       id,
       label: typeof label === 'string' ? cleanClusterLabel(label) : '',
-      createdAt: typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : 0
+      createdAt: typeof createdAt === 'number' && Number.isFinite(createdAt) ? createdAt : 0,
+      ...(pos ? { pos } : {})
     });
   });
   return out;

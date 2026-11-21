@@ -767,7 +767,7 @@
     archiving = true;
     // The server tells every connected client, this one included, once the
     // archive is saved (Room::end in main.rs).
-    const archiveClusters = clustersInUse(conn.state.clusters, conn.state.cards, conn.state.columns);
+    const archiveClusters = clustersInUse(conn.state.clusters, conn.state.cards, conn.state.columns, conn.state.layout);
     try {
       await endBoard(
         slug,

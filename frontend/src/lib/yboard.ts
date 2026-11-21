@@ -2,7 +2,8 @@ import * as Y from 'yjs';
 import { WebsocketProvider } from 'y-websocket';
 import type { CardData, CardPos } from './types';
 import { cardFromY, cardToY, commentToY } from './cardcodec';
-import { cleanClusterLabel, clusterMapOf, type ClusterMap } from './clusters';
+import { cleanClusterLabel, clusterMapOf, type ClusterMap, type ClusterRecord } from './clusters';
+import { sanitizePos } from './canvas';
 import { createLabel, labelMapOf, type LabelMap } from './labels';
 import { ACTIONS_COLUMN_KEY, DEFAULT_COLUMNS, diffColumns, hasActionsColumn, readColumns, sameColumns, type ColumnDef, type ColumnDiff } from './columns';
 import { BOARD_SETTING_KEYS, readBoardSetting, setBoardSetting, type BoardSettings } from './settings';
@@ -494,10 +495,23 @@ export function mergeCards(
   });
 }
 
-export function createCluster(clusters: ClusterMap, label = '', now = Date.now()): string {
+export function createCluster(clusters: ClusterMap, label = '', now = Date.now(), pos?: CardPos): string {
   const id = newId();
-  clusters.set(id, { label: cleanClusterLabel(label), createdAt: now });
+  clusters.set(id, { label: cleanClusterLabel(label), createdAt: now, ...clusterPosFields(pos) });
   return id;
+}
+
+function clusterPosFields(pos: CardPos | null | undefined): Pick<ClusterRecord, 'x' | 'y' | 'z'> {
+  const clean = sanitizePos(pos);
+  return clean ? { x: clean.x, y: clean.y, z: clean.z } : {};
+}
+
+// Places a group's box on a canvas board.
+export function setClusterPos(clusters: ClusterMap, clusterId: string, pos: CardPos): void {
+  const existing = clusters.get(clusterId);
+  const fields = clusterPosFields(pos);
+  if (!existing || fields.x === undefined) return;
+  clusters.set(clusterId, { ...existing, ...fields });
 }
 
 export function renameCluster(clusters: ClusterMap, clusterId: string, label: string): void {
@@ -624,7 +638,7 @@ export function seedBoard(
     // Group IDs are regenerated like card IDs. createdAt keeps the file's order.
     const clusterIds = new Map<string, string>();
     (file.board.clusters ?? []).forEach((c, i) => {
-      clusterIds.set(c.id, createCluster(clusters, c.label, now + i));
+      clusterIds.set(c.id, createCluster(clusters, c.label, now + i, file.board.layout === 'canvas' ? c.pos : undefined));
     });
     // The column list and every column's array land in this one transaction
     // (see setUpAfterSync). Classic boards store no list.
