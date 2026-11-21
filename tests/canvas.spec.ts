@@ -228,20 +228,19 @@ test.describe('fast-retro canvas', () => {
     }
   });
 
-  test('dropping a card on a card overlaps it and never merges; the last moved is on top', async ({ browser }) => {
+  test('outside Group, dropping a card on a card only overlaps it; the last moved is on top', async ({ browser }) => {
     const { ctx, page } = await newPage(browser);
     try {
       const suffix = Math.random().toString(36).slice(2, 6);
       const a = `Top ${suffix}`;
       const b = `Under ${suffix}`;
-      await importBoard(page, canvasFile(`Stack ${suffix}`, { ok: [{ text: a }], well: [{ text: b }] }), 'Host');
-      await expect(page.getByText(/Drag cards near each other/)).toBeVisible();
-      await expect(page.getByText(/Drag a card onto another/)).toBeHidden();
+      await importBoard(page, canvasFile(`Stack ${suffix}`, { ok: [{ text: a }], well: [{ text: b }] }, { phase: 'vote' }), 'Host');
       const elA = cardEl(page, a);
       const elB = cardEl(page, b);
       const [boxA, boxB] = [await elA.boundingBox(), await elB.boundingBox()];
       await drag(page, elA, boxB!.x - boxA!.x + 10, boxB!.y - boxA!.y + 10);
       await expect(page.getByTestId('canvas-card')).toHaveCount(2);
+      await expect(page.getByTestId('canvas-group')).toHaveCount(0);
       await expect(elA).not.toContainText('— — —');
       const z = (el: Locator) => el.evaluate((n) => Number((n as HTMLElement).style.zIndex));
       await expect.poll(async () => (await z(elA)) > (await z(elB))).toBe(true);

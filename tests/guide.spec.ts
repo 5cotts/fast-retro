@@ -180,7 +180,7 @@ test.describe('user guide', () => {
         total++;
       }
     }
-    expect(total).toBe(11);
+    expect(total).toBe(12);
     expect(problems).toEqual([]);
   });
 
@@ -329,7 +329,8 @@ test.describe('user guide', () => {
         board: {
           label: 'Drops',
           anonymous: true,
-          phase: 'group',
+          // Outside Group a drop on a card only overlaps it. In Group it makes a group.
+          phase: 'vote',
           autoSort: true,
           columns: [{ key: 'ok', title: 'Notes', color: 'amber' }],
           layout: 'canvas'

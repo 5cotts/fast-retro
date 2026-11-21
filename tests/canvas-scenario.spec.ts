@@ -52,15 +52,15 @@ async function compose(page: Page, prompt: string, text: string) {
   await expect(card(page, text)).toBeVisible();
 }
 
-// Drops one card just to the right of another, on screen.
-async function dropBeside(page: Page, moving: Locator, target: Locator) {
+// Drops one card with the pointer on another card or on a group's box.
+async function dropOn(page: Page, moving: Locator, target: Locator) {
   await page.getByRole('button', { name: 'Fit' }).click();
   const from = await moving.boundingBox();
   const to = await target.boundingBox();
   const grab = { x: from!.x + from!.width / 2, y: from!.y + 16 };
   await page.mouse.move(grab.x, grab.y);
   await page.mouse.down();
-  const end = { x: to!.x + to!.width + 12 + from!.width / 2, y: to!.y + 16 };
+  const end = { x: to!.x + to!.width / 2, y: to!.y + 16 };
   await page.mouse.move((grab.x + end.x) / 2, (grab.y + end.y) / 2, { steps: 5 });
   await page.mouse.move(end.x, end.y, { steps: 5 });
   await page.mouse.up();
@@ -131,18 +131,29 @@ test('a canvas retro, start to finish', async ({ browser }) => {
     // 3. Group reveals it all, and the same thing from two prompts goes together.
     await next(host, 'Group');
     for (const page of [host, ana.page, ben.page]) await expect(card(page, friday)).toBeVisible();
-    await dropBeside(ben.page, card(ben.page, slow), card(ben.page, friday));
-    await expect.poll(() => worldPos(card(ana.page, slow))).toEqual(await worldPos(card(ben.page, slow)));
-    const fridayAt = (await worldPos(card(ana.page, friday)))!;
-    const slowAt = (await worldPos(card(ana.page, slow)))!;
-    expect(Math.abs(slowAt.y - fridayAt.y)).toBeLessThan(60);
-    expect(Math.abs(slowAt.x - fridayAt.x)).toBeLessThan(400);
-    // Next to each other, and still visibly from different prompts.
-    expect(await card(ana.page, friday).getAttribute('data-color')).not.toBe(await card(ana.page, slow).getAttribute('data-color'));
+    await dropOn(ben.page, card(ben.page, slow), card(ben.page, friday));
+    for (const page of [host, ana.page, ben.page]) {
+      await expect(page.getByTestId('canvas-group')).toHaveCount(1);
+      await expect(page.getByTestId('canvas-group').getByTestId('canvas-card')).toHaveCount(2);
+    }
+    // Together in a box, and still visibly from different prompts.
+    const boxed = ana.page.getByTestId('canvas-group');
+    expect(await boxed.getByTestId('canvas-card').filter({ hasText: friday }).getAttribute('data-color')).not.toBe(
+      await boxed.getByTestId('canvas-card').filter({ hasText: slow }).getAttribute('data-color')
+    );
 
-    // A card can sit between two themes: there's no membership to choose.
-    await dropBeside(ana.page, card(ana.page, newHire), card(ana.page, slow));
-    await dropBeside(ana.page, card(ana.page, docs), card(ana.page, newHire));
+    // The new box opens on top of whatever was there, so Ana drags it by its top
+    // edge into open space. Then a third card joins by dropping on the box. The
+    // last one stays loose.
+    const handle = (await boxed.boundingBox())!;
+    await ana.page.mouse.move(handle.x + 10, handle.y + 10);
+    await ana.page.mouse.down();
+    await ana.page.mouse.move(handle.x + 10 + 60, handle.y + 10 + 220, { steps: 6 });
+    await ana.page.mouse.up();
+    await expect.poll(async () => (await boxed.boundingBox())!.y).toBeGreaterThan(handle.y + 150);
+    await dropOn(ana.page, card(ana.page, newHire), ana.page.getByTestId('canvas-group'));
+    await expect(boxed).toContainText('3 cards');
+    await expect(host.getByTestId('canvas-group')).toContainText('3 cards');
 
     // Floating labels name the themes.
     const canvas = await ana.page.getByTestId('board-canvas').boundingBox();
@@ -166,10 +177,10 @@ test('a canvas retro, start to finish', async ({ browser }) => {
     await next(host, 'Discuss');
     const panel = host.getByTestId('top-voted');
     await expect(panel).toBeVisible();
-    await expect(panel.getByRole('listitem')).toHaveCount(3);
-    await expect(panel.getByRole('listitem').nth(0)).toContainText(slow);
+    // Three people voted in the group; two on the loose card. The group is one row.
+    await expect(panel.getByRole('listitem')).toHaveCount(2);
+    await expect(panel.getByRole('listitem').nth(0)).toContainText('Group · 3 cards');
     await expect(panel.getByRole('listitem').nth(1)).toContainText(docs);
-    await expect(panel.getByRole('listitem').nth(2)).toContainText(friday);
     expect(await worldPos(card(host, docs))).toEqual(before);
 
     await host.getByRole('button', { name: 'Zoom in' }).click();
@@ -183,6 +194,9 @@ test('a canvas retro, start to finish', async ({ browser }) => {
     // Only for the person who picked it, and it fades.
     await expect(card(ben.page, docs)).not.toHaveAttribute('data-highlighted', '');
     await expect(card(host, docs)).not.toHaveAttribute('data-highlighted', '', { timeout: 5_000 });
+    await panel.getByRole('button', { name: /Group · 3 cards/ }).click();
+    await expect(host.getByTestId('canvas-group')).toHaveAttribute('data-highlighted', '');
+    await expect(host.getByTestId('canvas-group')).not.toHaveAttribute('data-highlighted', '', { timeout: 5_000 });
 
     // 6. Actions go in the dock, and Top voted stops taking up the canvas.
     await next(host, 'Actions');
@@ -198,7 +212,7 @@ test('a canvas retro, start to finish', async ({ browser }) => {
     await host.getByRole('button', { name: 'End retro' }).click();
     await host.getByRole('alertdialog').getByRole('button', { name: 'Archive & end' }).click();
     for (const page of [host, ana.page, ben.page]) await expect(page.getByText('This retro has ended')).toBeVisible({ timeout: 15_000 });
-    const endedAt = await worldPos(card(ben.page, slow));
+    const endedAt = await worldPos(ben.page.getByTestId('canvas-group'));
     const exported = await saveBoardFile(ben.page);
 
     // 8. Its file rebuilds the same layout on a new board.
@@ -222,7 +236,8 @@ test('a canvas retro, start to finish', async ({ browser }) => {
     await restored.getByRole('button', { name: 'Join the retro' }).click();
     await settle(restored);
     await expect(card(restored, slow)).toBeVisible();
-    expect(await worldPos(card(restored, slow))).toEqual(endedAt);
+    await expect(restored.getByTestId('canvas-group')).toContainText('3 cards');
+    expect(await worldPos(restored.getByTestId('canvas-group'))).toEqual(endedAt);
     await expect(label(restored, `Deploys ${s}`)).toBeVisible();
 
     // 9. The next retro is a canvas again, with the action item waiting.

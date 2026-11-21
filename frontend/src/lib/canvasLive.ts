@@ -41,18 +41,22 @@ export function parseDragFrame(raw: unknown): DragFrame | null {
 
 export class LiveMoves {
   private elements = new Map<string, LiveElement>();
+  private origins = new Map<string, () => Point | null>();
   private doc = new Map<string, Point>();
   private own: { cardId: string; at: Point } | null = null;
   private peers = new Map<number, PeerMove>();
   private seq = 0;
 
-  register(cardId: string, el: LiveElement): void {
+  register(cardId: string, el: LiveElement, origin?: () => Point | null): void {
     this.elements.set(cardId, el);
+    if (origin) this.origins.set(cardId, origin);
+    else this.origins.delete(cardId);
     this.paint(cardId);
   }
 
   unregister(cardId: string): void {
     this.elements.delete(cardId);
+    this.origins.delete(cardId);
     this.doc.delete(cardId);
   }
 
@@ -118,6 +122,15 @@ export class LiveMoves {
 
   private paint(cardId: string): void {
     const el = this.elements.get(cardId);
+    const origin = this.origins.get(cardId);
+    if (el && origin) {
+      const live = this.isLive(cardId);
+      const to = live ? this.shownAt(cardId) : null;
+      const base = to ? origin() : null;
+      el.style.transform = to && base ? `translate(${to.x - base.x}px, ${to.y - base.y}px)` : '';
+      el.toggleAttribute('data-live', live);
+      return;
+    }
     const at = this.shownAt(cardId);
     if (!el || !at) return;
     el.style.transform = `translate(${at.x}px, ${at.y}px)`;

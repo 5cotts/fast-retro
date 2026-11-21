@@ -22,13 +22,14 @@ export const PHASE_HINT: Record<Phase, string> = {
 
 const CANVAS_PHASE_HINT: Partial<Record<Phase, string>> = {
   brainstorm: 'Add cards below, or double-click the canvas to place one.',
-  group: 'Drag cards near each other to cluster them. Double-click to add a label.',
+  group: 'Drag cards near each other to cluster them, or drop one on another to group them. Double-click to add a label.',
   discuss: 'Talk through the top votes. Pick one in Top voted to jump to it.'
 };
 
-// List view shows a canvas board's cards in columns, where they can't be moved.
+// List view shows a canvas board's cards in columns. They can be grouped here
+// with each card's Group button, but not moved.
 const LIST_PHASE_HINT: Partial<Record<Phase, string>> = {
-  group: 'Switch to Canvas to arrange the cards.'
+  group: "Use a card's Group button to group it. Switch to Canvas to arrange the cards."
 };
 
 export function phaseHint(phase: Phase, view: 'columns' | 'canvas' | 'list'): string {

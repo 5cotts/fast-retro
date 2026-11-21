@@ -1168,6 +1168,7 @@
         {coarsePointer}
         onRenameColumn={renameColumnInline}
         arrangeable={!isCanvas}
+        groupable
       />
 
       <footer class="text-center text-xs text-slate-400 dark:text-slate-500 py-4">
