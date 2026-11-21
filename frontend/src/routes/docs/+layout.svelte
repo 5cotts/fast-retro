@@ -3,6 +3,7 @@
   import { page } from '$app/state';
   import { ArrowLeft, ArrowRight, Menu } from 'lucide-svelte';
   import Wordmark from '$lib/Wordmark.svelte';
+  import FeedbackLink from '$lib/FeedbackLink.svelte';
   import { track } from '$lib/analytics';
   import { adjacentGuidePages, GUIDE_PAGES, guidePageFor, guidePath } from '$lib/guide/pages';
   import { getTheme } from '$lib/storage';
@@ -51,6 +52,7 @@
         <Wordmark />
       </a>
       <a href="/docs" class="text-sm text-slate-500 dark:text-slate-400 hover:underline">User guide</a>
+      <FeedbackLink from="guide" class="text-sm text-slate-500 dark:text-slate-400 hover:underline" />
       <a
         href="/"
         class="ml-auto inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-400 rounded-md px-2 py-1"

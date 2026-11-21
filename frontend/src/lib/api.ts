@@ -13,6 +13,11 @@ export interface MeUser {
 export interface AppConfig {
   googleEnabled: boolean;
   googleClientId: string;
+  feedbackUrl: string | null;
+}
+
+export interface BuildVersion {
+  sha: string;
 }
 
 export interface BoardStatus {
@@ -21,6 +26,7 @@ export interface BoardStatus {
   ended: boolean;
   label: string;
   amHost: boolean;
+  ref: string | null;
 }
 
 export interface MyBoard {
@@ -40,7 +46,15 @@ export async function fetchConfig(): Promise<AppConfig> {
   try {
     return await jsonOrThrow<AppConfig>(await fetch('/api/config'));
   } catch {
-    return { googleEnabled: false, googleClientId: '' };
+    return { googleEnabled: false, googleClientId: '', feedbackUrl: null };
+  }
+}
+
+export async function fetchVersion(): Promise<BuildVersion | null> {
+  try {
+    return await jsonOrThrow<BuildVersion>(await fetch('/api/version'));
+  } catch {
+    return null;
   }
 }
 

@@ -1,0 +1,42 @@
+name: Feature request
+description: Something Fast Retro should do
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **This issue will be public.** Anyone on the internet can read it.
+
+        Please don't paste a board link, board name, participant names or card text. A board link works like a password: anyone who has it can join the board and read it.
+
+        **Screenshots and videos are public too.** A picture of a board shows its cards and names. Crop to the part that matters, or mock it up with made-up text.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The situation, not the solution. For example, "in a retro with 15 people we can't tell which cards are about the same thing".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: Your idea, if you have one. It's fine to leave this blank.
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do today?
+      description: A workaround, another tool, or nothing.
+  - type: input
+    id: board_ref
+    attributes:
+      label: Board reference
+      description: Filled in for you when you came from a board. It's a code that lets the maintainer find your board. It is not the board link and is safe to share. Leave it as it is.
+      placeholder: 7f3a-9c1e-b204
+  - type: checkboxes
+    id: no-board-content
+    attributes:
+      label: Before you send
+      options:
+        - label: I haven't included a board link or any card text.
+          required: true
