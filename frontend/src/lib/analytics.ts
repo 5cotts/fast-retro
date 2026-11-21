@@ -10,9 +10,18 @@ export type AnalyticsEvent =
   | { name: 'board_import'; params: { result: 'success'; origin: 'file' | 'carryover'; cards: number } }
   | { name: 'board_import'; params: { result: 'error'; reason: ImportErrorCode } }
   | { name: 'next_retro'; params: { carried_actions: number } }
-  | { name: 'card_group'; params: { action: 'create' | 'join' | 'leave' | 'ungroup' | 'merge'; source: 'drag' | 'menu' } }
+  | {
+      name: 'card_group';
+      params: {
+        action: 'create' | 'join' | 'leave' | 'ungroup' | 'merge';
+        source: 'drag' | 'menu';
+        // Column boards leave it out.
+        surface?: 'canvas';
+      };
+    }
   | { name: 'canvas_view'; params: { action: 'fit' | 'list' | 'top_voted' } }
   | { name: 'canvas_drop'; params: { on_card: boolean } }
+  | { name: 'canvas_group_move'; params: { cards: number } }
   | { name: 'guide_view'; params: { page: GuideSlug | 'home' } }
   | { name: 'guide_open'; params: { from: 'board_link' | 'footer' | 'onboarding' | 'home' } }
   | { name: 'feedback_open'; params: { from: 'board' | 'home' | 'guide'; kind: 'bug' | 'feature' } }

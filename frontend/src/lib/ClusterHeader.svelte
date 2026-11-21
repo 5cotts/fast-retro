@@ -9,6 +9,8 @@
     canEdit,
     canMerge,
     mergeInto,
+    nameHidden = false,
+    surface = 'columns',
     onRename,
     onDissolve,
     onMerge
@@ -18,6 +20,9 @@
     canMerge: boolean;
     // The title of the column the merged card ends up in.
     mergeInto: string;
+    // The name is hidden in Brainstorm, so it can't hint at hidden cards.
+    nameHidden?: boolean;
+    surface?: 'columns' | 'canvas';
     onRename: (label: string) => void;
     onDissolve: () => void;
     onMerge: () => void;
@@ -28,19 +33,23 @@
 
 <div class="flex items-center gap-x-2 gap-y-0.5 flex-wrap px-1 min-h-[28px]">
   <div class="flex-1 min-w-0 flex">
-    <EditableHeading
-      title={lane.cluster.label}
-      display={clusterDisplayName(lane.cluster)}
-      {canEdit}
-      {onRename}
-      inputLabel="Group name"
-      hint="Click to rename this group"
-      maxLength={MAX_CLUSTER_LABEL_LEN}
-      allowBlank
-      tag="h3"
-      headingClass="text-xs font-semibold text-slate-700 dark:text-slate-200 min-w-0 wrap-anywhere {lane.cluster.label ? '' : 'italic font-medium text-slate-500 dark:text-slate-400'}"
-      inputClass="input flex-1 min-w-0 px-1.5 py-0.5 text-xs font-semibold"
-    />
+    {#if nameHidden}
+      <h3 class="text-xs font-semibold italic text-slate-500 dark:text-slate-400">Group</h3>
+    {:else}
+      <EditableHeading
+        title={lane.cluster.label}
+        display={clusterDisplayName(lane.cluster)}
+        {canEdit}
+        {onRename}
+        inputLabel="Group name"
+        hint="Click to rename this group"
+        maxLength={MAX_CLUSTER_LABEL_LEN}
+        allowBlank
+        tag="h3"
+        headingClass="text-xs font-semibold text-slate-700 dark:text-slate-200 min-w-0 wrap-anywhere {lane.cluster.label ? '' : 'italic font-medium text-slate-500 dark:text-slate-400'}"
+        inputClass="input flex-1 min-w-0 px-1.5 py-0.5 text-xs font-semibold"
+      />
+    {/if}
   </div>
   <span class="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
     {lane.count} {lane.count === 1 ? 'card' : 'cards'}{#if lane.voters > 0}&nbsp;· {lane.voters} {lane.voters === 1 ? 'voter' : 'voters'}{/if}
@@ -50,7 +59,7 @@
       type="button"
       class="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 rounded px-1 py-1 hover:bg-black/5 dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
       aria-label={`Ungroup ${clusterDisplayName(lane.cluster)}`}
-      title="Ungroup. Every card stays in its column."
+      title={surface === 'canvas' ? 'Ungroup. Every card stays where it is.' : 'Ungroup. Every card stays in its column.'}
       onclick={onDissolve}
     >
       <Ungroup size={12} aria-hidden="true" />
