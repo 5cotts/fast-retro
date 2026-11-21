@@ -128,3 +128,51 @@ describe('samePresence', () => {
     expect(samePresence([user], [{ ...user, clientId: 2 }])).toBe(false);
   });
 });
+
+describe('LiveMoves for a card inside a group box', () => {
+  function inBox(origin: { x: number; y: number } | null = { x: 100, y: 200 }) {
+    const live = new LiveMoves();
+    const el = element();
+    live.register('c', el, () => origin);
+    live.setDocPos('c', { x: 999, y: 999 });
+    return { live, el };
+  }
+
+  it('sits in the box, untouched, until someone drags it', () => {
+    const { el } = inBox();
+    expect(el.style.transform).toBe('');
+    expect(el.attrs.has('data-live')).toBe(false);
+  });
+
+  it('moves by the distance from its place in the box to the live position', () => {
+    const { live, el } = inBox();
+    live.setOwn('c', { x: 130, y: 260 });
+    expect(el.style.transform).toBe(at(30, 60));
+    expect(el.attrs.has('data-live')).toBe(true);
+    live.clearOwn();
+    expect(el.style.transform).toBe('');
+    expect(el.attrs.has('data-live')).toBe(false);
+  });
+
+  it('shows a peer dragging it out of the box the same way', () => {
+    const { live, el } = inBox();
+    live.setPeer(1, { id: 'c', x: 90, y: 150 }, 0);
+    expect(el.style.transform).toBe(at(-10, -50));
+    live.clearPeer(1);
+    expect(el.style.transform).toBe('');
+  });
+
+  it('stays put if the box has not been drawn yet', () => {
+    const { live, el } = inBox(null);
+    live.setOwn('c', { x: 130, y: 260 });
+    expect(el.style.transform).toBe('');
+  });
+
+  it('is a plain card again once re-registered without a box', () => {
+    const { live } = inBox();
+    const el = element();
+    live.register('c', el);
+    live.setDocPos('c', { x: 5, y: 6 });
+    expect(el.style.transform).toBe(at(5, 6));
+  });
+});
