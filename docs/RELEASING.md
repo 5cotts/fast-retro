@@ -12,7 +12,7 @@ Runbook for agents. Design and rationale: [`release-plan.md`](release-plan.md). 
 
 ## What needs Scott's explicit go-ahead
 
-Approval for one deploy doesn't carry over to the next.
+Approval for one deploy doesn't carry over to the next. The one exception is the [nightly auto-deploy](#nightly-auto-deploy), which has Scott's standing approval for its exact path only.
 
 - Any `make prod-deploy` or `make rollback`
 - `FORCE=1`, `SKIP_QA=1` or `ALLOW_LOCAL_BUILD=1`
@@ -73,8 +73,6 @@ This stops QA, moves its DB and its `-wal`/`-shm` aside together as `*.bak-<ts>`
 
 ## Deploy to prod (Scott's go-ahead for every deploy)
 
-The first scripted prod deploy hasn't happened yet, and `prod.prev` won't exist until it does. Do it with Scott watching: dry run, deploy, a deliberate `make rollback`, then redeploy (`release-plan.md` §5, PR 5). Delete this paragraph once that's done.
-
 Prerequisites: the build was QA'd (`make qa-deploy`) and its commit's tree is what `main` has now (merge the PR first; a stack tip's build qualifies once the stack is merged).
 
 ```sh
@@ -89,6 +87,29 @@ Overrides, each needing Scott's explicit OK: `FORCE=1` (deploy with live partici
 After verify passes, it creates a GitHub release `prod-<build id>`, tagged at the `origin/main` commit, with the binary and `BUILD_INFO.json` attached and the PRs merged since the previous prod release listed. It's marked Latest, so the repo's Releases list is the history of what went live. Redeploying a build that already has a release (after a rollback, say) adds a "Redeployed" note to that release and marks it Latest instead of creating another. This step is best effort: prod is already live, so a failure only warns (`gh-release ... result=fail` in `release.log`). To redo it by hand, use `gh release create prod-<id> --target <main sha> ...` with the same assets. `NO_GH_RELEASE=1` skips it. QA and drills never create releases.
 
 Report back: prod URL, build id and sha, the restore-point path, the GitHub release URL, and the verify result.
+
+## Nightly auto-deploy
+
+**Merging ships nothing by itself. A build of `main`'s code that's on QA at 3 AM ET goes live.** To ship: merge, get `main`'s code onto QA (`make qa-deploy`), test it, and leave it there. To hold a release, put something else on QA, or pause the "fast-retro nightly auto-deploy" automation.
+
+A stack tip's build counts as `main`'s code once the stack is merged, if nothing else merged in between (the check compares git trees), so it doesn't need another QA deploy. Don't put `main`'s build on QA unless it's OK to ship that night: the job can't tell whether anyone actually tested it.
+
+The automation runs `Skills/fast-retro-release/scripts/nightly-deploy.sh`. It reads the build QA is serving and, if that's `main`'s code and prod isn't on it, runs `make prod-deploy` on that build, using `main`'s own release scripts from a throwaway export, so the dev checkout's branch doesn't matter. It never fetches a build or changes QA. All the normal guards apply, and guard (c) means a PR build can never ship. It never passes `SKIP_QA`, `ALLOW_LOCAL_BUILD` or `SEED`. Its `release.log` lines have the actor `nightly`.
+
+Idle tabs don't block it. If a board has a connection but no edits in the last 15 minutes, the job passes `FORCE=1`, and those tabs reconnect after the restart, still running the old JS until they're reloaded. An edit on a connected board in that window blocks the run. If a compaction deleted part of the window, the job waits for a full 15 minutes it can read, which takes at most about 17 minutes, and blocks if it can't get one. `doc-model-change` releases still need zero connections, because `FORCE` doesn't override that.
+
+| Status | What happened | Email |
+|---|---|---|
+| `up_to_date` | Prod matches `main`; nothing touched | None |
+| `waiting` | `main` has code prod doesn't, but QA isn't on it; nothing touched | Once per `main` commit |
+| `deployed` | Prod verified on QA's build | What changed, any idle tabs it deployed over, the release link, how to roll back |
+| `blocked` | A connected board was edited in the last 15 minutes, a `doc-model-change` release has a tab open, or another release is running. Retries the next night | Yes |
+| `held` | `main` is code prod already rolled back from or failed to verify on | Yes |
+| `failed` | See `stage` and `reason`; includes QA being down while prod is behind. The usual auto-restore applies | Yes, plus an SMS if prod looks down |
+
+`held` stops the job undoing a rollback at 3 AM. It clears when `main` changes, or after a deploy by hand.
+
+Each run writes `fast-retro-releases/logs/nightly-<ts>.json` and `.log`; `logs/nightly-latest.json` links to the last finished run.
 
 ## Rollback (Scott's go-ahead)
 
@@ -108,13 +129,13 @@ Rollback never restores the DB. Migrations are additive, so the old binary runs 
 
 ## Is anyone actually on a board?
 
-The preflight counts connections, so an idle open tab blocks a deploy the same as someone working. To tell them apart:
+The preflight counts connections, so an idle open tab blocks a manual deploy the same as someone working. (The [nightly job](#nightly-auto-deploy) runs this check itself.) To tell them apart:
 
 - `boards.last_active_at` doesn't track edits, and its timestamps are in milliseconds.
 - An open tab writes an identical no-op to `doc_updates` about every 15 s, so writes alone don't show activity.
-- A board is idle when `count(distinct update_bin)` over its recent `doc_updates` is 1 and its `board_docs` snapshot isn't changing.
+- A board is idle when, over its recent `doc_updates`, `count(distinct update_bin)` is at most 1 and every row starts with byte `00` (no new structs), and `board_docs.updated_at` is older than that window. A compaction deletes the log, so a newer `updated_at` means edits may be hidden.
 
-Report what you found to Scott. Whether to wait or use `FORCE=1` is Scott's call.
+For a deploy by hand, report what you found to Scott. Whether to wait or use `FORCE=1` is Scott's call.
 
 ## Manual DB restore (Scott only)
 
