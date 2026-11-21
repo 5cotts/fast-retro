@@ -115,6 +115,7 @@ running/deployed) before running the suite.
 | `FASTRETRO_DB`     | `data/fastretro.db`                    | Path to the SQLite database file. Created automatically on first run.       |
 | `GOOGLE_CLIENT_ID` | unset (Google Sign-In disabled)        | Google OAuth client ID. Set to enable Google Sign-In; see [Google Sign-In](#google-sign-in) below. |
 | `GA_MEASUREMENT_ID` | unset (analytics disabled)            | Google Analytics 4 measurement ID. Optional — leave unset to disable GA4 tracking entirely. |
+| `FEEDBACK_URL`     | unset (no feedback link)               | Where the "Send feedback" link points, for example your repo's `https://github.com/<owner>/<repo>/issues/new/choose`. Must be `https://` (`http://` only for localhost). The app adds only `version` and `browser` query parameters, never anything from a board. See [Feedback link](#feedback-link). |
 | `COOKIE_SECURE`    | `true`                                 | Whether session cookies are marked `Secure`. Set to `0`/`false` for local HTTP testing. |
 | `FASTRETRO_RATE_LIMIT` | `60`                               | Per-IP requests per minute for WebSocket joins, board creation, sign-in and the lead-token check. `test-local.sh` raises it because the whole e2e suite shares one IP. |
 | `RUST_LOG`         | `fast_retro=info,tower_http=info`      | `tracing-subscriber` env filter.                                            |
@@ -123,6 +124,14 @@ running/deployed) before running the suite.
 If `RETRO_LEAD_TOKEN` is unset, the server generates a random token on each start and prints it to stdout — handy for local development, but you'll want a stable one for any persistent deployment. A token set through the environment is never printed; the banner only says it is set and how long it is.
 
 A `.env.example` listing all of these is checked in — copy it to `.env` and adjust for local use (`.env` itself is gitignored).
+
+### Feedback link
+
+Set `FEEDBACK_URL` and a "Send feedback" link appears on the home page, in the board footer and in the user guide. Unset, nothing is shown. It opens in a new tab with no referrer, so the board link isn't passed along.
+
+This deployment points it at the GitHub issue forms in `.github/ISSUE_TEMPLATE/` (bug report and feature request). Issues are public, so the forms say not to paste board links or card text. The link adds two query parameters, `version` (the short commit of the running build) and `browser` (for example "Chrome 130 on macOS"). GitHub fills the matching form fields only when the URL is a specific form, such as `.../issues/new?template=bug.yml`; on the `/issues/new/choose` page they're ignored. Nothing else is added, and that must stay true: a board link works like a password.
+
+To use your own tracker, point `FEEDBACK_URL` at any page. Security reports go through `SECURITY.md`, not the forms.
 
 ### Google Sign-In
 

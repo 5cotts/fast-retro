@@ -15,6 +15,7 @@ export type AnalyticsEvent =
   | { name: 'canvas_drop'; params: { on_card: boolean } }
   | { name: 'guide_view'; params: { page: GuideSlug | 'home' } }
   | { name: 'guide_open'; params: { from: 'board_link' | 'footer' | 'onboarding' | 'home' } }
+  | { name: 'feedback_open'; params: { from: 'board' | 'home' | 'guide' } }
   | { name: 'present'; params: { action: 'tab' | 'window' | 'stop' } }
   | { name: 'present_reminder'; params: { action: 'shown' | 'present' | 'not_now' | 'off' } }
   | { name: 'board_create'; params: { template: 'retro' | 'custom' | 'canvas'; columns: number; action_items: boolean } }

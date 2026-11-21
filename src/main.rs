@@ -154,6 +154,9 @@ struct AppState {
     google: Option<Arc<GoogleVerifier>>,
     /// Mark session cookies Secure (production HTTPS). Off for local http tests.
     cookie_secure: bool,
+    /// Where the "Send feedback" link points (FEEDBACK_URL). None hides the
+    /// link everywhere, which is the default for self-hosted builds.
+    feedback_url: Option<String>,
     /// Shared per-IP budget for endpoints that create resources or double as
     /// a token-guessing oracle (WS upgrade, board create, lead-token-check,
     /// Google sign-in).
@@ -424,12 +427,15 @@ async fn main() {
         .filter(|n| *n > 0)
         .unwrap_or(RATE_LIMIT_MAX_REQUESTS);
 
+    let feedback_url = feedback_url_from_env(std::env::var("FEEDBACK_URL").ok().as_deref());
+
     let state = AppState {
         rooms: Arc::new(RwLock::new(HashMap::new())),
         lead_token: lead_token.clone(),
         db,
         google,
         cookie_secure,
+        feedback_url,
         rate_limiter: RateLimiter::new(rate_limit, RATE_LIMIT_WINDOW),
     };
 
@@ -816,7 +822,50 @@ async fn config(State(state): State<AppState>) -> Response {
         Some(v) => (true, v.client_id().to_string()),
         None => (false, String::new()),
     };
-    Json(serde_json::json!({ "googleEnabled": enabled, "googleClientId": client_id })).into_response()
+    Json(serde_json::json!({
+        "googleEnabled": enabled,
+        "googleClientId": client_id,
+        "feedbackUrl": state.feedback_url,
+    }))
+    .into_response()
+}
+
+/// The FEEDBACK_URL setting, if it's usable. Unset or empty means no feedback
+/// link anywhere. Anything that isn't a plain `https://` URL (or `http://` to
+/// a loopback host, for local testing) is ignored with a warning rather than
+/// rendered into a link, so a typo can't become a `javascript:` href.
+fn feedback_url_from_env(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    if valid_feedback_url(raw) {
+        info!("feedback link enabled");
+        Some(raw.to_string())
+    } else {
+        warn!("ignoring FEEDBACK_URL: it must be an https:// URL (http:// only for localhost)");
+        None
+    }
+}
+
+fn valid_feedback_url(url: &str) -> bool {
+    if url.len() > 2048 || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        return false;
+    }
+    let (https, rest) = match (url.strip_prefix("https://"), url.strip_prefix("http://")) {
+        (Some(rest), _) => (true, rest),
+        (None, Some(rest)) => (false, rest),
+        _ => return false,
+    };
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() || authority.contains('@') {
+        return false;
+    }
+    let host = authority.rsplit_once(':').map_or(authority, |(h, _)| h);
+    if host.is_empty() {
+        return false;
+    }
+    https || matches!(host, "localhost" | "127.0.0.1")
 }
 
 #[derive(Deserialize)]
@@ -1294,7 +1343,70 @@ mod tests {
             db: Db::open(":memory:").expect("open in-memory db"),
             google: None,
             cookie_secure: true,
+            feedback_url: None,
             rate_limiter: RateLimiter::new(RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW),
+        }
+    }
+
+    async fn config_json(state: AppState) -> serde_json::Value {
+        let req = with_peer(Request::builder().uri("/api/config").body(Body::empty()).unwrap());
+        let res = build_router(state).oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    #[tokio::test]
+    async fn config_has_no_feedback_url_by_default() {
+        let v = config_json(test_state()).await;
+        assert!(v["feedbackUrl"].is_null());
+    }
+
+    #[tokio::test]
+    async fn config_reports_the_feedback_url_when_set() {
+        let mut state = test_state();
+        state.feedback_url = feedback_url_from_env(Some("https://github.com/o/r/issues/new/choose"));
+        let v = config_json(state).await;
+        assert_eq!(v["feedbackUrl"], "https://github.com/o/r/issues/new/choose");
+    }
+
+    #[test]
+    fn feedback_url_is_off_when_unset_or_blank() {
+        assert_eq!(feedback_url_from_env(None), None);
+        assert_eq!(feedback_url_from_env(Some("")), None);
+        assert_eq!(feedback_url_from_env(Some("   ")), None);
+    }
+
+    #[test]
+    fn feedback_url_accepts_https_and_loopback_http() {
+        for ok in [
+            "https://github.com/o/r/issues/new/choose",
+            "https://example.com/issues/new?template=bug.yml",
+            "  https://example.com  ",
+            "http://localhost:5199/feedback",
+            "http://127.0.0.1/feedback",
+        ] {
+            assert_eq!(feedback_url_from_env(Some(ok)).as_deref(), Some(ok.trim()), "{ok}");
+        }
+    }
+
+    #[test]
+    fn feedback_url_rejects_anything_else() {
+        for bad in [
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "//example.com/x",
+            "example.com/x",
+            "ftp://example.com/x",
+            "http://example.com/x",
+            "https://",
+            "https:///path",
+            "https://user:pw@example.com/x",
+            "https://example.com/a b",
+            "https://example.com/\nx",
+            "https://example.com/\u{7}x",
+        ] {
+            assert_eq!(feedback_url_from_env(Some(bad)), None, "{bad}");
         }
     }
 
