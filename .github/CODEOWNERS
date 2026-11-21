@@ -1,18 +1,1 @@
-# Every change needs a review from the maintainer. This only takes effect
-# once the branch ruleset on `main` has "Require review from Code Owners" on.
-*                        @5cotts
-
-# Paths that can change what gets built, released or trusted.
-/.github/                @5cotts
-/scripts/                @5cotts
-/build.sh                @5cotts
-/Makefile                @5cotts
-/rust-toolchain.toml     @5cotts
-/Cargo.toml              @5cotts
-/Cargo.lock              @5cotts
-/package.json            @5cotts
-/bun.lock                @5cotts
-/frontend/bun.lock       @5cotts
-/docs/RELEASING.md       @5cotts
-/SECURITY.md             @5cotts
-/LICENSE                 @5cotts
+*  @5cotts
