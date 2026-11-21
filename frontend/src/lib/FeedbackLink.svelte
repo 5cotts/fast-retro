@@ -39,9 +39,11 @@
 </script>
 
 <!-- noreferrer matters: on a board the Referer header would carry the board link, which works like a password. -->
+{#if links.length > 0}
+<span class="inline-flex items-baseline {separated ? 'gap-1.5' : 'gap-3'} {leading ? 'ml-0.5' : ''}">
 {#each links as { kind, label, href }, i (kind)}
   {#if separated && (i > 0 || leading)}
-    <span aria-hidden="true" class="mx-1">·</span>
+    <span aria-hidden="true">·</span>
   {/if}
   <a
     {href}
@@ -53,3 +55,5 @@
     {label}
   </a>
 {/each}
+</span>
+{/if}
