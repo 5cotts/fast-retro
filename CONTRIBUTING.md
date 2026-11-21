@@ -20,7 +20,7 @@ cd frontend && bun run dev
 
 ## Before opening a PR
 
-There's no CI yet, so please run these locally and make sure they pass:
+CI runs the type check, unit tests, `cargo test` and clippy on every PR, but please run them locally first and make sure they pass:
 
 ```bash
 cargo test
@@ -28,6 +28,12 @@ cargo clippy --all-targets
 ( cd frontend && bun run check )
 ./test-local.sh    # runs an isolated local instance + the full suite; see tests/README.md
 ```
+
+## How PRs are reviewed
+
+`main` is protected: every change goes through a pull request, CI must pass, and the maintainer reviews and merges it. Anything merged to `main` is built and can reach production, so reviews are careful and may ask for changes. PRs from first-time contributors need a maintainer to approve the CI run before it starts. The full end-to-end suite runs when a maintainer adds the `e2e` label.
+
+Changes to `.github/`, `scripts/`, the build files and dependency lockfiles get extra scrutiny, so keep those PRs small and explain them.
 
 ## Making changes
 
