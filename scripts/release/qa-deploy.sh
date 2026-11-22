@@ -15,7 +15,7 @@ ensure_layout
 seed="${SEED:-}"
 [[ -z "$seed" || "$seed" == prod ]] || die "SEED must be 'prod' or unset, got '$seed'"
 if [[ "$seed" == prod ]] && ! is_true "${ALLOW_PUBLIC_SEED:-}"; then
-  die "SEED=prod would copy real user boards onto QA, and QA is public. Get Scott's OK, then rerun with ALLOW_PUBLIC_SEED=1"
+  die "SEED=prod would copy real user boards onto QA, and QA may be reachable without sign-in. Get the release owner's OK, then rerun with ALLOW_PUBLIC_SEED=1"
 fi
 
 # ---- which build
@@ -40,7 +40,7 @@ log "QA deploy of ${id} (sha ${sha:0:7}, source ${src})${seed:+, SEED=prod}"
 # ---- smoke (candidate + rollback target against a copy of prod's DB)
 BUILD="$id" "$(dirname "$0")/smoke.sh" || die "smoke failed; QA left unchanged"
 
-# ---- service must exist (setup step 1 in docs/release-plan.md §3)
+# ---- service must exist (docs/RELEASING.md, "Setting up a deploy host")
 read -r state pid uptime < <(service_state "$QA_SERVICE")
 prev="$(link_build qa)"
 if [[ "$state" == ABSENT ]]; then
@@ -49,7 +49,7 @@ if [[ "$state" == ABSENT ]]; then
     audit qa-bootstrap "build=${id} sha=${sha}"
   fi
   die "service ${QA_SERVICE} isn't registered. The qa link now points at $(basename "$(link_build qa)").
-  Register it once (docs/release-plan.md §3 step 1), then rerun: make qa-deploy BUILD=${id}"
+  Add it to supervisord once (docs/RELEASING.md, 'Setting up a deploy host'), then rerun: make qa-deploy BUILD=${id}"
 fi
 
 logfile="$(env_get qa log)"
@@ -79,7 +79,7 @@ if [[ "$seed" == prod ]]; then
   ts="$(now_ts)"
   log "reseeding QA from prod (old QA DB files kept as *.bak-${ts})"
   STOPPED=1
-  run supervisorctl -c "$SUPERVISOR_CONF" stop "$QA_SERVICE" >&2
+  run _supervisorctl stop "$QA_SERVICE" >&2
   # The -wal and -shm move together with the main file: a leftover WAL next
   # to a new DB file could be replayed into it.
   for ext in "" -wal -shm; do

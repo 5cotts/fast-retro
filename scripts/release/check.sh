@@ -2,7 +2,7 @@
 # make release-check [REF=<ref> | PR=<n> | SHA=<sha>]   (default: HEAD of the dev checkout)
 #
 # Runs CI's gates locally against the exact commit, in a clean worktree
-# under fast-retro-releases/ (docs/release-plan.md §2.5). For agents before
+# under $RELEASE_ROOT/ (docs/release-plan.md §2.5). Run it before
 # pushing, and the first step of a break-glass build. Informational only:
 # CI is the source of truth, and this never marks a build as passing.
 source "$(dirname "$0")/lib.sh"

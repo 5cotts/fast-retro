@@ -2,7 +2,7 @@
 # make release-fetch [REF=origin/main | PR=<n> | SHA=<sha>]
 #
 # Download the CI-built release artifact for a commit into
-# fast-retro-releases/builds/<UTC-ts>-<sha7>/ and verify it came from our
+# $RELEASE_ROOT/builds/<UTC-ts>-<sha7>/ and verify it came from our
 # workflow (docs/release-plan.md §2.10.3). Safe to rerun: an intact build
 # for the same sha is reused. Prints the build id on stdout as BUILD=<id>.
 source "$(dirname "$0")/lib.sh"

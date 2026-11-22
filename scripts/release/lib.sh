@@ -9,28 +9,90 @@ set -euo pipefail
 
 export PATH="${HOME}/.cargo/bin:${PATH}"
 
-readonly REPO_SLUG="5cotts/fast-retro"
+# ---------------------------------------------------------------- host config
+#
+# Everything that differs between deploy hosts (repo, paths, URLs, service
+# names) comes from one file outside the repo: $RELEASE_CONFIG, or
+# ~/.config/fast-retro/release.env. Start from release.env.example. The file
+# is sourced as shell, so keep it writable only by the account that deploys.
+
+RELEASE_CONFIG="${RELEASE_CONFIG:-${XDG_CONFIG_HOME:-${HOME}/.config}/fast-retro/release.env}"
+[[ -r "$RELEASE_CONFIG" ]] || {
+  printf 'release: ERROR: no release config at %s. Copy scripts/release/release.env.example there (or point RELEASE_CONFIG at your copy) and fill it in; see docs/RELEASING.md\n' "$RELEASE_CONFIG" >&2
+  exit 1
+}
+
+# Only the config decides these. RELEASE_ROOT and FASTRETRO_REPO may also be
+# set in the environment, which wins, so a drill can use a scratch root.
+_env_root="${RELEASE_ROOT:-}"
+_env_repo="${FASTRETRO_REPO:-}"
+unset REPO_SLUG RELEASE_ROOT FASTRETRO_REPO PROD_URL QA_URL PROD_DB QA_DB \
+      PROD_PORT QA_PORT SMOKE_PORT PROD_SERVICE QA_SERVICE SERVICE_LOG_DIR SUPERVISOR_CONF
+# shellcheck source=/dev/null
+source "$RELEASE_CONFIG"
+RELEASE_ROOT="${_env_root:-${RELEASE_ROOT:-}}"
+FASTRETRO_REPO="${_env_repo:-${FASTRETRO_REPO:-}}"
+unset _env_root _env_repo
+
+_config_die() {
+  printf 'release: ERROR: %s (in %s; see scripts/release/release.env.example)\n' "$1" "$RELEASE_CONFIG" >&2
+  exit 1
+}
+_config_need() {
+  local name
+  for name in "$@"; do
+    [[ -n "${!name:-}" ]] || _config_die "${name} isn't set"
+  done
+}
+_config_need REPO_SLUG RELEASE_ROOT PROD_URL QA_URL PROD_DB SERVICE_LOG_DIR
+# REPO_SLUG is the trust anchor: only builds attested by this repo's workflow
+# are deployable, so it's never guessed from a git remote.
+[[ "$REPO_SLUG" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || _config_die "REPO_SLUG must be <owner>/<repo>, got '${REPO_SLUG}'"
+for _v in PROD_URL QA_URL; do
+  [[ "${!_v}" =~ ^https?://[^/[:space:]]+$ ]] || _config_die "${_v} must be an origin like https://retro.example.com with no path, got '${!_v}'"
+done
+for _v in RELEASE_ROOT PROD_DB SERVICE_LOG_DIR; do
+  [[ "${!_v}" == /* ]] || _config_die "${_v} must be an absolute path, got '${!_v}'"
+done
+unset _v
+
+readonly REPO_SLUG PROD_URL QA_URL
 readonly WORKFLOW_PATH=".github/workflows/build.yml"
 readonly SIGNER_WORKFLOW="${REPO_SLUG}/${WORKFLOW_PATH}"
 
 # The dev checkout. Only used for `git fetch` / `git worktree`; nothing here
-# builds into it or writes to its target/ dir.
-REPO_DIR="${FASTRETRO_REPO:-/home/workspace/fast-retro}"
-RELEASE_ROOT="${RELEASE_ROOT:-/home/workspace/fast-retro-releases}"
+# builds into it or writes to its target/ dir. Defaults to the checkout these
+# scripts are in.
+REPO_DIR="${FASTRETRO_REPO:-$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null || true)}"
+[[ -n "$REPO_DIR" ]] || _config_die "FASTRETRO_REPO isn't set and these scripts aren't running from a git checkout"
 readonly REPO_DIR RELEASE_ROOT
 readonly BUILDS_DIR="${RELEASE_ROOT}/builds"
 readonly RELEASE_LOG="${RELEASE_ROOT}/release.log"
 
 # Live databases. Scratch servers must never resolve to either of these.
-readonly PROD_DB="/home/workspace/fast-retro/data/fastretro.db"
-readonly QA_DB="${RELEASE_ROOT}/qa-data/fastretro-qa.db"
+readonly PROD_DB
+readonly QA_DB="${QA_DB:-${RELEASE_ROOT}/qa-data/fastretro-qa.db}"
+[[ "$QA_DB" == /* ]] || _config_die "QA_DB must be an absolute path, got '${QA_DB}'"
 
-readonly PROD_PORT=5102
-readonly QA_PORT=5103
-readonly SMOKE_PORT=5197
-readonly PROD_SERVICE="fast-retro-prod"
-readonly QA_SERVICE="fast-retro-qa"
-readonly SUPERVISOR_CONF="/etc/zo/supervisord-user.conf"
+readonly PROD_PORT="${PROD_PORT:-5102}"
+readonly QA_PORT="${QA_PORT:-5103}"
+readonly SMOKE_PORT="${SMOKE_PORT:-5197}"
+for _v in PROD_PORT QA_PORT SMOKE_PORT; do
+  [[ "${!_v}" =~ ^[0-9]+$ ]] || _config_die "${_v} must be a port number, got '${!_v}'"
+done
+unset _v
+[[ "$PROD_PORT" != "$QA_PORT" && "$SMOKE_PORT" != "$PROD_PORT" && "$SMOKE_PORT" != "$QA_PORT" ]] \
+  || _config_die "PROD_PORT, QA_PORT and SMOKE_PORT must all differ"
+[[ "$(realpath -m "$PROD_DB")" != "$(realpath -m "$QA_DB")" ]] || _config_die "PROD_DB and QA_DB are the same file"
+
+# supervisord programs. Each writes stdout to SERVICE_LOG_DIR/<name>.log and
+# stderr to SERVICE_LOG_DIR/<name>_err.log.
+readonly PROD_SERVICE="${PROD_SERVICE:-fast-retro-prod}"
+readonly QA_SERVICE="${QA_SERVICE:-fast-retro-qa}"
+[[ "$PROD_SERVICE" != "$QA_SERVICE" ]] || _config_die "PROD_SERVICE and QA_SERVICE are the same"
+readonly SERVICE_LOG_DIR="${SERVICE_LOG_DIR%/}"
+# Empty means supervisorctl's own default config search.
+readonly SUPERVISOR_CONF="${SUPERVISOR_CONF:-}"
 readonly CANARY_SLUG="zz-release-canary"
 
 # ---------------------------------------------------------------- output
@@ -395,16 +457,29 @@ check_instance() {
 
 # ---------------------------------------------------------------- supervisor
 
-# "<STATE> <PID> <UPTIME>" for a service, or "ABSENT - -".
+_supervisorctl() {
+  if [[ -n "$SUPERVISOR_CONF" ]]; then
+    supervisorctl -c "$SUPERVISOR_CONF" "$@"
+  else
+    supervisorctl "$@"
+  fi
+}
+
+# "<STATE> <PID> <UPTIME>" for a service, "ABSENT - -" if supervisord doesn't
+# know it, or "UNREACHABLE - -" if supervisorctl couldn't ask supervisord.
 service_state() {
   local line
-  line="$(supervisorctl -c "$SUPERVISOR_CONF" status "$1" 2>/dev/null || true)"
+  line="$(_supervisorctl status "$1" 2>/dev/null || true)"
   if [[ -z "$line" || "$line" == *"no such process"* || "$line" == *ERROR* ]]; then
     echo "ABSENT - -"
     return 0
   fi
   local state pid uptime
   state="$(awk '{print $2}' <<<"$line")"
+  case "$state" in
+    STOPPED|STARTING|RUNNING|BACKOFF|STOPPING|EXITED|FATAL|UNKNOWN) ;;
+    *) echo "UNREACHABLE - -"; return 0 ;;
+  esac
   pid="$(sed -nE 's/.*pid ([0-9]+).*/\1/p' <<<"$line")"
   uptime="$(sed -nE 's/.*uptime ([0-9:]+( days?, [0-9:]+)?).*/\1/p' <<<"$line")"
   uptime="${uptime// /_}"
@@ -443,21 +518,18 @@ env_get() {
     qa:link)      echo qa ;;
     qa:prev)      echo qa.prev ;;
     qa:db)        echo "$QA_DB" ;;
-    qa:log)       echo "/dev/shm/${QA_SERVICE}.log" ;;
+    qa:log)       echo "${SERVICE_LOG_DIR}/${QA_SERVICE}.log" ;;
     qa:url)       echo "$QA_URL" ;;
     prod:service) echo "$PROD_SERVICE" ;;
     prod:port)    echo "$PROD_PORT" ;;
     prod:link)    echo prod ;;
     prod:prev)    echo prod.prev ;;
     prod:db)      echo "$PROD_DB" ;;
-    prod:log)     echo "/dev/shm/${PROD_SERVICE}.log" ;;
+    prod:log)     echo "${SERVICE_LOG_DIR}/${PROD_SERVICE}.log" ;;
     prod:url)     echo "$PROD_URL" ;;
     *) die "env_get: unknown '$1:$2'" ;;
   esac
 }
-
-readonly QA_URL="https://fast-retro-qa-5cotts.zocomputer.io"
-readonly PROD_URL="https://fast-retro.scottschmidt.io"
 
 # Absolute build dir a symlink in RELEASE_ROOT points at, or empty.
 link_build() {
@@ -519,13 +591,13 @@ restart_service() {
   local verb=restart
   read -r state pid uptime < <(service_state "$service")
   [[ "$state" == STOPPED || "$state" == EXITED || "$state" == FATAL ]] && verb=start
-  supervisorctl -c "$SUPERVISOR_CONF" "$verb" "$service" >&2 \
+  _supervisorctl "$verb" "$service" >&2 \
     || { log "supervisorctl ${verb} ${service} failed"; return 1; }
   for i in $(seq 1 30); do
     read -r state pid uptime < <(service_state "$service")
     case "$state" in
       RUNNING) echo "$pid"; return 0 ;;
-      FATAL|BACKOFF|EXITED|ABSENT) log "${service} is ${state} after restart"; return 1 ;;
+      FATAL|BACKOFF|EXITED|ABSENT|UNREACHABLE) log "${service} is ${state} after restart"; return 1 ;;
     esac
     sleep 1
   done
@@ -535,7 +607,7 @@ restart_service() {
 
 # verify_env <qa|prod> <build-dir> <log-offset> <action>
 # §2.7 verify: the shared checks on 127.0.0.1 (with the service's own lead
-# token), token-free checks on the public URL (these go through Zo's proxy,
+# token), token-free checks on the public URL (these go through the reverse proxy,
 # including the WebSocket upgrade), the startup log, the same PID for
 # VERIFY_STABLE_SECS (default 60), and no WARN/ERROR/panic in the new log
 # bytes. Saves a redacted log tail to logs/. Returns non-zero on failure.
@@ -604,7 +676,7 @@ verify_env() {
 }
 
 # Append an entry to a build's LOCAL_INFO (the only file in a build dir the
-# box ever writes). jq filter gets $at.
+# deploy host ever writes). jq filter gets $at.
 local_info_update() {
   local dir="$1" filter="$2"
   if is_true "${DRY_RUN:-}"; then
@@ -783,8 +855,8 @@ gh_release_publish() {
     return 0
   fi
   # shellcheck disable=SC2016  # backticks are Markdown, not command substitution
-  notes="$(printf 'Deployed to https://fast-retro.scottschmidt.io at %s.\n\n| | |\n|---|---|\n| Build | `%s` (source: %s) |\n| Commit | %s (build sha %s) |\n| CI run | %s |\n| Previous prod | %s |\n\n## Merged PRs\n\n%s\n\n## Verify the binary\n\n```sh\ngh attestation verify fast-retro-linux-x86_64 -R %s --signer-workflow %s\n```\n' \
-    "$(now_iso)" "$id" "$src" "$main_sha" "${sha:0:7}" "$run_url" "${from_sha:0:7}" \
+  notes="$(printf 'Deployed to %s at %s.\n\n| | |\n|---|---|\n| Build | `%s` (source: %s) |\n| Commit | %s (build sha %s) |\n| CI run | %s |\n| Previous prod | %s |\n\n## Merged PRs\n\n%s\n\n## Verify the binary\n\n```sh\ngh attestation verify fast-retro-linux-x86_64 -R %s --signer-workflow %s\n```\n' \
+    "$PROD_URL" "$(now_iso)" "$id" "$src" "$main_sha" "${sha:0:7}" "$run_url" "${from_sha:0:7}" \
     "$(_gh_release_prs "$from_sha" "$main_sha")" "$REPO_SLUG" "$SIGNER_WORKFLOW")"
   [[ "$src" == ci ]] || notes="> Break-glass ${src} build: not built or attested by CI."$'\n\n'"$notes"
   stage="$(mktemp -d)"

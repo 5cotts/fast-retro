@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make release-build-local REF=<ref> | PR=<n> | SHA=<sha>
 #
-# BREAK-GLASS ONLY: GitHub is down and Scott has explicitly OK'd a local
+# BREAK-GLASS ONLY: GitHub is down and the release owner has explicitly OK'd a local
 # build (docs/release-plan.md §2.5). Runs release-check on the commit, then
 # builds it in the clean worktree with its own CARGO_TARGET_DIR and writes a
 # build with source: local. prod-deploy refuses these unless
@@ -12,7 +12,7 @@ source "$(dirname "$0")/lib.sh"
 acquire_lock
 sha="$(resolve_sha)"
 sha7="${sha:0:7}"
-warn "break-glass local build of ${sha7}: only with Scott's explicit OK (normal path: make release-fetch)"
+warn "break-glass local build of ${sha7}: only with the release owner's explicit OK (normal path: make release-fetch)"
 
 if is_true "${DRY_RUN:-}"; then
   log "DRY_RUN: would run release-check, then build ${sha7} in ${WORKTREE}"
