@@ -41,13 +41,13 @@ describe('shortVersion', () => {
 });
 
 describe('feedbackHref', () => {
-  const base = 'https://github.com/5cotts/fast-retro/issues/new';
+  const base = 'https://github.com/example/fast-retro/issues/new';
   const ctx = { version: 'c9c5238a1b2c3d4e', userAgent: CHROME_MAC, boardRef: '7f3a-9c1e-b204' };
   const keys = (href: string) => [...new URL(href).searchParams.keys()].sort();
 
   it('opens the bug form with the build, browser and board reference filled in', () => {
     const href = new URL(feedbackHref(base, 'bug', ctx));
-    expect(href.origin + href.pathname).toBe('https://github.com/5cotts/fast-retro/issues/new');
+    expect(href.origin + href.pathname).toBe('https://github.com/example/fast-retro/issues/new');
     expect(href.searchParams.get('template')).toBe('bug.yml');
     expect(href.searchParams.get('version')).toBe('c9c5238');
     expect(href.searchParams.get('browser')).toBe('Chrome 130 on macOS');

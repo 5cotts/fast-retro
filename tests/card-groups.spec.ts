@@ -203,7 +203,7 @@ test.describe('fast-retro card groups', () => {
     }
   });
 
-  // Valentina's request, end to end: "if the same thing popped up as 'went ok'
+  // The request this feature came from, end to end: "if the same thing popped up as 'went ok'
   // and 'went well', you could cluster them together but still keep them in
   // separate columns". docs/qa-card-groups.md is the same session by hand.
   test('the same topic in "went well" and "went OK" is grouped, and both cards keep their own votes', async ({ browser }) => {

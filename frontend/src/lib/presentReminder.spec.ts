@@ -38,14 +38,14 @@ function user(clientId: number, name: string, color: string): PresenceUser {
 }
 
 describe('someoneElseHere', () => {
-  const host = user(1, 'Scott', '#ef4444');
+  const host = user(1, 'Sam', '#ef4444');
 
   it('is false when the host is alone', () => {
     expect(someoneElseHere([host], 1)).toBe(false);
   });
 
   it("doesn't count the host's own other window", () => {
-    expect(someoneElseHere([host, user(2, 'Scott', '#ef4444')], 1)).toBe(false);
+    expect(someoneElseHere([host, user(2, 'Sam', '#ef4444')], 1)).toBe(false);
   });
 
   it('counts a different person', () => {
@@ -53,7 +53,7 @@ describe('someoneElseHere', () => {
   });
 
   it('counts someone with the same name but a different color', () => {
-    expect(someoneElseHere([host, user(2, 'Scott', '#3b82f6')], 1)).toBe(true);
+    expect(someoneElseHere([host, user(2, 'Sam', '#3b82f6')], 1)).toBe(true);
   });
 
   it('is false before this client shows up in presence', () => {

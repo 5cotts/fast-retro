@@ -24,6 +24,8 @@ tests/screenshots/
 .env
 .env.*
 !.env.example
+# A deploy host's release config (see scripts/release/release.env.example)
+release.env
 
 # Runtime data (archive snapshots etc.)
 data/
