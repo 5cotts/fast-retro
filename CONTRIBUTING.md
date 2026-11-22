@@ -37,6 +37,7 @@ Changes to `.github/`, `scripts/`, the build files and dependency lockfiles get 
 
 ## Making changes
 
+- **Keep the repo deployment-neutral**: no names of people, companies, hosts, URLs or filesystem paths from any particular deployment, in code, docs, tests, fixtures or screenshots. Use made-up names and `example.com`, and put host settings in the release config outside the repo (`scripts/release/release.env.example`).
 - **Branch naming**: `fix/`, `feat/`, `chore/`, or `docs/` prefixes, e.g. `fix/timer-no-op`.
 - **Commits**: one logical change per commit; a short imperative summary line, with a body explaining *why* when the reasoning isn't obvious from the diff.
 - **Scope**: prefer small, focused PRs over large ones — easier to review, easier to revert if something's wrong.

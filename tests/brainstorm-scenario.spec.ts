@@ -117,7 +117,7 @@ test.describe('fast-retro problem-solving brainstorm', () => {
       await dialog.getByRole('checkbox', { name: /^Hide others' cards while brainstorming/ }).check();
       await dialog.getByRole('button', { name: 'Create retro' }).click();
       await host.page.waitForURL(/\/board\/brainstorm-/);
-      await joinIfAsked(host.page, 'Valentina');
+      await joinIfAsked(host.page, 'Maya');
       expect(await columnTitles(host.page)).toEqual(PROBLEMS.slice(0, -1));
       await expect(host.page.getByRole('list', { name: 'Phases' }).getByRole('listitem')).toHaveText([
         /Brainstorm/,
@@ -173,7 +173,7 @@ test.describe('fast-retro problem-solving brainstorm', () => {
           [2, `Ben: follow-the-sun rotation ${suffix}`],
           [4, `Ben: async standups ${suffix}`]
         ],
-        host: [[3, `Valentina: docs owner per team ${suffix}`]]
+        host: [[3, `Maya: docs owner per team ${suffix}`]]
       } as const;
       for (const [i, text] of ideas.ana) await addCard(ana.page, PROBLEMS[i], text);
       for (const [i, text] of ideas.ben) await addCard(ben.page, PROBLEMS[i], text);

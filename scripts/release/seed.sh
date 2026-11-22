@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # make release-seed-prod
 #
-# One-time migration, docs/release-plan.md §3 step 2 (first half). Copies the
+# One-time migration (docs/RELEASING.md, "Setting up a deploy host"). Copies the
 # binary fast-retro-prod is running RIGHT NOW into builds/<ts>-<sha7>/ as a
 # source: seeded build and points the prod link at it. Doesn't restart or
-# reconfigure anything: switching the service's entrypoint to
-# fast-retro-releases/prod/fast-retro is a separate update_user_service step.
+# reconfigure anything: pointing the service's command at
+# $RELEASE_ROOT/prod/fast-retro is a separate, manual step.
 # A seeded build is a valid rollback target, never a prod-deploy candidate.
 source "$(dirname "$0")/lib.sh"
 
@@ -60,5 +60,5 @@ build_intact "$dest" || die "seeded build ${id} isn't intact"
 swap_link "$link" "$dest"
 audit seed "env=${env} build=${id} sha=${sha} from=${exe} binary_sha256=${bin_sha} result=ok"
 log "seeded ${id}; ${link} -> builds/${id}"
-log "next (Zo tool, not a script): update_user_service(<${service} id>, entrypoint=\"${RELEASE_ROOT}/${link}/fast-retro\"). Change only the entrypoint"
+log "next (by hand, not a script): point ${service}'s supervisord command at ${RELEASE_ROOT}/${link}/fast-retro. Change only the command, then restart it"
 echo "BUILD=${id}"

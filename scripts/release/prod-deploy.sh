@@ -4,7 +4,7 @@
 #
 # docs/release-plan.md §2.6.1. Refuses unless:
 #   (a) CONFIRM matches the build's sha;
-#   (b) the build passed a QA deploy (SKIP_QA=1 for a hotfix, Scott's OK only);
+#   (b) the build passed a QA deploy (SKIP_QA=1 for a hotfix, release owner's OK only);
 #   (c) its git tree equals a freshly fetched origin/main's tree (prod only);
 #   (d) it's a source: ci build whose attestation re-verifies now and whose
 #       files still match BUILD_INFO (source: local needs ALLOW_LOCAL_BUILD=1;
@@ -48,7 +48,7 @@ case "$src" in
     ;;
   local)
     is_true "${ALLOW_LOCAL_BUILD:-}" \
-      || die "guard (d): ${BUILD} is a break-glass local build; prod-deploy needs ALLOW_LOCAL_BUILD=1 (Scott's OK only)"
+      || die "guard (d): ${BUILD} is a break-glass local build; prod-deploy needs ALLOW_LOCAL_BUILD=1 (release owner's OK only)"
     warn "guard (d): deploying a source: local build (ALLOW_LOCAL_BUILD=1)"
     ;;
   seeded)
@@ -60,7 +60,7 @@ qa_at="$(jq -r '.qa_verified_at // empty' "$dir/LOCAL_INFO" 2>/dev/null || true)
 if [[ -n "$qa_at" ]]; then
   log "guard (b) ok: QA verified at ${qa_at}"
 elif is_true "${SKIP_QA:-}"; then
-  warn "guard (b): ${BUILD} was never QA'd; continuing because SKIP_QA=1 (Scott's OK only)"
+  warn "guard (b): ${BUILD} was never QA'd; continuing because SKIP_QA=1 (release owner's OK only)"
 else
   die "guard (b): ${BUILD} was never QA'd. Run make qa-deploy BUILD=${BUILD} first"
 fi
@@ -79,7 +79,7 @@ fi
 
 # ---- preflight
 cur="$(link_build "$link")"
-[[ -n "$cur" ]] || die "no ${link} link yet. Do the one-time migration first (docs/release-plan.md §3 step 2: make release-seed-prod)"
+[[ -n "$cur" ]] || die "no ${link} link yet. Do the one-time migration first (docs/RELEASING.md, 'Setting up a deploy host': make release-seed-prod)"
 [[ "$cur" != "$(realpath "$dir")" ]] || die "${env} is already on ${BUILD}"
 read -r state pid uptime < <(service_state "$service")
 [[ "$state" == RUNNING && "$pid" =~ ^[0-9]+$ ]] || die "preflight: ${service} is ${state}; fix it (or make rollback) before deploying"
@@ -95,7 +95,7 @@ avail_kb="$(df -Pk "$RELEASE_ROOT" | awk 'NR==2 {print $4}')"
 read -r participants who < <(live_participants "$env")
 if (( participants > 0 )); then
   if ! is_true "${FORCE:-}"; then
-    die "preflight: ${participants} live participant(s) on ${env}: ${who}. Wait for a quiet moment, or FORCE=1 (Scott's OK only)"
+    die "preflight: ${participants} live participant(s) on ${env}: ${who}. Wait for a quiet moment, or FORCE=1 (release owner's OK only)"
   fi
   docprs="$(doc_model_prs "$cur_sha" "$sha" | tr '\n' ' ')"
   [[ -z "${docprs// /}" ]] \

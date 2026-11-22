@@ -10,17 +10,17 @@
     "columns": [
       {
         "key": "c1",
-        "title": "How might we lower our cost to build and support integrations?",
+        "title": "How might we spend less time and effort getting a release out?",
         "color": "emerald"
       },
       {
         "key": "c2",
-        "title": "How might we build a more vertically integrated product?",
+        "title": "How might we make the first week easier for a new hire?",
         "color": "amber"
       },
       {
         "key": "c3",
-        "title": "How might we close the remaining gaps?",
+        "title": "How might we fix the flaky test suite?",
         "color": "violet"
       },
       {
@@ -32,11 +32,11 @@
     "clusters": [
       {
         "id": "g1",
-        "label": "Self-serve integrations"
+        "label": "Simpler release process"
       },
       {
         "id": "g2",
-        "label": "Reporting"
+        "label": "Dashboards"
       }
     ]
   },
@@ -44,7 +44,7 @@
     "c1": [
       {
         "id": "k1",
-        "text": "More self-serve integration setup",
+        "text": "Fewer manual steps in a release",
         "authorId": "",
         "votes": [
           "u0",
@@ -60,7 +60,7 @@
       },
       {
         "id": "k2",
-        "text": "Give customers a standard set of scenarios they can run to test a sync themselves, once we've checked their setup is right.",
+        "text": "Give new hires a standard set of tasks they can run to test their setup themselves, once we've checked their laptop is right.",
         "authorId": "",
         "votes": [
           "u0",
@@ -72,7 +72,7 @@
       },
       {
         "id": "k3",
-        "text": "Self-service setup: https://example-preview-pr-8284.herokuapp.com/organizations/dashboard/integration-setup",
+        "text": "Release checklist: https://preview-pr-8284.example.com/organizations/dashboard/settings/release-checklists",
         "authorId": "",
         "votes": [
           "u0"
@@ -96,7 +96,7 @@
     "c2": [
       {
         "id": "k5",
-        "text": "Self-service features for integration setup",
+        "text": "A script for the manual steps in a release",
         "authorId": "",
         "votes": [],
         "reactions": {},
@@ -105,7 +105,7 @@
       },
       {
         "id": "k6",
-        "text": "Own the data pipeline end to end",
+        "text": "Own the build pipeline end to end",
         "authorId": "",
         "votes": [
           "u0",
@@ -119,7 +119,7 @@
       },
       {
         "id": "k7",
-        "text": "Build vs buy review",
+        "text": "Flaky test bug bash",
         "authorId": "",
         "votes": [
           "u0"
@@ -131,7 +131,7 @@
     "c3": [
       {
         "id": "k8",
-        "text": "Better exports and reporting",
+        "text": "Better dashboards and alerts",
         "authorId": "",
         "votes": [
           "u0",
@@ -143,7 +143,7 @@
       },
       {
         "id": "k9",
-        "text": "SSO for every plan",
+        "text": "Docs for each team",
         "authorId": "",
         "votes": [
           "u0",

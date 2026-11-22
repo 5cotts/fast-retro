@@ -1,4 +1,5 @@
-# Release tooling for the Zo box. Thin wrappers over scripts/release/*.sh;
+# Release tooling for a deploy host. Thin wrappers over scripts/release/*.sh;
+# host settings come from a config file outside the repo (release.env.example);
 # see docs/RELEASING.md (design: docs/release-plan.md).
 # Every target is safe to rerun. DRY_RUN=1 prints destructive steps
 # instead of running them.
@@ -17,14 +18,14 @@ help:
 	@echo "make release-fetch [REF=origin/main | PR=<n> | SHA=<sha>]  download + verify a CI build"
 	@echo "make release-status                                        what prod/QA run, builds, restore points"
 	@echo "make qa-deploy [BUILD=<id> | PR=<n> | REF=...] [SEED=prod]  smoke, point QA at a build, restart, verify"
-	@echo "make prod-deploy BUILD=<id> CONFIRM=<sha7>                 guards, backup, smoke, swap, restart, verify (Scott's OK)"
+	@echo "make prod-deploy BUILD=<id> CONFIRM=<sha7>                 guards, backup, smoke, swap, restart, verify (release owner's OK)"
 	@echo "make rollback [BUILD=<id>] [CONFIRM=<sha7>]                prod back to prod.prev, or to an older prod build"
 	@echo "make qa-drill-deploy / qa-drill-rollback ...               the same two sequences against QA (drills)"
 	@echo "make release-seed-prod                                     one-time: seed builds/ with prod's running binary"
 	@echo "make smoke BUILD=<id>                                      candidate + rollback target vs a copy of prod's DB"
 	@echo "make db-backup-check [DB=<path>]                           online backup + integrity_check + row counts"
 	@echo "make release-check [REF=... | PR=... | SHA=...]           CI's gates locally, in a clean worktree"
-	@echo "make release-build-local REF=... | PR=... | SHA=...        BREAK-GLASS: local build (Scott's OK only)"
+	@echo "make release-build-local REF=... | PR=... | SHA=...        BREAK-GLASS: local build (release owner's OK only)"
 	@echo "make release-lint                                          shellcheck the release scripts"
 
 guide-clips:

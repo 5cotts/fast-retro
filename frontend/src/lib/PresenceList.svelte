@@ -16,7 +16,7 @@
     presence.find((p: PresenceUser) => p.clientId === currentClientId) ?? null
   );
   const others = $derived(presence.filter((p: PresenceUser) => p.clientId !== currentClientId));
-  // e.g. "Scott (you, host, presenting)". The screen icon means that client
+  // e.g. "Sam (you, host, presenting)". The screen icon means that client
   // is presenting (viewer.ts), so its screen shows nobody's input as theirs.
   function titleFor(p: PresenceUser, you: boolean): string {
     const tags = [you && 'you', p.isLead && 'host', p.presenting && 'presenting'].filter(Boolean);

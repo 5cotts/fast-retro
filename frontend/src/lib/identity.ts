@@ -109,8 +109,8 @@ export function isSamePerson(
 
 /**
  * Fold a host's presenting window into their own tab, so "Open a window to
- * share" shows the team one Scott with a screen icon instead of `Scott` and
- * `Scott (2)`. A presenting client merges into a non-presenting client that's
+ * share" shows the team one Sam with a screen icon instead of `Sam` and
+ * `Sam (2)`. A presenting client merges into a non-presenting client that's
  * the same person (isSamePerson); the merged entry is marked presenting and
  * keeps whichever is typing. When this client is one of the pair, its own
  * entry is the one kept, so the presence list still marks it "(you)". A

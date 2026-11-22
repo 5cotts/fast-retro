@@ -4,7 +4,7 @@ Status: implemented as a stack, in review · 2026-11-17 · checked against `main
 
 ## The bug
 
-Scott's screen recording (prod, a 4-column board in Discuss with one group): at 100% and 110% browser zoom the board is fine. At 125%, 150% and 175%:
+A screen recording of the bug (a 4-column board in Discuss with one group): at 100% and 110% browser zoom the board is fine. At 125%, 150% and 175%:
 
 - the first column's title runs under the second column's title
 - the column counts (11, 3, 5, 6) slide out of their headers
@@ -12,9 +12,7 @@ Scott's screen recording (prod, a 4-column board in Discuss with one group): at 
 - the column tints stay at one width while the content on top is wider, so the colors no longer match the content
 - the page scrolls sideways and the last column runs off the edge
 
-![The bug reproduced locally at 125% zoom (1152px wide)](./zoom-layout-bug.png)
-
-*Reproduced locally at 125% zoom with an imported test board. The first column has a card containing a long URL.*
+Reproduced locally at 125% zoom (1152px wide) with an imported test board whose first column has a card containing a long URL. `tests/fixtures/layout-4col.fastretro.json` is that board with made-up text.
 
 ## Root cause
 
@@ -31,7 +29,7 @@ Column 1 has a URL card and column 4 has an 80-character word. Adding `grid-temp
 
 Card text uses `break-words` (`overflow-wrap: break-word`), which wraps a long word only when it's drawn, not when the width is worked out, so it doesn't help here. `overflow-wrap: anywhere` does.
 
-Why it only showed up in Discuss: Brainstorm never shows groups, so it uses the plain flex layout, where columns are always the width of their grid track. The bug needs groups to be showing **and** a long word in a column that's too narrow for it. In Scott's board, the URL card fit at ~330px columns (100%) and didn't at ~268px (125%).
+Why it only showed up in Discuss: Brainstorm never shows groups, so it uses the plain flex layout, where columns are always the width of their grid track. The bug needs groups to be showing **and** a long word in a column that's too narrow for it. On the recorded board, the URL card fit at ~330px columns (100%) and didn't at ~268px (125%).
 
 ## QA sweep
 
@@ -72,7 +70,7 @@ Risk: low. It's CSS-only and the aligned layout's row logic doesn't change. Ship
 
 ### PR 2: columns keep a minimum width and the board scrolls sideways
 
-Scott's call: below a certain width, columns stop shrinking and the board scrolls sideways.
+Decided: below a certain width, columns stop shrinking and the board scrolls sideways.
 
 - `columns.ts` `boardGridClass`: on 768px and up, use one rule for every board: `repeat(var(--board-cols), minmax(17rem, 1fr))` in an `overflow-x-auto` container with scroll snap. 17rem is the minimum wide boards already use. Today boards with 5+ columns get this and boards with 2–4 get `minmax(0, 1fr)`. `isWideBoard` then only decides whether the board keeps the `max-w-7xl` cap.
 - Only the board scrolls sideways. The header and phase bar stay put at full width.
@@ -84,7 +82,7 @@ Scott's call: below a certain width, columns stop shrinking and the board scroll
 - Canvas boards' List view uses `ColumnsSurface` too, so it gets this for free. Check it in QA.
 - Tests: extend `layout.spec.ts` to check that at 960px a 4-column board's columns are ≥272px wide, the board container scrolls sideways and the page doesn't. Also check that Shift+→ into an off-screen column brings the card into view.
 
-### PR 3: phones (Scott said "ideally"; needs decision M1)
+### PR 3: phones (wanted "ideally"; needs decision M1)
 
 Today, below 768px every column stacks vertically. It works (no QA failures), but on a board with 4+ columns you scroll a long way to reach the last column, and you lose the sense of columns side by side.
 
@@ -95,13 +93,13 @@ Today, below 768px every column stacks vertically. It works (no QA failures), bu
 - Keep the composer at the bottom of each column. After you add a card, the board stays on that column.
 - Check the Present mode window and the reminder at phone size.
 
-**M1 (Scott):** swipe columns as above, or keep the stacked layout and just add the column-chip strip to jump between columns? Swiping is more consistent with PR 2. Stacking is less work and lets you scroll through everything in one go.
+**M1 (maintainer):** swipe columns as above, or keep the stacked layout and just add the column-chip strip to jump between columns? Swiping is more consistent with PR 2. Stacking is less work and lets you scroll through everything in one go.
 
-*2026-11-17: Scott asked for the whole stack before answering, so #83 builds the recommendation (swipe plus chips). If he prefers stacking, #83 changes to keep `grid-cols-1` below 768px and keep the chips.*
+*2026-11-17: the whole stack was requested before an answer, so #83 builds the recommendation (swipe plus chips). If stacking is preferred, #83 changes to keep `grid-cols-1` below 768px and keep the chips.*
 
 ### Optional, separate: a smaller header at high zoom
 
-From 175% up, the host header takes three rows. We could show the ☰ menu below 1024px instead of 640px, or move the less-used host toggles (Anonymous, Auto-sort, Hide cards) into a "More" menu. This doesn't need to block the above. **M2 (Scott):** do it now, later, or never? *Not built in the stack; still open.*
+From 175% up, the host header takes three rows. We could show the ☰ menu below 1024px instead of 640px, or move the less-used host toggles (Anonymous, Auto-sort, Hide cards) into a "More" menu. This doesn't need to block the above. **M2 (maintainer):** do it now, later, or never? *Not built in the stack; still open.*
 
 ## Order and release
 

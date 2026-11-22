@@ -4,19 +4,19 @@ import type { PresenceUser } from './types';
 
 describe('isSamePerson', () => {
   it('matches the same name and color', () => {
-    expect(isSamePerson({ name: 'Scott', color: '#ef4444' }, { name: 'Scott', color: '#ef4444' })).toBe(true);
+    expect(isSamePerson({ name: 'Sam', color: '#ef4444' }, { name: 'Sam', color: '#ef4444' })).toBe(true);
   });
 
   it('ignores case and surrounding spaces in the name', () => {
-    expect(isSamePerson({ name: ' scott ', color: '#ef4444' }, { name: 'Scott', color: '#ef4444' })).toBe(true);
+    expect(isSamePerson({ name: ' sam ', color: '#ef4444' }, { name: 'Sam', color: '#ef4444' })).toBe(true);
   });
 
   it("doesn't match the same name with a different color", () => {
-    expect(isSamePerson({ name: 'Scott', color: '#ef4444' }, { name: 'Scott', color: '#3b82f6' })).toBe(false);
+    expect(isSamePerson({ name: 'Sam', color: '#ef4444' }, { name: 'Sam', color: '#3b82f6' })).toBe(false);
   });
 
   it("doesn't match a different name with the same color", () => {
-    expect(isSamePerson({ name: 'Scott', color: '#ef4444' }, { name: 'Ana', color: '#ef4444' })).toBe(false);
+    expect(isSamePerson({ name: 'Sam', color: '#ef4444' }, { name: 'Ana', color: '#ef4444' })).toBe(false);
   });
 });
 
@@ -25,8 +25,8 @@ function user(clientId: number, name: string, color: string, extra: Partial<Pres
 }
 
 describe('foldPresenting', () => {
-  const tab = user(1, 'Scott', '#ef4444', { isLead: true });
-  const popup = user(2, 'Scott', '#ef4444', { isLead: true, presenting: true });
+  const tab = user(1, 'Sam', '#ef4444', { isLead: true });
+  const popup = user(2, 'Sam', '#ef4444', { isLead: true, presenting: true });
   const ana = user(3, 'Ana', '#3b82f6');
 
   it('leaves presence alone when nobody is presenting', () => {
@@ -48,18 +48,18 @@ describe('foldPresenting', () => {
   });
 
   it('leaves an unmatched presenting client with its icon', () => {
-    const solo = user(1, 'Scott', '#ef4444', { presenting: true });
+    const solo = user(1, 'Sam', '#ef4444', { presenting: true });
     expect(foldPresenting([solo, ana], 3)).toEqual([solo, ana]);
   });
 
   it('never folds two different people who share a name but not a color', () => {
-    const other = user(4, 'Scott', '#3b82f6', { presenting: true });
+    const other = user(4, 'Sam', '#3b82f6', { presenting: true });
     const out = disambiguateNames(foldPresenting([tab, other], 3));
-    expect(out.map((p) => p.name)).toEqual(['Scott', 'Scott (2)']);
+    expect(out.map((p) => p.name)).toEqual(['Sam', 'Sam (2)']);
   });
 
   it('shows one name after folding, so there is no "(2)"', () => {
     const out = disambiguateNames(foldPresenting([tab, popup, ana], 3));
-    expect(out.map((p) => p.name)).toEqual(['Scott', 'Ana']);
+    expect(out.map((p) => p.name)).toEqual(['Sam', 'Ana']);
   });
 });

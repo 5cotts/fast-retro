@@ -60,17 +60,17 @@ test.describe('board layout', () => {
     await expect(page.getByTestId('board-more-right')).toHaveCSS('opacity', '1');
     // The group name stays on screen at the board's left edge while scrolling.
     await page.getByTestId('board-columns').evaluate((el) => (el.scrollLeft = el.scrollWidth));
-    await expect(page.getByTestId('group-row').first().getByText('Self-serve integrations')).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId('group-row').first().getByText('Simpler release process')).toBeInViewport({ ratio: 1 });
   });
 
   test('moving a card with the keyboard brings an off-screen column into view', async ({ page }) => {
     test.setTimeout(60_000);
     await importBoard(page, boardFile('layout-4col.fastretro.json', 'brainstorm'));
     await resize(page, 960);
-    const card = page.getByRole('list', { name: 'How might we close the remaining gaps?' }).getByRole('group', { name: 'Card: SSO for every plan' });
+    const card = page.getByRole('list', { name: 'How might we fix the flaky test suite?' }).getByRole('group', { name: 'Card: Docs for each team' });
     await card.focus();
     await page.keyboard.press('Shift+ArrowRight');
-    const moved = page.getByRole('list', { name: 'Wildcard' }).getByRole('group', { name: 'Card: SSO for every plan' });
+    const moved = page.getByRole('list', { name: 'Wildcard' }).getByRole('group', { name: 'Card: Docs for each team' });
     await expect(moved).toBeFocused();
     await expect(moved).toBeInViewport({ ratio: 1 });
   });
@@ -82,7 +82,7 @@ test.describe('board layout', () => {
     await resize(page, 960);
     const board = page.getByTestId('board-columns');
     const box = (await board.boundingBox())!;
-    const over = page.getByRole('list', { name: 'How might we close the remaining gaps?' });
+    const over = page.getByRole('list', { name: 'How might we fix the flaky test suite?' });
     const card = page.getByRole('group', { name: 'Card: Shorter onboarding' });
     const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
     await card.dispatchEvent('dragstart', { dataTransfer });
@@ -112,14 +112,14 @@ test.describe('board layout', () => {
 
     const chips = page.getByRole('navigation', { name: 'Columns' });
     await expect(chips.getByRole('button')).toHaveCount(4);
-    await expect(chips.getByRole('button', { name: /^How might we lower/ })).toHaveAttribute('aria-current', 'true');
+    await expect(chips.getByRole('button', { name: /^How might we spend less/ })).toHaveAttribute('aria-current', 'true');
     await chips.getByRole('button', { name: 'Wildcard, 2 cards' }).click();
     await expect(page.getByRole('list', { name: 'Wildcard' })).toBeInViewport({ ratio: 0.9 });
     await expect(chips.getByRole('button', { name: 'Wildcard, 2 cards' })).toHaveAttribute('aria-current', 'true');
 
     // Swiping back updates the chips too.
     await page.getByTestId('board-columns').evaluate((el) => (el.scrollLeft = 0));
-    await expect(chips.getByRole('button', { name: /^How might we lower/ })).toHaveAttribute('aria-current', 'true');
+    await expect(chips.getByRole('button', { name: /^How might we spend less/ })).toHaveAttribute('aria-current', 'true');
 
     // From tablet width up there are no chips.
     await resize(page, 768);

@@ -12,11 +12,11 @@ A user wanted to run a brainstorm: five problem statements, ten minutes of priva
 
 Competitors: EasyRetro has owner-editable columns and a "Hide cards" setting. Spreo (formerly Metro Retro) is a free-form canvas with per-sticky private writing and "Topics" clusters. Custom columns and private writing are table stakes; cross-column clusters are a differentiator and are deferred.
 
-## Decisions (Scott, 2026-11-02)
+## Decisions (maintainer, 2026-11-02)
 
 - **D1:** no product limit on columns. A hidden safety ceiling of 50 input columns guards against junk in the (untrusted) doc.
 - **D2:** custom boards include the Action items column by default; the host can untick it, and the board then ends at Discuss (changed 2026-11-03, see the D2 row).
-- **D3–D9:** go with the recommendations in the table below (Scott said to start building with them; any can still change in review).
+- **D3–D9:** go with the recommendations in the table below (the maintainer said to start building with them; any can still change in review).
 
 
 Written for whoever implements this. Everything here was checked against `main` at `5ad134b`. Function names are given instead of line numbers because line numbers drift.
@@ -217,7 +217,7 @@ None of PRs 1–5 should add a card field or rely on a fixed card shape outside 
 
 | \# | Question | Recommendation | Why |
 | --- | --- | --- | --- |
-| D1 | Max columns | **Decided: no product limit.** Hosts add as many as they want. | Scott's call: managing a wide board is the user's problem. The ≥5-column horizontal-scroll layout already handles any width. A hidden safety ceiling of 50 (`MAX_INPUT_COLUMNS`) stays in `sanitizeColumns` and the archive check, because `meta.columns` is untrusted and a client writing 100k columns would freeze everyone's tab. |
+| D1 | Max columns | **Decided: no product limit.** Hosts add as many as they want. | The maintainer's call: managing a wide board is the user's problem. The ≥5-column horizontal-scroll layout already handles any width. A hidden safety ceiling of 50 (`MAX_INPUT_COLUMNS`) stays in `sanitizeColumns` and the archive check, because `meta.columns` is untrusted and a client writing 100k columns would freeze everyone's tab. |
 | D2 | Can a custom board drop Action items? | **Decided (revised 2026-11-03): yes, optional, on by default.** | First decided as "always included"; revised because a custom board should be the host's call. A board without it has no Actions phase (`phasesFor(columns)` ends at Discuss), a stored `actions` phase shows as Discuss, and Start next retro has nothing to carry. Classic retros keep it. |
 | D3 | Edit columns after creation? | **No in v1** (rename/add later) | The data model already supports rename, thanks to stable keys and an atomic list. The UI and the "what happens to cards in a deleted column" question are the real cost. |
 | D4 | Does hide-cards hide from the host too? | **Yes, with no peek** | The point is to avoid anchoring, and hosts often write cards too. Matches Spreo. EasyRetro's peek can come later. |
@@ -229,7 +229,7 @@ None of PRs 1–5 should add a card field or rely on a fixed card shape outside 
 
 ### PR plan
 
-Base branch is `main` in this repo (not `master`). Use the branch prefixes from `CONTRIBUTING.md`. Every PR must pass `cargo test`, `cargo clippy --all-targets`, `bun run check`, `bun run test:unit` and `./test-local.sh`. Open each PR and send Scott the link; don't merge without review.
+Base branch is `main` in this repo (not `master`). Use the branch prefixes from `CONTRIBUTING.md`. Every PR must pass `cargo test`, `cargo clippy --all-targets`, `bun run check`, `bun run test:unit` and `./test-local.sh`. Open each PR for the maintainer to review; don't merge without review.
 
 | \# | Branch | Kind | User-visible change | Size |
 | --- | --- | --- | --- | --- |
@@ -312,7 +312,7 @@ PRs 1 and 2 don't depend on each other. PR 3 needs both, PR 4 needs PR 3, and PR
 
 ### Deploy and rollout
 
-- **Deploy procedure (from the workspace `AGENTS.md`):** back up `data/fastretro.db`, keep the old binary as `fast-retro.prev`, swap in the new release build, restart `fast-retro-prod`. Never run e2e against prod.
+- **Deploy procedure (at the time, by hand):** back up `data/fastretro.db`, keep the old binary as `fast-retro.prev`, swap in the new release build, restart `fast-retro-prod`. Never run e2e against prod.
 - **Checkpoint 1, after PRs 1–2:** deploy the refactors alone so any regression is clearly theirs. On prod, smoke-test:
   - create a board from the home page and from the host dashboard
   - import a `.fastretro.json` file
@@ -340,6 +340,6 @@ PRs 1 and 2 don't depend on each other. PR 3 needs both, PR 4 needs PR 3, and PR
 ### Notes for the implementing agent
 
 - **Read first:** `README.md`, `CONTRIBUTING.md`, `tests/README.md`, `docs/export-ended-retro-plan.md` (house style for plans), then `yboard.ts`, `boardfile.ts`, `useBoardConnection.svelte.ts`, `Board.svelte` and `archive.rs`.
-- **Stacked PRs:** each PR is based on the one before it. Run the full test list before opening each one, and send Scott the link.
-- **Database safety:** never delete, truncate or "fresh start" any `.db` file (workspace rule). E2e tests use `./test-local.sh`, which uses a temporary database.
+- **Stacked PRs:** each PR is based on the one before it. Run the full test list before opening each one, and open it for review.
+- **Database safety:** never delete, truncate or "fresh start" any `.db` file. E2e tests use `./test-local.sh`, which uses a temporary database.
 - **Comments:** only where the *why* isn't obvious (`CONTRIBUTING.md`). The race and versioning invariants above deserve comments; the rest doesn't.

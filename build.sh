@@ -29,4 +29,4 @@ cargo build --release
 
 ls -lh "${CARGO_TARGET_DIR:-target}/release/fast-retro"
 echo "Done. Restart with:"
-echo "  RETRO_LEAD_TOKEN=\$RETRO_LEAD_TOKEN nohup ./target/release/fast-retro > /dev/shm/fast-retro.log 2>&1 &"
+echo "  RETRO_LEAD_TOKEN=\$RETRO_LEAD_TOKEN nohup ./target/release/fast-retro > fast-retro.log 2>&1 &"

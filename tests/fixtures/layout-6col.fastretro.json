@@ -42,7 +42,7 @@
     "clusters": [
       {
         "id": "g1",
-        "label": "Self-serve integrations"
+        "label": "Simpler release process"
       }
     ]
   },
@@ -62,7 +62,7 @@
       },
       {
         "id": "k2",
-        "text": "Self-service setup: https://example-preview-pr-8284.herokuapp.com/organizations/dashboard/integration-setup",
+        "text": "Release checklist: https://preview-pr-8284.example.com/organizations/dashboard/settings/release-checklists",
         "authorId": "",
         "votes": [],
         "reactions": {},
@@ -94,7 +94,7 @@
       },
       {
         "id": "k5",
-        "text": "Give customers a standard set of scenarios they can run to test a sync themselves, once we've checked their setup is right.",
+        "text": "Give new hires a standard set of tasks they can run to test their setup themselves, once we've checked their laptop is right.",
         "authorId": "",
         "votes": [],
         "reactions": {},

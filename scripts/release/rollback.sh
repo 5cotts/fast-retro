@@ -40,7 +40,7 @@ src="$(info_get "$dir" source)"
 sha="$(info_get "$dir" sha)"
 case "$src" in
   ci|seeded) ;;
-  local) is_true "${ALLOW_LOCAL_BUILD:-}" || die "${id} is a local build; needs ALLOW_LOCAL_BUILD=1 (Scott's OK only)" ;;
+  local) is_true "${ALLOW_LOCAL_BUILD:-}" || die "${id} is a local build; needs ALLOW_LOCAL_BUILD=1 (release owner's OK only)" ;;
   *) die "unknown source '${src}' for ${id}" ;;
 esac
 [[ -z "${CONFIRM:-}" ]] || check_confirm "$sha"

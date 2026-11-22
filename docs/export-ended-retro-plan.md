@@ -50,7 +50,7 @@ New cases in `tests/json-export.spec.ts` (or a new `ended-export.spec.ts`):
 - **Anonymous:** an ended anonymous board's file has no names.
 - **Sync gate:** the menu is disabled until the board has synced. A unit test on the connection state is enough for this one.
 
-## Decisions (Scott, 2026-11-02)
+## Decisions (maintainer, 2026-11-02)
 
 1. **Everyone who can open an ended board can export it**, not just the host.
 2. **Ended boards skip the name prompt.** Visitors can't edit, so a name isn't needed; opening the link goes straight to the read-only board and its Export menu. Implementation: in `Board.svelte`, when `readOnly` is true and no name is stored, start the connection without prompting. During implementation, check how presence shows a viewer with no name and give them a neutral label like "Guest". Test: a fresh browser context opens an ended board and sees cards with no name prompt.
