@@ -4,9 +4,9 @@ Status: plan, G1–G5 decided 2026-11-07 · checked against `main` at `b002576` 
 
 ## Why
 
-Scott dropped cards onto each other on a canvas in Group, expecting them to group or merge. On a canvas that only overlaps them, by design (`docs/canvas-mode-plan.md`). Rather than change that behavior, this plan makes the guide good enough to explain it: separate pages per use case, with clips of the actions.
+The maintainer dropped cards onto each other on a canvas in Group, expecting them to group or merge. On a canvas that only overlaps them, by design (`docs/canvas-mode-plan.md`). Rather than change that behavior, this plan makes the guide good enough to explain it: separate pages per use case, with clips of the actions.
 
-**One limit to plan for.** The guide already says "Dropping a card on another card overlaps them and never merges them", and the phase bar already says "Drag cards near each other to cluster them". Neither prevented this, because nobody opens a guide in the middle of a drag. Better pages don't change that on their own, and Scott decided to leave the Group hint as it is (G3). So PR 2 puts a **How to use** link on canvas and custom-column boards (G5), and PR 1 adds a count of drops onto cards, which tells us whether that was enough.
+**One limit to plan for.** The guide already says "Dropping a card on another card overlaps them and never merges them", and the phase bar already says "Drag cards near each other to cluster them". Neither prevented this, because nobody opens a guide in the middle of a drag. Better pages don't change that on their own, and the decision was to leave the Group hint as it is (G3). So PR 2 puts a **How to use** link on canvas and custom-column boards (G5), and PR 1 adds a count of drops onto cards, which tells us whether that was enough.
 
 ## Bottom line
 
@@ -35,7 +35,7 @@ Sampled in November 2026. This covers the pages listed, not each vendor's whole 
 3. **Say who can do what.** TeamRetro's Group page opens with it. Our two role tabs hide that behind a toggle.
 4. **Short clips of single actions**, as Team O'clock does. Most others use screenshots and send you to YouTube for motion, so a clip in the page, right beside the step, beats what most of them offer.
 
-**Also relevant to the bug that started this:** dropping a card on a card means group or merge across this category. See [EasyRetro](https://www.youtube.com/watch?v=Yl6wV7EIRBw) ("just dragging one card on top of another"), [TeamRetro](https://help.teamretro.com/article/160-retrospective-group-step) ("drag and drop ideas to create groups"), and our own column boards. Expect Scott's assumption to be common, so the canvas page leads with it.
+**Also relevant to the bug that started this:** dropping a card on a card means group or merge across this category. See [EasyRetro](https://www.youtube.com/watch?v=Yl6wV7EIRBw) ("just dragging one card on top of another"), [TeamRetro](https://help.teamretro.com/article/160-retrospective-group-step) ("drag and drop ideas to create groups"), and our own column boards. Expect that assumption to be common, so the canvas page leads with it.
 
 ## Pages
 
@@ -46,7 +46,7 @@ Sampled in November 2026. This covers the pages listed, not each vendor's whole 
 | `/docs/run` | Run your first retro | Hosts | Start, share, timer, next phase, end. The suggested 45-minute cadence stays here. |
 | `/docs/group` | Group and merge cards | Everyone | Column boards: group across columns, rename, merge, ungroup, reorder, keyboard |
 | `/docs/canvas` | Use a canvas board | Everyone | Opens with "Why don't cards merge when I drop them?". Then clustering, labels, pan and zoom, Top voted, List view, phones. |
-| `/docs/brainstorm` | Run a private brainstorm | Hosts | Valentina's scenario: custom columns as problem statements, hide cards, timer, reveal, then group. Reuses the steps in `docs/qa-brainstorm-scenario.md`, in user terms. |
+| `/docs/brainstorm` | Run a private brainstorm | Hosts | A private brainstorm: custom columns as problem statements, hide cards, timer, reveal, then group. Reuses the steps in `docs/qa-brainstorm-scenario.md`, in user terms. |
 | `/docs/setup` | Set up and change a board | Hosts | Board types, Action items on or off, Edit board, inline rename |
 | `/docs/save` | Save, export and start the next retro | Everyone | Board file, CSV, importing, exporting ended retros, archives, Start next retro |
 | `/docs/reference` | Reference | Everyone | One table of phase × action × who, keyboard shortcuts, privacy facts |
@@ -86,7 +86,7 @@ The sample clip (7.8 seconds, 748×496), measured:
 
 **Use animated WebP.** MP4 is smaller, but [iOS requires byte-range requests](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/CreatingVideoforSafarioniPhone/CreatingVideoforSafarioniPhone.html) for video and our `static_handler` (`src/main.rs`) takes only the URI, so it can't honor them. That's new Rust in the path serving every asset, to save about 110 KB a clip. Real GIFs would add about 8 MB to a 10.7 MB binary, because `rust-embed` compiles assets in, where WebP adds about 2 MB. Animated WebP [works in all current browsers](https://css-tricks.com/gifs-without-the-gif-the-most-performant-image-and-video-options-right-now), and [MDN recommends it](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types) for animated images. If we ever want long tutorials, add Range support then.
 
-Not tested here: Safari and iOS. Our Playwright setup is Chromium-only, so Scott checks PR 2 on an iPhone during QA.
+Not tested here: Safari and iOS. Our Playwright setup is Chromium-only, so PR 2 gets a manual check on an iPhone during QA.
 
 ### Recording recipe
 
@@ -179,7 +179,7 @@ Stacked PRs off `main`, each passing the usual gates (`cargo test`, `cargo clipp
 | --- | --- | --- |
 | 0 | This plan | |
 | 1 | Pages, `pages.ts`, layout, redirects, all text moved and corrected, `guide_view`, `canvas_drop`, `guide.spec.ts` | Yes: readable, correct guide with no clips |
-| 2 | `GuideClip`, the clip pipeline and size check, the 3 canvas clips, the **How to use** link, `guide_open` | Yes: answers the question that started this, one click from the board. Scott checks clips and the link on an iPhone here. |
+| 2 | `GuideClip`, the clip pipeline and size check, the 3 canvas clips, the **How to use** link, `guide_open` | Yes: answers the question that started this, one click from the board. Clips and the link get a manual check on an iPhone here. |
 | 3 | The other 7 clips, and CI running clip scripts | Yes |
 
 PR 2 is the riskiest, because of the recording pipeline and Safari. If WebP or the recipe disappoints there, we've spent little and PR 1 still stands.
@@ -190,15 +190,15 @@ PR 2 is the riskiest, because of the recording pipeline and Safari. If WebP or t
 
 | | Question | Decision |
 | --- | --- | --- |
-| **G1** | Animated WebP, or true `.gif`? | **WebP** (Scott). Same behavior at a quarter of the size. A real GIF only helps pasting into chat, and we can export one for that when needed. |
-| **G2** | Are these the right 8 pages? | **Yes** (Scott), including `/docs/brainstorm` as its own page. |
-| **G3** | Change the Group hint to say "They never merge", and link from it? | **No** (Scott). The hint keeps its current text and gets no link. |
-| **G4** | Record clips in light mode only, or also dark? | **Light only** (Scott), with a border in dark mode. Two sets double the size and the re-recording. |
-| **G5** | Add a guide link to the board, separate from the hint? | **Yes** (Scott): a **How to use** link on both canvas and custom-column boards, in PR 2. See In-context help. |
+| **G1** | Animated WebP, or true `.gif`? | **WebP** (decided). Same behavior at a quarter of the size. A real GIF only helps pasting into chat, and we can export one for that when needed. |
+| **G2** | Are these the right 8 pages? | **Yes** (decided), including `/docs/brainstorm` as its own page. |
+| **G3** | Change the Group hint to say "They never merge", and link from it? | **No** (decided). The hint keeps its current text and gets no link. |
+| **G4** | Record clips in light mode only, or also dark? | **Light only** (decided), with a border in dark mode. Two sets double the size and the re-recording. |
+| **G5** | Add a guide link to the board, separate from the hint? | **Yes** (decided): a **How to use** link on both canvas and custom-column boards, in PR 2. See In-context help. |
 
 ## Not in this plan
 
-- **Snap on drop.** Parked in favor of the guide, as Scott asked. `canvas_drop` will say if it's worth revisiting.
+- **Snap on drop.** Parked in favor of the guide, by decision. `canvas_drop` will say if it's worth revisiting.
 - **A changed or linked Group hint.** Decided against in G3.
 - **Search**, **translations**, a **public changelog**.
 - **Interactive walkthroughs or tooltips in the app.**

@@ -123,7 +123,7 @@ Each PR runs the full unit suite, `svelte-check`, the Rust tests and `./test-loc
   - Non-hosts and ended boards get a plain heading, not a button.
 - **Scenario:** extend `docs/qa-brainstorm-scenario.md` (and its spec) with "realize you forgot a problem statement, add it from Edit board."
 
-## Decisions (Scott, 2026-11-03)
+## Decisions (maintainer, 2026-11-03)
 
 | # | Question | Decision |
 | --- | --- | --- |

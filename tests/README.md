@@ -10,14 +10,10 @@ browser adds enough latency to make even basic UI interactions flaky.
 
 **⚠️ Use a disposable instance, port, and database, never the app's default
 port/DB.** The app's default `PORT` (5102, from `.env.example`) and default
-`FASTRETRO_DB` (`data/fastretro.db`) are what the production service on this box
-uses, and it runs from this checkout's directory. Running the commands below
-without the isolation flags can collide with its port and write test data into
-its real database.
-
-Prod's binary now lives in `fast-retro-releases/builds/`, so building
-`target/release/fast-retro` no longer replaces it. See
-[`docs/RELEASING.md`](../docs/RELEASING.md).
+`FASTRETRO_DB` (`data/fastretro.db`) are what a real instance on the same
+machine is likely to use, possibly from this checkout's directory. Running the
+commands below without the isolation flags can collide with its port and write
+test data into its real database.
 
 ### One command (recommended)
 

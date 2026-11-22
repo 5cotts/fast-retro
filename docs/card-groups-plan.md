@@ -8,7 +8,7 @@ Let a team show that cards in different columns are about the same thing, while 
 
 ## Why
 
-Valentina's feedback:
+Feedback from a host:
 
 > One thing metro retro did which I liked was let you have clusters of ideas across different "columns", like if the same thing popped up as "went ok" and "went well", let's say, you could cluster them together but still keep them in separate columns
 
@@ -74,12 +74,12 @@ The UI says **group**, which matches the Group phase. The code says **cluster**,
 
 ### Decisions
 
-Scott accepted the recommendations on 2026-11-05. Valentina's response to the mockup was "I think this works", which settles D1.
+The maintainer accepted the recommendations on 2026-11-05. The requester's response to the mockup was "I think this works", which settles D1.
 
 | # | Question | Decision | Why |
 | --- | --- | --- | --- |
-| **D1** | Aligned rows, or just group blocks inside each column? | **Aligned rows** on desktop | It's the only option that shows both "together" and "separate columns". Valentina confirmed it from the mockup. |
-| **D2** | What should dropping a card on a card do? | **Group**, and move Merge to the group row | The easy gesture should be the safe one. Only 3 cards were merged in 2 of the 32 archives on prod, so few habits break. That sample is small (only 3 archives have 5+ cards) and it can't show whether people want merge, so Merge stays. |
+| **D1** | Aligned rows, or just group blocks inside each column? | **Aligned rows** on desktop | It's the only option that shows both "together" and "separate columns". The requester confirmed it from the mockup. |
+| **D2** | What should dropping a card on a card do? | **Group**, and move Merge to the group row | The easy gesture should be the safe one. Merge was rarely used on the instance this was planned for, so few habits break. That sample is small and it can't show whether people want merge, so Merge stays. |
 | **D3** | Who can group? | **Everyone in the Group phase.** Merge stays host-only. | Retrium and Parabol both do this. Merge is host-only because it's destructive, and grouping isn't. It's one `canCluster` derived value if you'd rather start host-only. The cost is that rows can shift while someone else is dragging. |
 | **D4** | Can people vote on a group itself? | **No, only on cards**, with the row showing distinct voters | No schema change or second kind of vote. Counting distinct people stops a five-card group outranking a two-card group just for having more cards, and it matches how merge already unions votes. |
 
@@ -157,7 +157,7 @@ No SQL migration. Everything is additive, so rolling back is safe: an older buil
 
 ### Scale
 
-Prod boards are small: of 32 archives, the median has 1 card and the largest has 13. Import allows 300 cards, so test `layoutBoard` there, but it's a single pass over the cards and shouldn't need optimizing.
+Boards on the instance this was planned for are small. Import allows 300 cards, so test `layoutBoard` there, but it's a single pass over the cards and shouldn't need optimizing.
 
 ## Rollout
 
@@ -171,7 +171,7 @@ Stacked PRs off `main`. Each one passes `cargo test`, `cargo clippy --all-target
 | 3 | `feat/clusters-ui` | Stacked group blocks, **Group** menu, rename, Ungroup, voter count. Merge drag unchanged. | Yes | M |
 | 4 | `feat/clusters-drag` | Drag to group, edge reorder, Merge moves to the group row, copy and docs updates (D2) | Yes, changes a habit | M |
 | 5 | `feat/clusters-lanes` | Aligned rows on desktop via subgrid, sorted rows in Discuss (D1) | Yes | M–L |
-| 6 | `feat/clusters-scenario` | Valentina's scenario end to end, QA script, analytics | No | S |
+| 6 | `feat/clusters-scenario` | The requester's scenario end to end, QA script, analytics | No | S |
 
 **Why this order:**
 
@@ -180,7 +180,7 @@ Stacked PRs off `main`. Each one passes `cargo test`, `cargo clippy --all-target
 - PR 4 is on its own so the gesture change can be reverted without losing the feature.
 - PR 5 is the riskiest and most optional. If D1 goes the other way, or subgrid fails, stop at PR 4.
 
-**Release:** deploy with `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`. Add the `e2e` label to each PR so CI runs the full suite. A good checkpoint is to QA after PR 4 and again after PR 5. The QA service is private, so Valentina would need a preview tunnel or a prod release to try it.
+**Release:** deploy with `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`. Add the `e2e` label to each PR so CI runs the full suite. A good checkpoint is to QA after PR 4 and again after PR 5. The QA service is private, so the requester would need a preview tunnel or a prod release to try it.
 
 ### Tests
 

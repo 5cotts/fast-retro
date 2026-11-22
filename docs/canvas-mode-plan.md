@@ -8,7 +8,7 @@ Offer a free-form board as a separate kind of board, alongside columns. People p
 
 ## Why
 
-Valentina, after seeing the group rows mockup in #52:
+The host who asked for this, after seeing the group rows mockup in #52:
 
 > I think this works
 
@@ -30,14 +30,14 @@ She also liked the mockup below. That's a reaction to a static image, so it supp
 | Everything except the optional PR 8 (PRs 1–7) | Estimated at or above custom columns (#29–#36: +3,644 / −1,012 across 8 PRs). For comparison, Edit board (#37–#41) was +1,436 / −90. |
 | Ongoing cost | A second surface. Every future card feature has to work on both. |
 
-**Recommendation: ship group rows first, then build the canvas only up to PR 4 and put that preview in front of Valentina before committing to the rest.** We have one requester, who says she prefers columns most of the time, and prod boards are small (of 32 archives, the largest has 13 cards). PR 4 is a small enough bet to find out whether this is something teams would actually run a retro on.
+**Recommendation: ship group rows first, then build the canvas only up to PR 4 and put that preview in front of the requester before committing to the rest.** We have one requester, who says she prefers columns most of the time, and boards on the instance this was planned for are small. PR 4 is a small enough bet to find out whether this is something teams would actually run a retro on.
 
 ## How Spreo (formerly Metro Retro) handles this
 
 | Need | Spreo | Takeaway |
 | --- | --- | --- |
 | Placing cards | Double-click anywhere to create a sticky \[1\] | Copy it |
-| Grouping | Named **Topics**: drag stickies toward one and they join it, and moving the topic moves them \[1\] | This is still grouped or not grouped. It's what Valentina is moving away from, so we don't copy it for now. |
+| Grouping | Named **Topics**: drag stickies toward one and they join it, and moving the topic moves them \[1\] | This is still grouped or not grouped. It's what the requester is moving away from, so we don't copy it for now. |
 | Regions | **Zones** own whatever sits fully inside them and can recolor stickies \[1\] | Not needed: a card's color comes from its prompt |
 | Votes | Ranked results, by sticky or by topic \[2\] | A ranked panel replaces sort-by-votes |
 | Private writing | Hidden from everyone but the author, including the host \[3\] | Same as our hide-cards |
@@ -55,7 +55,7 @@ Spreo is a general whiteboard with shapes, connectors, drawing and templates. \[
 *Static mockup, not the built UI. The dashed purple notes are annotations and wouldn't appear in the product.*
 
 - **"Canvas" is a third choice in Start a new retro:** Retro, Custom, Canvas. It uses the same URL, sync, timer and phases.
-- **Prompts replace columns.** A card keeps the color of the prompt it was written under, wherever it goes. That is Valentina's original ask: "went OK" and "went well" cards sit together and stay visibly different.
+- **Prompts replace columns.** A card keeps the color of the prompt it was written under, wherever it goes. That is the original ask: "went OK" and "went well" cards sit together and stay visibly different.
 - **Nothing records membership.** There is no group object or boundary. In the mockup, "New hire shipped a deploy on day 3" sits between Deploys and Onboarding, which column rows can't express.
 - **Labels float.** A label is text placed on the canvas, and it owns nothing. Moving a label doesn't move any cards.
 - **List view is always available.** It renders the same cards in the existing columns, without dragging.
@@ -91,7 +91,7 @@ Spreo is a general whiteboard with shapes, connectors, drawing and templates. \[
 
 ### Decisions
 
-Scott accepted the recommendations on 2026-11-05.
+The maintainer accepted the recommendations on 2026-11-05.
 
 | # | Question | Decision | Why |
 | --- | --- | --- | --- |
@@ -214,10 +214,10 @@ Stacked PRs off `main`, **after the group rows stack merges**, because its PR 1 
 | 1 | `fix/broadcast-lagged` | Trap 1, with a test. Worth doing regardless of canvas. | No | S |
 | 2 | `refactor/board-surface` | `ColumnsSurface`, `cardActions`, `Card` `surface` prop. No behavior change, existing tests untouched. | No | M |
 | 3 | `feat/canvas-model` | `layout`, card `pos`, `canvas.ts`, `setCardPos`, board file, archive, carry-over | No | M |
-| 4 | `feat/canvas-surface` | Pan, zoom, fit, drag, live peer movement. No "Canvas" option yet, so a board is made by importing a file. **Preview for Valentina (C1).** | Preview only | L |
+| 4 | `feat/canvas-surface` | Pan, zoom, fit, drag, live peer movement. No "Canvas" option yet, so a board is made by importing a file. **Preview for the requester (C1).** | Preview only | L |
 | 5 | `feat/canvas-authoring` | "Canvas" option, composer, double-click, headings, hide-cards, Action items dock, List view, phone default, docs page. **First real release.** | Yes | L |
 | 6 | `feat/canvas-labels` | Floating labels, including persistence | Yes | M |
-| 7 | `feat/canvas-discuss` | Top voted panel, Valentina's scenario end to end, QA script, analytics | Yes | S–M |
+| 7 | `feat/canvas-discuss` | Top voted panel, The requester's scenario end to end, QA script, analytics | Yes | S–M |
 | 8 | Optional, decide from use | Select several cards and move them together, "Bring everyone here". Each is M. | Yes | M–L |
 
 **Why this order:**
@@ -227,9 +227,9 @@ Stacked PRs off `main`, **after the group rows stack merges**, because its PR 1 
 - PR 4 tests the idea with the least work, including the real-device check.
 - Labels and Top voted are separate so either can be cut if the preview changes what's wanted.
 
-**Release:** `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`, with the `e2e` label on each PR. QA is public now (Zo's private proxy blocks WebSockets), so a preview doesn't need a tunnel.
+**Release:** `make qa-deploy`, then `make prod-deploy`, per `docs/RELEASING.md`, with the `e2e` label on each PR. QA is reachable without sign-in, so a preview doesn't need a tunnel.
 
-Scott chose on 2026-11-05 to skip the PR 4 preview and QA once the canvas is fully functional, so PRs 5–7 are being built without Valentina's feedback on PR 4.
+The maintainer chose on 2026-11-05 to skip the PR 4 preview and QA once the canvas is fully functional, so PRs 5–7 are being built without the requester's feedback on PR 4.
 
 **Starting grid, as built in PR 5.** The plan had fixed-size slots, but a long card then covered the card below it. Slots now grow with an estimate from the text (`cardSlotHeight`). It's not measured, so it comes out the same for everyone and opening a card's comments doesn't push others. Editing a long card's text can still shift the unmoved cards below it. Hidden cards use the fixed size, so a placeholder doesn't give away the card's length.
 
